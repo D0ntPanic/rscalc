@@ -1,0 +1,8 @@
+[package]
+name = "intel_dfp"
+version = "0.1.0"
+edition = "2018"
+
+[features]
+default = ["std"]
+std = []
