@@ -48,6 +48,7 @@ pub enum Color {
 	StatusBarBackground,
 	StatusBarText,
 	ContentBackground,
+	StackLabelText,
 	ContentText,
 	IntegerText,
 	FloatText,
@@ -63,7 +64,7 @@ impl Color {
 	pub fn to_bw(&self) -> bool {
 		match self {
 			Color::StatusBarBackground | Color::ContentText |
-				Color::IntegerText | Color::FloatText |
+				Color::StackLabelText | Color::IntegerText | Color::FloatText |
 				Color::ObjectText | Color::KeywordText |
 				Color::SelectionBackground | Color::MenuBackground => true,
 			Color::StatusBarText | Color::ContentBackground |

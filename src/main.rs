@@ -4,6 +4,7 @@
 
 extern crate alloc;
 extern crate intel_dfp;
+extern crate num_bigint;
 
 #[cfg(not(feature = "dm42"))]
 extern crate gtk;
@@ -19,9 +20,13 @@ mod simulated;
 mod screen;
 mod font;
 mod input;
+mod number;
+mod stack;
 
 use screen::{Screen, Rect, Color};
 use input::{InputQueue, InputMode, AlphaMode, InputEvent};
+use number::Number;
+use stack::Stack;
 
 #[cfg(feature = "dm42")]
 use alloc::vec::Vec;
@@ -33,6 +38,14 @@ fn draw_header<ScreenT: Screen>(screen: &mut ScreenT, mode: &InputMode) {
         w: screen.width(),
         h: font::SANS_16.height
     }, Color::StatusBarBackground);
+
+    screen.fill(Rect {
+        x: 0,
+        y: font::SANS_16.height,
+        w: screen.width(),
+        h: 1
+    }, Color::ContentBackground);
+
     let x = 2;
     if mode.shift {
         font::SANS_16.draw(screen, x, 0, "Shift", Color::StatusBarText);
@@ -49,46 +62,76 @@ fn draw_header<ScreenT: Screen>(screen: &mut ScreenT, mode: &InputMode) {
     }
 }
 
+fn header_size() -> i32 {
+    font::SANS_16.height + 1
+}
+
 pub fn calc_main<ScreenT: Screen, InputT: InputQueue>(mut screen: ScreenT, mut input: InputT) {
     screen.clear();
 
-    let mut value = intel_dfp::Decimal::from(0);
+    let mut stack = Stack::new();
     let mut mode = InputMode {
         alpha: AlphaMode::Normal,
         shift: false
     };
 
     loop {
+        screen.clear();
         draw_header(&mut screen, &mode);
 
-        let string = value.to_str();
-        let width = screen.width();
-        let height = screen.height();
-        screen.fill(Rect { x: 0, y: height - font::MONO_24.height, w: width, h: font::MONO_24.height },
-            Color::ContentBackground);
-        font::MONO_24.draw(&mut screen, 2, height - font::MONO_24.height,
-            &string, Color::FloatText);
+        let stack_area = Rect {
+            x: 0,
+            y: header_size(),
+            w: screen.width(),
+            h: screen.height() - header_size()
+        };
+
+        stack.render(&mut screen, stack_area);
         screen.refresh();
 
         match input.wait(&mut mode) {
             InputEvent::Character(ch) => {
                 match ch {
                     '0'..='9' => {
-                        value *= 10.into();
-                        value += ch.to_digit(10).unwrap().into();
+                        let top = stack.top_mut();
+                        *top *= 10.into();
+                        *top += ch.to_digit(10).unwrap().into();
                     }
                     _ => ()
                 }
             }
+            InputEvent::Enter => {
+                stack.push(0.into());
+            }
+            InputEvent::Backspace => {
+                stack.pop();
+            }
+            InputEvent::Add => {
+                if stack.len() >= 2 {
+                    let x = stack.pop();
+                    let y = stack.top();
+                    let value = y + &x;
+                    stack.set_top(value);
+                }
+            }
+            InputEvent::Sub => {
+                if stack.len() >= 2 {
+                    let x = stack.pop();
+                    let y = stack.top();
+                    let value = y - &x;
+                    stack.set_top(value);
+                }
+            }
+            InputEvent::Mul => {
+                if stack.len() >= 2 {
+                    let x = stack.pop();
+                    let y = stack.top();
+                    let value = y * &x;
+                    stack.set_top(value);
+                }
+            }
             InputEvent::Run => {
                 panic!("panic");
-            }
-            InputEvent::Sto => {
-                // Test OOM
-                let mut v = Vec::new();
-                for i in 0u32..100000u32 {
-                    v.push(i);
-                }
             }
             InputEvent::Setup => {
                 #[cfg(feature = "dm42")]

@@ -569,7 +569,7 @@ pub trait InputQueue {
 									if shift {
 										return InputEvent::Stat;
 									} else {
-										return InputEvent::Div;
+										return InputEvent::Mul;
 									}
 								}
 							}

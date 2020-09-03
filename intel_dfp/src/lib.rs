@@ -505,6 +505,18 @@ impl core::ops::Add for Decimal {
 	}
 }
 
+impl core::ops::Add for &Decimal {
+	type Output = Decimal;
+
+	fn add(self, rhs: Self) -> Self::Output {
+		let mut result = core::mem::MaybeUninit::<Decimal>::uninit();
+		unsafe {
+			__bid128_add(result.as_mut_ptr(), &self, &rhs);
+			result.assume_init()
+		}
+	}
+}
+
 impl core::ops::AddAssign for Decimal {
 	fn add_assign(&mut self, rhs: Self) {
 		unsafe {
@@ -515,6 +527,18 @@ impl core::ops::AddAssign for Decimal {
 
 impl core::ops::Sub for Decimal {
 	type Output = Self;
+
+	fn sub(self, rhs: Self) -> Self::Output {
+		let mut result = core::mem::MaybeUninit::<Decimal>::uninit();
+		unsafe {
+			__bid128_sub(result.as_mut_ptr(), &self, &rhs);
+			result.assume_init()
+		}
+	}
+}
+
+impl core::ops::Sub for &Decimal {
+	type Output = Decimal;
 
 	fn sub(self, rhs: Self) -> Self::Output {
 		let mut result = core::mem::MaybeUninit::<Decimal>::uninit();
@@ -545,6 +569,18 @@ impl core::ops::Mul for Decimal {
 	}
 }
 
+impl core::ops::Mul for &Decimal {
+	type Output = Decimal;
+
+	fn mul(self, rhs: Self) -> Self::Output {
+		let mut result = core::mem::MaybeUninit::<Decimal>::uninit();
+		unsafe {
+			__bid128_mul(result.as_mut_ptr(), &self, &rhs);
+			result.assume_init()
+		}
+	}
+}
+
 impl core::ops::MulAssign for Decimal {
 	fn mul_assign(&mut self, rhs: Self) {
 		unsafe {
@@ -555,6 +591,18 @@ impl core::ops::MulAssign for Decimal {
 
 impl core::ops::Div for Decimal {
 	type Output = Self;
+
+	fn div(self, rhs: Self) -> Self::Output {
+		let mut result = core::mem::MaybeUninit::<Decimal>::uninit();
+		unsafe {
+			__bid128_div(result.as_mut_ptr(), &self, &rhs);
+			result.assume_init()
+		}
+	}
+}
+
+impl core::ops::Div for &Decimal {
+	type Output = Decimal;
 
 	fn div(self, rhs: Self) -> Self::Output {
 		let mut result = core::mem::MaybeUninit::<Decimal>::uninit();
@@ -585,6 +633,18 @@ impl core::ops::Rem for Decimal {
 	}
 }
 
+impl core::ops::Rem for &Decimal {
+	type Output = Decimal;
+
+	fn rem(self, rhs: Self) -> Self::Output {
+		let mut result = core::mem::MaybeUninit::<Decimal>::uninit();
+		unsafe {
+			__bid128_fmod(result.as_mut_ptr(), &self, &rhs);
+			result.assume_init()
+		}
+	}
+}
+
 impl core::ops::RemAssign for Decimal {
 	fn rem_assign(&mut self, rhs: Self) {
 		unsafe {
@@ -595,6 +655,18 @@ impl core::ops::RemAssign for Decimal {
 
 impl core::ops::Neg for Decimal {
 	type Output = Self;
+
+	fn neg(self) -> Self::Output {
+		let mut result = core::mem::MaybeUninit::<Decimal>::uninit();
+		unsafe {
+			__bid128_negate(result.as_mut_ptr(), &self);
+			result.assume_init()
+		}
+	}
+}
+
+impl core::ops::Neg for &Decimal {
+	type Output = Decimal;
 
 	fn neg(self) -> Self::Output {
 		let mut result = core::mem::MaybeUninit::<Decimal>::uninit();
