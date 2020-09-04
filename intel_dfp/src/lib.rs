@@ -11,7 +11,7 @@ use alloc::string::ToString;
 #[repr(align(16))]
 #[derive(Clone)]
 pub struct Decimal {
-	parts: [u64; 2]
+	parts: [u64; 2],
 }
 
 #[repr(C)]
@@ -26,7 +26,7 @@ enum Class {
 	PositiveZero,
 	PositiveSubnormal,
 	PositiveNormal,
-	PositiveInfinity
+	PositiveInfinity,
 }
 
 extern "C" {
@@ -44,7 +44,6 @@ extern "C" {
 	fn __bid128_fmod(result: *mut Decimal, x: &Decimal, y: &Decimal);
 	fn __bid128_modf(result: *mut Decimal, x: &Decimal, int: *mut Decimal);
 	fn __bid128_fma(result: *mut Decimal, x: &Decimal, y: &Decimal, z: &Decimal);
-	fn __bid128_sqrt(result: *mut Decimal, x: &Decimal);
 	fn __bid128_exp(result: *mut Decimal, x: &Decimal);
 	fn __bid128_log(result: *mut Decimal, x: &Decimal);
 	fn __bid128_pow(result: *mut Decimal, x: &Decimal, y: &Decimal);
@@ -104,9 +103,13 @@ impl Decimal {
 	}
 
 	pub fn sqrt(&self) -> Self {
+		let one: Decimal = 1.into();
+		let two: Decimal = 2.into();
+		let one_half = one / two;
 		let mut result = core::mem::MaybeUninit::<Decimal>::uninit();
 		unsafe {
-			__bid128_sqrt(result.as_mut_ptr(), &self);
+			// Don't use sqrt here, we don't have a libm on dm42
+			__bid128_pow(result.as_mut_ptr(), &self, &one_half);
 			result.assume_init()
 		}
 	}
@@ -356,7 +359,7 @@ impl Decimal {
 			Class::NegativeInfinity | Class::PositiveInfinity => core::num::FpCategory::Infinite,
 			Class::NegativeZero | Class::PositiveZero => core::num::FpCategory::Zero,
 			Class::NegativeSubnormal | Class::PositiveSubnormal => core::num::FpCategory::Subnormal,
-			Class::NegativeNormal | Class::PositiveNormal => core::num::FpCategory::Normal
+			Class::NegativeNormal | Class::PositiveNormal => core::num::FpCategory::Normal,
 		}
 	}
 

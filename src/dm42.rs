@@ -1,9 +1,9 @@
-use core::alloc::GlobalAlloc;
-use alloc::alloc::Layout;
-use crate::screen::{Rect, Color, Screen};
 use crate::calc_main;
 use crate::font;
-use crate::input::{Key, KeyEvent, InputQueue};
+use crate::input::{InputQueue, Key, KeyEvent};
+use crate::screen::{Color, Rect, Screen};
+use alloc::alloc::Layout;
+use core::alloc::GlobalAlloc;
 
 struct Heap;
 
@@ -32,8 +32,20 @@ extern "C" {
 fn panic_handler(_info: &core::panic::PanicInfo) -> ! {
 	let mut screen = DM42Screen;
 	screen.clear();
-	font::SANS_24.draw(&mut screen, 2, 2, "Internal error - Panic", Color::ContentText);
-	font::SANS_16.draw(&mut screen, 2, 2 + font::SANS_24.height, "Press a key to restart...", Color::ContentText);
+	font::SANS_24.draw(
+		&mut screen,
+		2,
+		2,
+		"Internal error - Panic",
+		Color::ContentText,
+	);
+	font::SANS_16.draw(
+		&mut screen,
+		2,
+		2 + font::SANS_24.height,
+		"Press a key to restart...",
+		Color::ContentText,
+	);
 	screen.refresh();
 	wait_for_key_press();
 	unsafe {
@@ -46,10 +58,20 @@ fn alloc_error_handler(_layout: Layout) -> ! {
 	let mut screen = DM42Screen;
 	screen.clear();
 	font::SANS_24.draw(&mut screen, 2, 2, "Out of memory", Color::ContentText);
-	font::SANS_16.draw(&mut screen, 2, 2 + font::SANS_24.height,
-		"Unhandled memory allocation error.", Color::ContentText);
-	font::SANS_16.draw(&mut screen, 2, 2 + font::SANS_24.height + font::SANS_16.height * 2,
-		"Press a key to restart...", Color::ContentText);
+	font::SANS_16.draw(
+		&mut screen,
+		2,
+		2 + font::SANS_24.height,
+		"Unhandled memory allocation error.",
+		Color::ContentText,
+	);
+	font::SANS_16.draw(
+		&mut screen,
+		2,
+		2 + font::SANS_24.height + font::SANS_16.height * 2,
+		"Press a key to restart...",
+		Color::ContentText,
+	);
 	screen.refresh();
 	wait_for_key_press();
 	unsafe {
@@ -62,15 +84,31 @@ pub fn __aeabi_unwind_cpp_pr0() -> ! {
 	let mut screen = DM42Screen;
 	screen.clear();
 	font::SANS_24.draw(&mut screen, 2, 2, "Internal error", Color::ContentText);
-	font::SANS_16.draw(&mut screen, 2, 2 + font::SANS_24.height,
-		"Unhandled C++ exception.", Color::ContentText);
-	font::SANS_16.draw(&mut screen, 2, 2 + font::SANS_24.height + font::SANS_16.height * 2,
-		"Press a key to restart...", Color::ContentText);
+	font::SANS_16.draw(
+		&mut screen,
+		2,
+		2 + font::SANS_24.height,
+		"Unhandled C++ exception.",
+		Color::ContentText,
+	);
+	font::SANS_16.draw(
+		&mut screen,
+		2,
+		2 + font::SANS_24.height + font::SANS_16.height * 2,
+		"Press a key to restart...",
+		Color::ContentText,
+	);
 	screen.refresh();
 	wait_for_key_press();
 	unsafe {
 		post_main();
 	}
+}
+
+#[no_mangle]
+// This is missing from the linked C library but it can be provided by Rust
+pub extern "C" fn __aeabi_d2f(value: f64) -> f32 {
+	value as f32
 }
 
 #[global_allocator]
@@ -79,15 +117,13 @@ static ALLOCATOR: Heap = Heap;
 unsafe impl GlobalAlloc for Heap {
 	unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
 		let func_ptr: usize = LIBRARY_BASE + 0;
-		let malloc: extern "C" fn(size: usize) -> *mut u8 =
-			core::mem::transmute(func_ptr);
+		let malloc: extern "C" fn(size: usize) -> *mut u8 = core::mem::transmute(func_ptr);
 		malloc(layout.size())
 	}
 
 	unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
 		let func_ptr: usize = LIBRARY_BASE + 4;
-		let free: extern "C" fn(ptr: *mut u8) -> *mut u8 =
-			core::mem::transmute(func_ptr);
+		let free: extern "C" fn(ptr: *mut u8) -> *mut u8 = core::mem::transmute(func_ptr);
 		free(ptr);
 	}
 }
@@ -274,8 +310,13 @@ impl Screen for DM42Screen {
 	fn fill(&mut self, rect: Rect, color: Color) {
 		let rect = rect.clipped_to_screen(self);
 		let color = color.to_bw();
-		lcd_fill_rect(rect.x as u32, rect.y as u32, rect.w as u32, rect.h as u32,
-			if color { 1 } else { 0 });
+		lcd_fill_rect(
+			rect.x as u32,
+			rect.y as u32,
+			rect.w as u32,
+			rect.h as u32,
+			if color { 1 } else { 0 },
+		);
 	}
 
 	fn draw_bits(&mut self, x: i32, y: i32, bits: u32, width: u8, color: Color) {
@@ -349,7 +390,7 @@ impl InputQueue for DM42InputQueue {
 					45 => Key::ShiftUp,
 					46 => Key::ShiftDown,
 					99 => Key::DoubleRelease,
-					_ => return None
+					_ => return None,
 				};
 				Some(KeyEvent::Press(key))
 			} else if key == 0 {
@@ -367,8 +408,8 @@ impl InputQueue for DM42InputQueue {
 		}
 
 		loop {
-			if (state(STAT_PGM_END) && state(STAT_SUSPENDED)) ||
-				(!state(STAT_PGM_END) && key_empty())
+			if (state(STAT_PGM_END) && state(STAT_SUSPENDED))
+				|| (!state(STAT_PGM_END) && key_empty())
 			{
 				clear_state(STAT_RUNNING);
 				sys_sleep();

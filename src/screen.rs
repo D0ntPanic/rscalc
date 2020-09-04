@@ -3,18 +3,21 @@ pub struct Rect {
 	pub x: i32,
 	pub y: i32,
 	pub w: i32,
-	pub h: i32
+	pub h: i32,
 }
 
 impl Rect {
 	pub fn new(x: i32, y: i32, w: i32, h: i32) -> Self {
-		Rect {
-			x, y, w, h
-		}
+		Rect { x, y, w, h }
 	}
 
 	pub fn clipped_to(&self, area: &Rect) -> Self {
-		let Rect { mut x, mut y, mut w, mut h } = self.clone();
+		let Rect {
+			mut x,
+			mut y,
+			mut w,
+			mut h,
+		} = self.clone();
 		if x < area.x {
 			w += x - area.x;
 			x = area.x;
@@ -24,7 +27,12 @@ impl Rect {
 			y = area.y;
 		}
 		if w <= 0 || h <= 0 {
-			return Rect { x: area.x, y: area.y, w: 0, h: 0 };
+			return Rect {
+				x: area.x,
+				y: area.y,
+				w: 0,
+				h: 0,
+			};
 		}
 		if (x + w) > (area.x + area.w) {
 			w = (area.x + area.w) - x;
@@ -33,13 +41,23 @@ impl Rect {
 			h = (area.y + area.h) - y;
 		}
 		if w <= 0 || h <= 0 {
-			return Rect { x: area.x, y: area.y, w: 0, h: 0 };
+			return Rect {
+				x: area.x,
+				y: area.y,
+				w: 0,
+				h: 0,
+			};
 		}
 		Rect { x, y, w, h }
 	}
 
 	pub fn clipped_to_screen<ScreenT: Screen>(&self, screen: &ScreenT) -> Self {
-		self.clipped_to(&Rect { x: 0, y: 0, w: screen.width(), h: screen.height() })
+		self.clipped_to(&Rect {
+			x: 0,
+			y: 0,
+			w: screen.width(),
+			h: screen.height(),
+		})
 	}
 }
 
@@ -57,18 +75,25 @@ pub enum Color {
 	SelectionBackground,
 	SelectionText,
 	MenuBackground,
-	MenuText
+	MenuText,
 }
 
 impl Color {
 	pub fn to_bw(&self) -> bool {
 		match self {
-			Color::StatusBarBackground | Color::ContentText |
-				Color::StackLabelText | Color::IntegerText | Color::FloatText |
-				Color::ObjectText | Color::KeywordText |
-				Color::SelectionBackground | Color::MenuBackground => true,
-			Color::StatusBarText | Color::ContentBackground |
-				Color::SelectionText | Color::MenuText => false
+			Color::StatusBarBackground
+			| Color::ContentText
+			| Color::StackLabelText
+			| Color::IntegerText
+			| Color::FloatText
+			| Color::ObjectText
+			| Color::KeywordText
+			| Color::SelectionBackground
+			| Color::MenuBackground => true,
+			Color::StatusBarText
+			| Color::ContentBackground
+			| Color::SelectionText
+			| Color::MenuText => false,
 		}
 	}
 }
@@ -77,7 +102,7 @@ pub struct Font {
 	pub height: i32,
 	pub chars: &'static [&'static [u8]],
 	pub width: &'static [u8],
-	pub advance: &'static [u8]
+	pub advance: &'static [u8],
 }
 
 impl Font {
@@ -96,8 +121,13 @@ impl Font {
 				let mut remain = width;
 				for byte in 0..bytes {
 					let cur_width = if remain >= 8 { 8 } else { remain };
-					screen.draw_bits(cur_x + byte as i32 * 8, y + line,
-						self.chars[idx][offset] as u32, cur_width, color);
+					screen.draw_bits(
+						cur_x + byte as i32 * 8,
+						y + line,
+						self.chars[idx][offset] as u32,
+						cur_width,
+						color,
+					);
 					remain = remain.saturating_sub(8);
 					offset += 1;
 				}

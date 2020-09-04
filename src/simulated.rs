@@ -1,27 +1,27 @@
-use gtk::*;
-use glib::source::{timeout_add_local, Continue};
-use gdk_pixbuf::{Pixbuf, Colorspace};
-use std::thread;
-use std::sync::{Arc, Mutex, Condvar};
-use crate::screen::{Rect, Color, Screen};
 use crate::calc_main;
-use crate::input::{Key, KeyEvent, InputQueue};
+use crate::input::{InputQueue, Key, KeyEvent};
+use crate::screen::{Color, Rect, Screen};
+use gdk_pixbuf::{Colorspace, Pixbuf};
+use glib::source::{timeout_add_local, Continue};
+use gtk::*;
+use std::sync::{Arc, Condvar, Mutex};
+use std::thread;
 
 const WIDTH: i32 = 400;
 const HEIGHT: i32 = 240;
 const WIDTH_BYTES: usize = WIDTH as usize / 8;
 
 pub struct Refresh {
-	screen: Option<VirtualDM42Screen>
+	screen: Option<VirtualDM42Screen>,
 }
 
 pub struct App {
-	window: Window
+	window: Window,
 }
 
 struct Content {
 	container: Box,
-	image: Image
+	image: Image,
 }
 
 impl App {
@@ -58,9 +58,7 @@ impl App {
 			Continue(true)
 		});
 
-		App {
-			window
-		}
+		App { window }
 	}
 
 	pub fn run() {
@@ -76,9 +74,11 @@ impl App {
 }
 
 impl Content {
-	fn new(screen: &VirtualDM42Screen, input_queue: Arc<Mutex<Vec<KeyEvent>>>,
-		input_event: Arc<Condvar>) -> Content
-	{
+	fn new(
+		screen: &VirtualDM42Screen,
+		input_queue: Arc<Mutex<Vec<KeyEvent>>>,
+		input_event: Arc<Condvar>,
+	) -> Content {
 		let container = Box::new(Orientation::Vertical, 0);
 		let image = Image::new();
 		let pixbuf = screen.to_pixbuf();
@@ -129,7 +129,7 @@ impl Content {
 					queue.push(KeyEvent::Press($key));
 					queue.push(KeyEvent::Release);
 					button_input_event.notify_one();
-				});
+					});
 				$grid.attach(&sum_lbl, $x * 2, $y, $span, 1);
 				$grid.attach(&sum, $x * 2, $y + 1, $span, 1);
 				$grid.attach(&a, $x * 2 + $span, $y + 1, $span, 1);
@@ -183,36 +183,33 @@ impl Content {
 		container.pack_start(&keyboard_top, false, false, 0);
 		container.pack_start(&keyboard_bottom, false, false, 0);
 
-		Content {
-			container,
-			image
-		}
+		Content { container, image }
 	}
 }
 
 #[derive(Clone)]
 pub struct VirtualDM42Screen {
 	bitmap: [u8; WIDTH_BYTES * HEIGHT as usize],
-	refresh: Arc<Mutex<Refresh>>
+	refresh: Arc<Mutex<Refresh>>,
 }
 
 impl VirtualDM42Screen {
 	pub fn new(refresh: Arc<Mutex<Refresh>>) -> Self {
 		VirtualDM42Screen {
 			bitmap: [0; WIDTH_BYTES * HEIGHT as usize],
-			refresh
+			refresh,
 		}
 	}
 
 	fn pixel(&self, x: i32, y: i32) -> bool {
-		if x < 0 || x >= WIDTH || y < 0 || y>= HEIGHT {
+		if x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT {
 			return false;
 		}
 		self.bitmap[y as usize * WIDTH_BYTES + (x as usize / 8)] & (1 << (x & 7)) != 0
 	}
 
 	fn set_pixel(&mut self, x: i32, y: i32, color: bool) {
-		if x < 0 || x >= WIDTH || y < 0 || y>= HEIGHT {
+		if x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT {
 			return;
 		}
 		if color {
@@ -280,14 +277,12 @@ impl Screen for VirtualDM42Screen {
 
 pub struct VirtualInputQueue {
 	queue: Arc<Mutex<Vec<KeyEvent>>>,
-	event: Arc<Condvar>
+	event: Arc<Condvar>,
 }
 
 impl VirtualInputQueue {
 	fn new(queue: Arc<Mutex<Vec<KeyEvent>>>, event: Arc<Condvar>) -> Self {
-		VirtualInputQueue {
-			queue, event
-		}
+		VirtualInputQueue { queue, event }
 	}
 }
 

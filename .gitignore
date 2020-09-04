@@ -3,3 +3,4 @@ target/
 calc.bin
 calc.pgm
 calc_qspi.bin
+.vscode
