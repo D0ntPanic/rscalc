@@ -26,6 +26,7 @@ mod screen;
 mod stack;
 
 use input::{AlphaMode, InputEvent, InputMode, InputQueue};
+use intel_dfp::Decimal;
 use number::{Number, NumberFormat};
 use screen::{Color, Rect, Screen};
 use stack::Stack;
@@ -173,6 +174,16 @@ pub fn calc_main<ScreenT: Screen, InputT: InputQueue>(mut screen: ScreenT, mut i
                 let value = stack.top().exp();
                 stack.set_top(value);
             }
+            InputEvent::Percent => {
+                if stack.len() >= 2 {
+                    let one_hundred: Number = 100.into();
+                    let value = stack.entry(1) * &(stack.entry(0) / &one_hundred);
+                    stack.set_top(value);
+                }
+            }
+            InputEvent::Pi => stack.input_num(Number::Decimal(Decimal::from_str(
+                "3.141592653589793238462643383279503",
+            ))),
             InputEvent::Sin => {
                 let value = stack.top().sin();
                 stack.set_top(value);
@@ -196,6 +207,16 @@ pub fn calc_main<ScreenT: Screen, InputT: InputQueue>(mut screen: ScreenT, mut i
             InputEvent::Atan => {
                 let value = stack.top().atan();
                 stack.set_top(value);
+            }
+            InputEvent::RotateDown => {
+                if stack.len() >= 2 {
+                    stack.rotate_down();
+                }
+            }
+            InputEvent::Swap => {
+                if stack.len() >= 2 {
+                    stack.swap(0, 1);
+                }
             }
             InputEvent::Base => {
                 if format.integer_radix == 10 {

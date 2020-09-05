@@ -76,9 +76,33 @@ impl Stack {
 		result
 	}
 
+	pub fn swap(&mut self, a_idx: usize, b_idx: usize) {
+		let a = self.entry(a_idx).clone();
+		let b = self.entry(b_idx).clone();
+		*self.entry_mut(a_idx) = b;
+		*self.entry_mut(b_idx) = a;
+		self.end_edit();
+		self.push_new_entry = true;
+		self.editor = None;
+	}
+
+	pub fn rotate_down(&mut self) {
+		let top = self.top().clone();
+		self.pop();
+		self.entries.insert(0, top);
+	}
+
 	pub fn enter(&mut self) {
 		self.push(self.top().clone());
 		self.push_new_entry = false;
+	}
+
+	pub fn input_num(&mut self, num: Number) {
+		if self.push_new_entry {
+			self.push(num);
+		} else {
+			self.set_top(num);
+		}
 	}
 
 	pub fn end_edit(&mut self) {

@@ -2,10 +2,8 @@
 
 extern crate alloc;
 
-#[cfg(not(feature = "std"))]
-use alloc::string::String;
-#[cfg(not(feature = "std"))]
-use alloc::string::ToString;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 
 #[repr(C)]
 #[repr(align(16))]
@@ -37,6 +35,7 @@ extern "C" {
 	fn __binary32_to_bid128(result: *mut Decimal, n: &f32);
 	fn __binary64_to_bid128(result: *mut Decimal, n: &f64);
 	fn __bid128_to_string(dest: *mut u8, n: &Decimal);
+	fn __bid128_from_string(dest: *mut Decimal, string: *const u8);
 	fn __bid128_add(result: *mut Decimal, x: &Decimal, y: &Decimal);
 	fn __bid128_sub(result: *mut Decimal, x: &Decimal, y: &Decimal);
 	fn __bid128_mul(result: *mut Decimal, x: &Decimal, y: &Decimal);
@@ -85,6 +84,16 @@ extern "C" {
 impl Decimal {
 	pub fn new() -> Self {
 		0.into()
+	}
+
+	pub fn from_str(string: &str) -> Self {
+		let mut buf: Vec<u8> = string.as_bytes().to_vec();
+		buf.push(0);
+		let mut result = core::mem::MaybeUninit::<Decimal>::uninit();
+		unsafe {
+			__bid128_from_string(result.as_mut_ptr(), buf.as_ptr());
+			result.assume_init()
+		}
 	}
 
 	pub fn to_str(&self) -> String {
