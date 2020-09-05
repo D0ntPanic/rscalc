@@ -3,7 +3,7 @@ use crate::font::{SANS_16, SANS_20, SANS_24};
 use crate::num_bigint::ToBigInt;
 use crate::number::{Number, NumberFormat};
 use crate::screen::{Color, Rect, Screen};
-use alloc::string::ToString;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 pub struct Stack {
@@ -236,6 +236,14 @@ fn render_entry<ScreenT: Screen>(
 		Number::Decimal(_) => None,
 	};
 
+	// If alternate representation is too wide, don't display it
+	if let Some(alt) = &alt_string {
+		let width = SANS_16.width(alt) + 4;
+		if width > w {
+			alt_string = None;
+		}
+	}
+
 	let mut top = bottom;
 	let mut y = top;
 
@@ -328,30 +336,103 @@ fn render_entry<ScreenT: Screen>(
 
 	if !rational {
 		// Integer or decimal float, render string formatted earlier
-		top -= SANS_24.height;
+		let mut lines = Vec::new();
+		lines.push(string.clone());
+
+		// Determine string width
+		let width = SANS_24.width(&string) + 4;
+		if width > w * 2 {
+			// String cannot fit onto two lines, render as decimal float
+			lines[0] = format.format_decimal(&value.to_decimal());
+		} else if width > w {
+			// String does not fit, try to split it to two lines
+			let chars: Vec<char> = string.chars().collect();
+			let mut split_point = 0;
+			let mut width = 0;
+			for i in 0..chars.len() {
+				let mut char_str = String::new();
+				char_str.push(chars[(chars.len() - 1) - i]);
+
+				split_point = i;
+
+				// Add in the width of this character
+				if i == 0 {
+					width += SANS_24.width(&char_str);
+				} else {
+					width += SANS_24.advance(&char_str);
+				}
+
+				if width > w {
+					break;
+				}
+			}
+
+			// Check for a puncuation point near the split point, and move the split
+			// there if there is one.
+			for i in 0..4 {
+				if i > split_point {
+					break;
+				}
+				match chars[(chars.len() - 1) - (split_point - i)] {
+					',' | '.' => {
+						split_point -= i;
+						break;
+					}
+					_ => (),
+				}
+			}
+
+			// Split the line into two lines
+			let (first, second) = chars.split_at(chars.len() - split_point);
+			let first_str: String = first.iter().collect();
+			let second_str: String = second.iter().collect();
+			let first_width = SANS_24.width(&first_str) + 4;
+			let second_width = SANS_24.width(&second_str) + 4;
+
+			if first_width > w || second_width > w {
+				// String cannot fit onto two lines, render as decimal float
+				lines[0] = format.format_decimal(&value.to_decimal());
+			} else {
+				// String fits onto two lines
+				lines.clear();
+				lines.push(first_str);
+				lines.push(second_str);
+			}
+		}
+
+		if let Some(alt) = &alt_string {
+			if lines.len() == 1 && alt == &lines[0] {
+				// Alternate representation is the same as this representation,
+				// don't use the alternate.
+				alt_string = None;
+			}
+		}
+
+		top -= SANS_24.height * lines.len() as i32;
 		if alt_string.is_some() {
 			top -= SANS_16.height;
 		}
 
-		// Render string
+		// Render lines
 		y = top;
-		let width = SANS_24.width(&string) + 4;
-		SANS_24.draw(screen, x + w - width, y, &string, Color::ContentText);
+		for line in lines {
+			let width = SANS_24.width(&line) + 4;
+			SANS_24.draw(screen, x + w - width, y, &line, Color::ContentText);
+			y += SANS_24.height;
+		}
 
 		if editor.is_some() {
 			// If there is an editor, render cursor
 			screen.fill(
 				Rect {
 					x: x + w - 3,
-					y,
+					y: y - SANS_24.height,
 					w: 3,
 					h: SANS_24.height,
 				},
 				Color::ContentText,
 			);
 		}
-
-		y += SANS_24.height;
 	}
 
 	// Render alternate string if there was one
