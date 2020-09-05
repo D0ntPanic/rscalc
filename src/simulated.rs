@@ -101,37 +101,46 @@ impl Content {
 		keyboard_bottom.set_margin_top(4);
 		keyboard_bottom.set_margin_bottom(8);
 
-		let f1 = Button::with_label("");
-		keyboard_top.attach(&f1, 0, 0, 1, 1);
-		let f2 = Button::with_label("");
-		keyboard_top.attach(&f2, 2, 0, 1, 1);
-		let f3 = Button::with_label("");
-		keyboard_top.attach(&f3, 4, 0, 1, 1);
-		let f4 = Button::with_label("");
-		keyboard_top.attach(&f4, 6, 0, 1, 1);
-		let f5 = Button::with_label("");
-		keyboard_top.attach(&f5, 8, 0, 1, 1);
-		let f6 = Button::with_label("");
-		keyboard_top.attach(&f6, 10, 0, 1, 1);
-
-		macro_rules! key {
-			($grid: expr, $button:expr, $shift:expr, $alpha: expr, $x: expr, $y: expr, $span: expr, $key: expr) => {
-				let sum_lbl = Label::new(Some($shift));
-				let sum = Button::with_label($button);
-				let a = Label::new(Some($alpha));
-				sum.set_hexpand(true);
-				sum_lbl.set_margin_top(4);
-				a.set_margin_end(4);
+		macro_rules! f_key {
+			($grid: expr, $x: expr, $y: expr, $key: expr) => {
+				let key = Button::with_label("");
+				$grid.attach(&key, $x, $y, 1, 1);
 				let button_input_queue = input_queue.clone();
 				let button_input_event = input_event.clone();
-				sum.connect_clicked(move |_| {
+				key.connect_clicked(move |_| {
 					let mut queue = button_input_queue.lock().unwrap();
 					queue.push(KeyEvent::Press($key));
 					queue.push(KeyEvent::Release);
 					button_input_event.notify_one();
 					});
-				$grid.attach(&sum_lbl, $x * 2, $y, $span, 1);
-				$grid.attach(&sum, $x * 2, $y + 1, $span, 1);
+			};
+		}
+
+		f_key!(keyboard_top, 0, 0, Key::F1);
+		f_key!(keyboard_top, 2, 0, Key::F2);
+		f_key!(keyboard_top, 4, 0, Key::F3);
+		f_key!(keyboard_top, 6, 0, Key::F4);
+		f_key!(keyboard_top, 8, 0, Key::F5);
+		f_key!(keyboard_top, 10, 0, Key::F6);
+
+		macro_rules! key {
+			($grid: expr, $button:expr, $shift:expr, $alpha: expr, $x: expr, $y: expr, $span: expr, $key: expr) => {
+				let key_lbl = Label::new(Some($shift));
+				let key = Button::with_label($button);
+				let a = Label::new(Some($alpha));
+				key.set_hexpand(true);
+				key_lbl.set_margin_top(4);
+				a.set_margin_end(4);
+				let button_input_queue = input_queue.clone();
+				let button_input_event = input_event.clone();
+				key.connect_clicked(move |_| {
+					let mut queue = button_input_queue.lock().unwrap();
+					queue.push(KeyEvent::Press($key));
+					queue.push(KeyEvent::Release);
+					button_input_event.notify_one();
+					});
+				$grid.attach(&key_lbl, $x * 2, $y, $span, 1);
+				$grid.attach(&key, $x * 2, $y + 1, $span, 1);
 				$grid.attach(&a, $x * 2 + $span, $y + 1, $span, 1);
 			};
 		}

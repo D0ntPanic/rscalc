@@ -81,14 +81,21 @@ impl Stack {
 		self.push_new_entry = false;
 	}
 
-	pub fn push_char(&mut self, ch: char) {
+	pub fn end_edit(&mut self) {
+		if self.editor.is_some() {
+			self.push_new_entry = true;
+			self.editor = None;
+		}
+	}
+
+	pub fn push_char(&mut self, ch: char, format: &NumberFormat) {
 		if self.editor.is_none() {
 			if self.push_new_entry {
 				self.push(0.into());
 			} else {
 				self.set_top(0.into());
 			}
-			self.editor = Some(NumberEditor::new_decimal());
+			self.editor = Some(NumberEditor::new(format));
 			self.push_new_entry = false;
 		}
 		if let Some(cur_editor) = &mut self.editor {
@@ -374,7 +381,7 @@ fn render_entry<ScreenT: Screen>(
 					break;
 				}
 				match chars[(chars.len() - 1) - (split_point - i)] {
-					',' | '.' => {
+					',' | '.' | 'x' => {
 						split_point -= i;
 						break;
 					}

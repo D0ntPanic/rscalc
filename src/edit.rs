@@ -25,14 +25,14 @@ pub struct NumberEditor {
 }
 
 impl NumberEditor {
-	pub fn new_decimal() -> Self {
+	pub fn new(format: &NumberFormat) -> Self {
 		NumberEditor {
 			sign: false,
 			integer: 0.into(),
 			fraction_digits: Vec::new(),
 			exponent_sign: false,
 			exponent: None,
-			radix: 10,
+			radix: format.integer_radix,
 			state: NumberEditorState::Integer,
 		}
 	}

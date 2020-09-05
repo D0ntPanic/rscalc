@@ -1,4 +1,5 @@
 #![feature(alloc_error_handler)]
+#![feature(assoc_char_funcs)]
 #![cfg_attr(feature = "dm42", no_std)]
 #![cfg_attr(feature = "dm42", no_main)]
 
@@ -78,7 +79,7 @@ pub fn calc_main<ScreenT: Screen, InputT: InputQueue>(mut screen: ScreenT, mut i
         alpha: AlphaMode::Normal,
         shift: false,
     };
-    let format = NumberFormat::new();
+    let mut format = NumberFormat::new();
 
     loop {
         screen.clear();
@@ -97,7 +98,7 @@ pub fn calc_main<ScreenT: Screen, InputT: InputQueue>(mut screen: ScreenT, mut i
         match input.wait(&mut mode) {
             InputEvent::Character(ch) => match ch {
                 '0'..='9' | 'A'..='Z' | 'a'..='z' | '.' => {
-                    stack.push_char(ch);
+                    stack.push_char(ch, &format);
                 }
                 _ => (),
             },
@@ -195,6 +196,23 @@ pub fn calc_main<ScreenT: Screen, InputT: InputQueue>(mut screen: ScreenT, mut i
             InputEvent::Atan => {
                 let value = stack.top().atan();
                 stack.set_top(value);
+            }
+            InputEvent::Base => {
+                if format.integer_radix == 10 {
+                    format.integer_radix = 16;
+                    stack.end_edit();
+                } else if format.integer_radix == 16 {
+                    format.integer_radix = 10;
+                    stack.end_edit();
+                }
+            }
+            InputEvent::FunctionKey(func, _) => {
+                if format.integer_radix == 16 {
+                    stack.push_char(
+                        char::from_u32('A' as u32 + func as u32 - 1).unwrap(),
+                        &format,
+                    );
+                }
             }
             InputEvent::Setup => {
                 #[cfg(feature = "dm42")]
