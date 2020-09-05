@@ -1,6 +1,6 @@
 use crate::edit::NumberEditor;
 use crate::font::{SANS_16, SANS_20, SANS_24};
-use crate::num_bigint::BigInt;
+use crate::num_bigint::ToBigInt;
 use crate::number::{Number, NumberFormat};
 use crate::screen::{Color, Rect, Screen};
 use alloc::string::ToString;
@@ -120,8 +120,7 @@ impl Stack {
 			let mut new_entry = self.entries.len() > 1;
 			self.pop();
 			if let Number::Integer(int) = self.top() {
-				let zero: BigInt = 0.into();
-				if int == &zero {
+				if int == &0.to_bigint().unwrap() {
 					new_entry = false;
 				}
 			}
@@ -207,51 +206,155 @@ fn render_entry<ScreenT: Screen>(
 		None => format.format_number(value),
 	};
 
-	let mut top = bottom - SANS_24.height;
-
 	// Check for alternate representation strings
-	let alt_string = if let Number::Integer(int) = value {
-		// Integer, if number is ten or greater check for the
-		// hexadecimal alternate form
-		let ten: BigInt = 10.into();
-		let neg_ten = -&ten;
-		if format.show_alt_hex && (int <= &neg_ten || int >= &ten) {
-			if format.integer_radix == 10 {
-				top -= SANS_16.height;
-				Some(format.hex_format().format_number(value))
-			} else if format.integer_radix == 16 {
-				top -= SANS_16.height;
-				Some(format.decimal_format().format_number(value))
+	let mut alt_string = match value {
+		Number::Integer(int) => {
+			// Integer, if number is ten or greater check for the
+			// hexadecimal alternate form
+			if format.show_alt_hex
+				&& (int <= &-10.to_bigint().unwrap() || int >= &10.to_bigint().unwrap())
+			{
+				if format.integer_radix == 10 {
+					Some(format.hex_format().format_number(value))
+				} else if format.integer_radix == 16 {
+					Some(format.decimal_format().format_number(value))
+				} else {
+					None
+				}
 			} else {
 				None
 			}
-		} else {
-			None
 		}
-	} else {
-		None
+		Number::Rational(_, _) => {
+			// Rational, show floating point as alternate form if enabled
+			if format.show_alt_float {
+				Some(format.decimal_format().format_decimal(&value.to_decimal()))
+			} else {
+				None
+			}
+		}
+		Number::Decimal(_) => None,
 	};
 
-	// Render string
-	let width = SANS_24.width(&string) + 4;
+	let mut top = bottom;
 	let mut y = top;
-	SANS_24.draw(screen, x + w - width, y, &string, Color::ContentText);
 
-	if editor.is_some() {
-		// If there is an editor, render cursor
-		screen.fill(
-			Rect {
-				x: x + w - 3,
+	let mut rational = false;
+	if let Number::Rational(num, denom) = value {
+		// Rational number, display as an integer and fraction
+		top -= SANS_20.height * 2;
+		if alt_string.is_some() {
+			top -= SANS_16.height;
+		}
+
+		// Break rational into an integer part and fractional part
+		let int = num / denom.to_bigint().unwrap();
+		let mut num = if &int < &0.to_bigint().unwrap() {
+			-num - -&int * &denom.to_bigint().unwrap()
+		} else {
+			num - &int * &denom.to_bigint().unwrap()
+		};
+
+		// Get strings for the parts of the rational
+		let int_str = if int == 0.to_bigint().unwrap() {
+			if &num < &0.to_bigint().unwrap() {
+				num = -num;
+				"-".to_string()
+			} else {
+				"".to_string()
+			}
+		} else {
+			format.format_bigint(&int) + " "
+		};
+		let num_str = format.format_bigint(&num);
+		let denom_str = format.format_bigint(&denom.to_bigint().unwrap());
+
+		// Find sizes for the parts of the rational
+		let int_width = SANS_24.width(&int_str);
+		let num_width = SANS_20.width(&num_str);
+		let denom_width = SANS_20.width(&denom_str);
+		let fraction_width = core::cmp::max(num_width, denom_width);
+
+		// Check fractional representation width
+		let total_width = int_width + fraction_width;
+		if total_width <= w {
+			// Fractional representation fits, draw integer part
+			y = top;
+			SANS_24.draw(
+				screen,
+				x + w - (int_width + fraction_width + 4),
+				y + SANS_20.height - (SANS_24.height / 2),
+				&int_str,
+				Color::ContentText,
+			);
+
+			// Draw numerator
+			SANS_20.draw(
+				screen,
+				x + w - (4 + fraction_width / 2) - (num_width / 2),
 				y,
-				w: 3,
-				h: SANS_24.height,
-			},
-			Color::ContentText,
-		);
+				&num_str,
+				Color::ContentText,
+			);
+
+			// Draw line between numerator and denominator
+			screen.fill(
+				Rect {
+					x: x + w - (fraction_width + 4),
+					y: y + SANS_20.height,
+					w: fraction_width,
+					h: 1,
+				},
+				Color::ContentText,
+			);
+
+			// Draw denominator
+			SANS_20.draw(
+				screen,
+				x + w - (4 + fraction_width / 2) - (denom_width / 2),
+				y + SANS_20.height,
+				&denom_str,
+				Color::ContentText,
+			);
+
+			y += SANS_20.height * 2;
+			rational = true;
+		} else {
+			// Fractional representation is too wide, represent as float
+			top = bottom;
+			alt_string = None;
+		}
 	}
 
-	y += SANS_24.height;
+	if !rational {
+		// Integer or decimal float, render string formatted earlier
+		top -= SANS_24.height;
+		if alt_string.is_some() {
+			top -= SANS_16.height;
+		}
 
+		// Render string
+		y = top;
+		let width = SANS_24.width(&string) + 4;
+		SANS_24.draw(screen, x + w - width, y, &string, Color::ContentText);
+
+		if editor.is_some() {
+			// If there is an editor, render cursor
+			screen.fill(
+				Rect {
+					x: x + w - 3,
+					y,
+					w: 3,
+					h: SANS_24.height,
+				},
+				Color::ContentText,
+			);
+		}
+
+		y += SANS_24.height;
+	}
+
+	// Render alternate string if there was one
 	if let Some(alt_string) = alt_string {
 		let width = SANS_16.width(&alt_string) + 4;
 		SANS_16.draw(screen, x + w - width, y, &alt_string, Color::ContentText);

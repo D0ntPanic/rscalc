@@ -2,7 +2,7 @@ use crate::number::{Number, NumberFormat};
 use alloc::string::String;
 use alloc::vec::Vec;
 use intel_dfp::Decimal;
-use num_bigint::BigInt;
+use num_bigint::{BigInt, ToBigInt};
 
 const MAX_FRACTION_DIGITS: usize = 34;
 const MAX_EXPONENT: i32 = 9999;
@@ -43,8 +43,7 @@ impl NumberEditor {
 		}
 		match self.state {
 			NumberEditorState::Integer => {
-				let radix: BigInt = self.radix.into();
-				self.integer *= radix;
+				self.integer *= self.radix.to_bigint().unwrap();
 				self.integer += digit;
 			}
 			NumberEditorState::Fraction => {
@@ -100,10 +99,8 @@ impl NumberEditor {
 	pub fn backspace(&mut self) -> bool {
 		match self.state {
 			NumberEditorState::Integer => {
-				let zero: BigInt = 0.into();
-				let radix: BigInt = self.radix.into();
-				self.integer /= radix;
-				if self.integer == zero {
+				self.integer /= self.radix.to_bigint().unwrap();
+				if self.integer == 0.to_bigint().unwrap() {
 					return false;
 				}
 			}
@@ -152,8 +149,10 @@ impl NumberEditor {
 				result += "-";
 			}
 			if let Some(exponent) = self.exponent {
-				let exponent: BigInt = exponent.into();
-				result += format.exponent_format().format_bigint(&exponent).as_str();
+				result += format
+					.exponent_format()
+					.format_bigint(&exponent.to_bigint().unwrap())
+					.as_str();
 			}
 		}
 
@@ -193,6 +192,10 @@ impl NumberEditor {
 		.into();
 
 		result *= exponent.exp10();
-		Number::Decimal(result)
+		if self.sign {
+			Number::Decimal(-result)
+		} else {
+			Number::Decimal(result)
+		}
 	}
 }

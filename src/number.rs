@@ -2,11 +2,12 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::convert::TryInto;
 use intel_dfp::Decimal;
-use num_bigint::{BigInt, BigUint, Sign};
+use num_bigint::{BigInt, BigUint, Sign, ToBigInt, ToBigUint};
 
 #[derive(Clone)]
 pub enum Number {
 	Integer(BigInt),
+	Rational(BigInt, BigUint),
 	Decimal(Decimal),
 }
 
@@ -65,6 +66,9 @@ impl Number {
 	pub fn to_decimal(&self) -> Decimal {
 		match self {
 			Number::Integer(int) => Self::bigint_to_decimal(&int),
+			Number::Rational(num, denom) => {
+				Self::bigint_to_decimal(&num) / Self::bigint_to_decimal(&denom.to_bigint().unwrap())
+			}
 			Number::Decimal(value) => value.clone(),
 		}
 	}
@@ -76,8 +80,7 @@ impl Number {
 	pub fn sqrt(&self) -> Number {
 		match &self {
 			Number::Integer(value) => {
-				let zero: BigInt = 0.into();
-				if value < &zero {
+				if value < &0.to_bigint().unwrap() {
 					// Imaginary
 					return Number::Decimal(self.to_decimal().sqrt());
 				}
@@ -90,6 +93,7 @@ impl Number {
 					Number::Decimal(self.to_decimal().sqrt())
 				}
 			}
+			Number::Rational(_, _) => Number::Decimal(self.to_decimal().sqrt()),
 			Number::Decimal(value) => Number::Decimal(value.sqrt()),
 		}
 	}
@@ -98,8 +102,7 @@ impl Number {
 		match &self {
 			Number::Integer(left) => match power {
 				Number::Integer(right) => {
-					let zero: BigInt = 0.into();
-					if right < &zero {
+					if right < &0.to_bigint().unwrap() {
 						// Fractional power, use float
 						return Number::Decimal(self.to_decimal().pow(&power.to_decimal()));
 					}
@@ -109,8 +112,12 @@ impl Number {
 						Number::Decimal(self.to_decimal().pow(&power.to_decimal()))
 					}
 				}
+				Number::Rational(_, _) => {
+					Number::Decimal(self.to_decimal().pow(&power.to_decimal()))
+				}
 				Number::Decimal(right) => Number::Decimal(self.to_decimal().pow(right)),
 			},
+			Number::Rational(_, _) => Number::Decimal(self.to_decimal().pow(&power.to_decimal())),
 			Number::Decimal(left) => Number::Decimal(left.pow(&power.to_decimal())),
 		}
 	}
@@ -155,10 +162,59 @@ impl Number {
 		Number::Decimal(self.to_decimal().exp())
 	}
 
+	fn gcd(x: &BigUint, y: &BigUint) -> BigUint {
+		let mut x = x.clone();
+		let mut y = y.clone();
+		while y != 0.to_biguint().unwrap() {
+			let t = y.clone();
+			y = x % y;
+			x = t;
+		}
+		x
+	}
+
+	fn simplify(&self) -> Self {
+		match self {
+			Number::Rational(num, denom) => {
+				let num_abs = if num.sign() == Sign::Minus {
+					(-num).to_biguint().unwrap()
+				} else {
+					num.to_biguint().unwrap()
+				};
+				let gcd = Self::gcd(&num_abs, &denom);
+				let num = num / gcd.to_bigint().unwrap();
+				let denom = denom / gcd;
+				if denom == 1.to_biguint().unwrap() {
+					Number::Integer(num)
+				} else {
+					Number::Rational(num, denom)
+				}
+			}
+			_ => self.clone(),
+		}
+	}
+
 	fn num_add(&self, rhs: &Number) -> Number {
 		match &self {
 			Number::Integer(left) => match rhs {
 				Number::Integer(right) => Number::Integer(left + right),
+				Number::Rational(right_num, right_denom) => {
+					let num = left * right_denom.to_bigint().unwrap() + right_num;
+					Number::Rational(num, right_denom.clone()).simplify()
+				}
+				Number::Decimal(right) => Number::Decimal(&self.to_decimal() + right),
+			},
+			Number::Rational(left_num, left_denom) => match rhs {
+				Number::Integer(right) => {
+					let num = left_num + right * left_denom.to_bigint().unwrap();
+					Number::Rational(num, left_denom.clone()).simplify()
+				}
+				Number::Rational(right_num, right_denom) => {
+					let num = left_num * right_denom.to_bigint().unwrap()
+						+ right_num * left_denom.to_bigint().unwrap();
+					let denom = left_denom * right_denom;
+					Number::Rational(num, denom).simplify()
+				}
 				Number::Decimal(right) => Number::Decimal(&self.to_decimal() + right),
 			},
 			Number::Decimal(left) => Number::Decimal(left + &rhs.to_decimal()),
@@ -169,6 +225,23 @@ impl Number {
 		match &self {
 			Number::Integer(left) => match rhs {
 				Number::Integer(right) => Number::Integer(left - right),
+				Number::Rational(right_num, right_denom) => {
+					let num = left * right_denom.to_bigint().unwrap() - right_num;
+					Number::Rational(num, right_denom.clone()).simplify()
+				}
+				Number::Decimal(right) => Number::Decimal(&self.to_decimal() - right),
+			},
+			Number::Rational(left_num, left_denom) => match rhs {
+				Number::Integer(right) => {
+					let num = left_num - right * left_denom.to_bigint().unwrap();
+					Number::Rational(num, left_denom.clone()).simplify()
+				}
+				Number::Rational(right_num, right_denom) => {
+					let num = left_num * right_denom.to_bigint().unwrap()
+						- right_num * left_denom.to_bigint().unwrap();
+					let denom = left_denom * right_denom;
+					Number::Rational(num, denom).simplify()
+				}
 				Number::Decimal(right) => Number::Decimal(&self.to_decimal() - right),
 			},
 			Number::Decimal(left) => Number::Decimal(left - &rhs.to_decimal()),
@@ -179,6 +252,18 @@ impl Number {
 		match &self {
 			Number::Integer(left) => match rhs {
 				Number::Integer(right) => Number::Integer(left * right),
+				Number::Rational(right_num, right_denom) => {
+					Number::Rational(left * right_num, right_denom.clone()).simplify()
+				}
+				Number::Decimal(right) => Number::Decimal(&self.to_decimal() * right),
+			},
+			Number::Rational(left_num, left_denom) => match rhs {
+				Number::Integer(right) => {
+					Number::Rational(left_num * right, left_denom.clone()).simplify()
+				}
+				Number::Rational(right_num, right_denom) => {
+					Number::Rational(left_num * right_num, left_denom * right_denom).simplify()
+				}
 				Number::Decimal(right) => Number::Decimal(&self.to_decimal() * right),
 			},
 			Number::Decimal(left) => Number::Decimal(left * &rhs.to_decimal()),
@@ -189,17 +274,74 @@ impl Number {
 		match &self {
 			Number::Integer(left) => match rhs {
 				Number::Integer(right) => {
-					let zero: BigInt = 0.into();
-					if right == &zero {
+					if right == &0.to_bigint().unwrap() {
 						// Divide by zero, use float to get the right inf/NaN
 						return Number::Decimal(self.to_decimal() / rhs.to_decimal());
 					}
-					if (left % right) == zero {
-						// Evenly divisible, use integer
-						Number::Integer(left / right)
+					if right.sign() == Sign::Minus {
+						Number::Rational(-left.to_bigint().unwrap(), (-right).to_biguint().unwrap())
+							.simplify()
 					} else {
-						// Not evenly divisible, fall back to float
-						Number::Decimal(self.to_decimal() / rhs.to_decimal())
+						Number::Rational(left.to_bigint().unwrap(), right.to_biguint().unwrap())
+							.simplify()
+					}
+				}
+				Number::Rational(right_num, right_denom) => {
+					if right_num.sign() == Sign::Minus {
+						Number::Rational(
+							left * -right_denom.to_bigint().unwrap(),
+							(-right_num).to_biguint().unwrap(),
+						)
+						.simplify()
+					} else {
+						Number::Rational(
+							left * right_denom.to_bigint().unwrap(),
+							right_num.to_biguint().unwrap(),
+						)
+						.simplify()
+					}
+				}
+				Number::Decimal(right) => Number::Decimal(&self.to_decimal() / right),
+			},
+			Number::Rational(left_num, left_denom) => match rhs {
+				Number::Integer(right) => {
+					if right.sign() == Sign::Minus {
+						Number::Rational(-left_num, left_denom * right.to_biguint().unwrap())
+							.simplify()
+					} else {
+						Number::Rational(left_num.clone(), left_denom * right.to_biguint().unwrap())
+							.simplify()
+					}
+				}
+				Number::Rational(right_num, right_denom) => {
+					if left_num.sign() == Sign::Minus {
+						if right_num.sign() == Sign::Minus {
+							Number::Rational(
+								-left_num * right_denom.to_bigint().unwrap(),
+								left_denom * (-right_num).to_biguint().unwrap(),
+							)
+							.simplify()
+						} else {
+							Number::Rational(
+								left_num * right_denom.to_bigint().unwrap(),
+								left_denom * right_num.to_biguint().unwrap(),
+							)
+							.simplify()
+						}
+					} else {
+						if right_num.sign() == Sign::Minus {
+							Number::Rational(
+								-left_num * right_denom.to_bigint().unwrap(),
+								left_denom * (-right_num).to_biguint().unwrap(),
+							)
+							.simplify()
+						} else {
+							Number::Rational(
+								left_num * right_denom.to_bigint().unwrap(),
+								left_denom * right_num.to_biguint().unwrap(),
+							)
+							.simplify()
+						}
 					}
 				}
 				Number::Decimal(right) => Number::Decimal(&self.to_decimal() / right),
@@ -265,6 +407,7 @@ impl NumberFormat {
 	pub fn format_number(&self, num: &Number) -> String {
 		match num {
 			Number::Integer(int) => self.format_bigint(int),
+			Number::Rational(_, _) => self.format_decimal(&num.to_decimal()),
 			Number::Decimal(value) => self.format_decimal(value),
 		}
 	}
@@ -280,12 +423,11 @@ impl NumberFormat {
 		let mut val = int.magnitude().clone();
 
 		// Get big integers for the needed constants
-		let zero: BigUint = 0u32.into();
 		let radix: BigUint = self.integer_radix.into();
 
 		let mut digits = 0;
 		let mut non_decimal = false;
-		while val != zero {
+		while val != 0.to_biguint().unwrap() {
 			// Check for thousands separator
 			if digits % 3 == 0 && digits > 0 && self.integer_radix == 10 && self.thousands {
 				match self.decimal_point {
@@ -533,7 +675,11 @@ impl NumberFormat {
 			let one: Decimal = 1.into();
 			let two: Decimal = 2.into();
 			let adjust = one / two;
-			let rounded = ((&num.abs() / &factor) + adjust.clone()).trunc() * factor.clone();
+			let mut rounded = ((&num.abs() / &factor) + adjust.clone()).trunc() * factor.clone();
+
+			if num.is_sign_negative() {
+				rounded = -rounded;
+			}
 
 			self.format_decimal_post_round(&rounded, mode)
 		} else {
