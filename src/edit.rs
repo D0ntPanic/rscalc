@@ -1,0 +1,198 @@
+use crate::number::{Number, NumberFormat};
+use alloc::string::String;
+use alloc::vec::Vec;
+use intel_dfp::Decimal;
+use num_bigint::BigInt;
+
+const MAX_FRACTION_DIGITS: usize = 34;
+const MAX_EXPONENT: i32 = 9999;
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum NumberEditorState {
+	Integer,
+	Fraction,
+	Exponent,
+}
+
+pub struct NumberEditor {
+	sign: bool,
+	integer: BigInt,
+	fraction_digits: Vec<u8>,
+	exponent_sign: bool,
+	exponent: Option<i32>,
+	radix: u8,
+	state: NumberEditorState,
+}
+
+impl NumberEditor {
+	pub fn new_decimal() -> Self {
+		NumberEditor {
+			sign: false,
+			integer: 0.into(),
+			fraction_digits: Vec::new(),
+			exponent_sign: false,
+			exponent: None,
+			radix: 10,
+			state: NumberEditorState::Integer,
+		}
+	}
+
+	fn push_digit(&mut self, digit: u8) -> bool {
+		if digit >= self.radix {
+			return false;
+		}
+		match self.state {
+			NumberEditorState::Integer => {
+				let radix: BigInt = self.radix.into();
+				self.integer *= radix;
+				self.integer += digit;
+			}
+			NumberEditorState::Fraction => {
+				if self.fraction_digits.len() < MAX_FRACTION_DIGITS {
+					self.fraction_digits.push(digit);
+				}
+			}
+			NumberEditorState::Exponent => {
+				let new_exponent = match self.exponent {
+					Some(exponent) => (exponent * 10) + digit as i32,
+					None => digit as i32,
+				};
+				if new_exponent <= MAX_EXPONENT {
+					self.exponent = Some(new_exponent);
+				}
+			}
+		}
+		true
+	}
+
+	pub fn push_char(&mut self, ch: char) -> bool {
+		match ch {
+			'0'..='9' => self.push_digit(ch as u32 as u8 - '0' as u32 as u8),
+			'A'..='Z' => self.push_digit(ch as u32 as u8 - 'A' as u32 as u8 + 10),
+			'a'..='z' => self.push_digit(ch as u32 as u8 - 'a' as u32 as u8 + 10),
+			'.' => {
+				if self.state == NumberEditorState::Integer && self.radix == 10 {
+					self.state = NumberEditorState::Fraction;
+				}
+				true
+			}
+			_ => false,
+		}
+	}
+
+	pub fn exponent(&mut self) {
+		if self.state != NumberEditorState::Exponent && self.radix == 10 {
+			self.state = NumberEditorState::Exponent;
+		}
+	}
+
+	pub fn neg(&mut self) {
+		match self.state {
+			NumberEditorState::Integer | NumberEditorState::Fraction => {
+				self.sign = !self.sign;
+			}
+			NumberEditorState::Exponent => {
+				self.exponent_sign = !self.exponent_sign;
+			}
+		}
+	}
+
+	pub fn backspace(&mut self) -> bool {
+		match self.state {
+			NumberEditorState::Integer => {
+				let zero: BigInt = 0.into();
+				let radix: BigInt = self.radix.into();
+				self.integer /= radix;
+				if self.integer == zero {
+					return false;
+				}
+			}
+			NumberEditorState::Fraction => {
+				if self.fraction_digits.len() == 0 {
+					self.state = NumberEditorState::Integer;
+				} else {
+					self.fraction_digits.pop();
+				}
+			}
+			NumberEditorState::Exponent => {
+				if let Some(exponent) = self.exponent {
+					let new_exponent = exponent / 10;
+					if new_exponent == 0 {
+						self.exponent = None;
+					} else {
+						self.exponent = Some(new_exponent);
+					}
+				} else if self.fraction_digits.len() == 0 {
+					self.state = NumberEditorState::Integer;
+				} else {
+					self.state = NumberEditorState::Fraction;
+				}
+			}
+		}
+		true
+	}
+
+	pub fn to_str(&self, format: &NumberFormat) -> String {
+		let mut result = String::new();
+		if self.sign {
+			result += "-";
+		}
+		result += format.format_bigint(&self.integer).as_str();
+		if self.state != NumberEditorState::Integer {
+			result += ".";
+			let mut decimal_chars = Vec::new();
+			for digit in &self.fraction_digits {
+				decimal_chars.push(digit + '0' as u32 as u8);
+			}
+			result += String::from_utf8(decimal_chars).unwrap().as_str();
+		}
+		if self.state == NumberEditorState::Exponent {
+			result += "ᴇ";
+			if self.exponent_sign {
+				result += "-";
+			}
+			if let Some(exponent) = self.exponent {
+				let exponent: BigInt = exponent.into();
+				result += format.exponent_format().format_bigint(&exponent).as_str();
+			}
+		}
+
+		result
+	}
+
+	pub fn number(&self) -> Number {
+		if self.state == NumberEditorState::Integer {
+			if self.sign {
+				return Number::Integer(-self.integer.clone());
+			} else {
+				return Number::Integer(self.integer.clone());
+			}
+		}
+
+		let mut result = Number::bigint_to_decimal(&self.integer);
+
+		let one: Decimal = 1.into();
+		let ten: Decimal = 10.into();
+		let mut factor = &one / &ten;
+		for digit in &self.fraction_digits {
+			let digit: Decimal = (*digit as u32).into();
+			result += &digit * &factor;
+			factor = &factor / &ten;
+		}
+
+		let exponent: Decimal = match self.exponent {
+			Some(exponent) => {
+				if self.exponent_sign {
+					-exponent
+				} else {
+					exponent
+				}
+			}
+			None => 0,
+		}
+		.into();
+
+		result *= exponent.exp10();
+		Number::Decimal(result)
+	}
+}

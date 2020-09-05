@@ -17,6 +17,7 @@ mod dm42;
 #[cfg(not(feature = "dm42"))]
 mod simulated;
 
+mod edit;
 mod font;
 mod input;
 mod number;
@@ -51,9 +52,9 @@ fn draw_header<ScreenT: Screen>(screen: &mut ScreenT, mode: &InputMode) {
 
     let x = 2;
     if mode.shift {
-        font::SANS_16.draw(screen, x, 0, "Shift", Color::StatusBarText);
+        font::SANS_16.draw(screen, x, 0, "⬏", Color::StatusBarText);
     }
-    let x = x + font::SANS_16.width("Shift") + 8;
+    let x = x + font::SANS_16.width("⬏") + 4;
     match mode.alpha {
         AlphaMode::UpperAlpha => {
             font::SANS_16.draw(screen, x, 0, "[A]", Color::StatusBarText);
@@ -77,7 +78,7 @@ pub fn calc_main<ScreenT: Screen, InputT: InputQueue>(mut screen: ScreenT, mut i
         alpha: AlphaMode::Normal,
         shift: false,
     };
-    let mut format = NumberFormat::new();
+    let format = NumberFormat::new();
 
     loop {
         screen.clear();
@@ -95,18 +96,22 @@ pub fn calc_main<ScreenT: Screen, InputT: InputQueue>(mut screen: ScreenT, mut i
 
         match input.wait(&mut mode) {
             InputEvent::Character(ch) => match ch {
-                '0'..='9' => {
-                    let top = stack.top_mut();
-                    *top *= 10.into();
-                    *top += ch.to_digit(10).unwrap().into();
+                '0'..='9' | 'A'..='Z' | 'a'..='z' | '.' => {
+                    stack.push_char(ch);
                 }
                 _ => (),
             },
+            InputEvent::E => {
+                stack.exponent();
+            }
             InputEvent::Enter => {
-                stack.push(0.into());
+                stack.enter();
             }
             InputEvent::Backspace => {
-                stack.pop();
+                stack.backspace();
+            }
+            InputEvent::Neg => {
+                stack.neg();
             }
             InputEvent::Add => {
                 if stack.len() >= 2 {
@@ -149,6 +154,22 @@ pub fn calc_main<ScreenT: Screen, InputT: InputQueue>(mut screen: ScreenT, mut i
             }
             InputEvent::Square => {
                 let value = stack.top() * stack.top();
+                stack.set_top(value);
+            }
+            InputEvent::Log => {
+                let value = stack.top().log();
+                stack.set_top(value);
+            }
+            InputEvent::TenX => {
+                let value = stack.top().exp10();
+                stack.set_top(value);
+            }
+            InputEvent::Ln => {
+                let value = stack.top().log();
+                stack.set_top(value);
+            }
+            InputEvent::EX => {
+                let value = stack.top().exp();
                 stack.set_top(value);
             }
             InputEvent::Sin => {

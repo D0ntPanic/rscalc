@@ -4,3 +4,9 @@ calc.bin
 calc.pgm
 calc_qspi.bin
 .vscode
+CMakeCache.txt
+CMakeFiles
+cmake_install.cmake
+bmpfont/bmpfont
+bmpfont/Makefile
+*_autogen

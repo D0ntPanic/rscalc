@@ -1,3 +1,5 @@
+use crate::font::char_to_idx;
+
 #[derive(Debug, Clone)]
 pub struct Rect {
 	pub x: i32,
@@ -67,6 +69,7 @@ pub enum Color {
 	StatusBarText,
 	ContentBackground,
 	StackLabelText,
+	StackSeparator,
 	ContentText,
 	IntegerText,
 	FloatText,
@@ -84,6 +87,7 @@ impl Color {
 			Color::StatusBarBackground
 			| Color::ContentText
 			| Color::StackLabelText
+			| Color::StackSeparator
 			| Color::IntegerText
 			| Color::FloatText
 			| Color::ObjectText
@@ -108,58 +112,51 @@ pub struct Font {
 impl Font {
 	pub fn draw<T: Screen>(&self, screen: &mut T, x: i32, y: i32, text: &str, color: Color) {
 		let mut cur_x = x;
-		for ch in text.bytes() {
-			if ch < 0x20 || ch > 0x7e {
-				continue;
-			}
-			let idx = (ch - 0x20) as usize;
-
-			let width = self.width[idx];
-			let bytes = (width + 7) / 8;
-			let mut offset = 0;
-			for line in 0..self.height {
-				let mut remain = width;
-				for byte in 0..bytes {
-					let cur_width = if remain >= 8 { 8 } else { remain };
-					screen.draw_bits(
-						cur_x + byte as i32 * 8,
-						y + line,
-						self.chars[idx][offset] as u32,
-						cur_width,
-						color,
-					);
-					remain = remain.saturating_sub(8);
-					offset += 1;
+		for ch in text.chars() {
+			if let Some(idx) = char_to_idx(ch) {
+				let width = self.width[idx];
+				let bytes = (width + 7) / 8;
+				let mut offset = 0;
+				for line in 0..self.height {
+					let mut remain = width;
+					for byte in 0..bytes {
+						let cur_width = if remain >= 8 { 8 } else { remain };
+						screen.draw_bits(
+							cur_x + byte as i32 * 8,
+							y + line,
+							self.chars[idx][offset] as u32,
+							cur_width,
+							color,
+						);
+						remain = remain.saturating_sub(8);
+						offset += 1;
+					}
 				}
-			}
 
-			cur_x += self.advance[idx] as i32;
+				cur_x += self.advance[idx] as i32;
+			}
 		}
 	}
 
 	pub fn width(&self, text: &str) -> i32 {
 		let mut result = 0;
 		let mut extra = 0;
-		for ch in text.bytes() {
-			if ch < 0x20 || ch > 0x7e {
-				continue;
+		for ch in text.chars() {
+			if let Some(idx) = char_to_idx(ch) {
+				let width = core::cmp::max(self.width[idx], self.advance[idx]) as i32;
+				extra = width - self.advance[idx] as i32;
+				result += self.advance[idx] as i32;
 			}
-			let idx = (ch - 0x20) as usize;
-			let width = core::cmp::max(self.width[idx], self.advance[idx]) as i32;
-			extra = width - self.advance[idx] as i32;
-			result += self.advance[idx] as i32;
 		}
 		result + extra
 	}
 
 	pub fn advance(&self, text: &str) -> i32 {
 		let mut result = 0;
-		for ch in text.bytes() {
-			if ch < 0x20 || ch > 0x7e {
-				continue;
+		for ch in text.chars() {
+			if let Some(idx) = char_to_idx(ch) {
+				result += self.advance[idx] as i32;
 			}
-			let idx = (ch - 0x20) as usize;
-			result += self.advance[idx] as i32;
 		}
 		result
 	}
@@ -172,6 +169,32 @@ pub trait Screen {
 	fn refresh(&mut self);
 
 	fn fill(&mut self, rect: Rect, color: Color);
+
+	fn horizontal_pattern(
+		&mut self,
+		x: i32,
+		width: i32,
+		y: i32,
+		pattern: u32,
+		pattern_width: u8,
+		color: Color,
+	) {
+		let mut cur_x = x;
+		let mut remaining = width;
+		while remaining > 0 {
+			let (cur_pattern, cur_width);
+			if remaining >= pattern_width as i32 {
+				cur_pattern = pattern;
+				cur_width = pattern_width;
+			} else {
+				cur_pattern = pattern >> (pattern_width as i32 - remaining);
+				cur_width = remaining as u8;
+			}
+			self.draw_bits(cur_x, y, cur_pattern, cur_width, color);
+			cur_x += cur_width as i32;
+			remaining -= cur_width as i32;
+		}
+	}
 
 	fn draw_bits(&mut self, x: i32, y: i32, bits: u32, width: u8, color: Color);
 }
