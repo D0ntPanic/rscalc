@@ -170,6 +170,10 @@ pub trait Screen {
 
 	fn fill(&mut self, rect: Rect, color: Color);
 
+	fn set_pixel(&mut self, x: i32, y: i32, color: Color) {
+		self.fill(Rect { x, y, w: 1, h: 1 }, color);
+	}
+
 	fn horizontal_pattern(
 		&mut self,
 		x: i32,

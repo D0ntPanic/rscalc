@@ -1,3 +1,5 @@
+use alloc::string::{String, ToString};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
 	Sigma,
@@ -133,6 +135,89 @@ pub enum InputEvent {
 	Add,
 	Catalog,
 	Screenshot,
+}
+
+impl InputEvent {
+	pub fn to_str(&self) -> String {
+		match self {
+			InputEvent::ModeChange => "Mode".to_string(),
+			InputEvent::Character(ch) => {
+				let mut result = String::new();
+				result.push(*ch);
+				result
+			}
+			InputEvent::FunctionKey(idx, shift) => {
+				let mut result = String::new();
+				if *shift {
+					result.push('⬏');
+				}
+				result.push('F');
+				result.push(char::from_u32('0' as u32 + *idx as u32).unwrap());
+				result
+			}
+			InputEvent::SigmaPlus => "Σ+".to_string(),
+			InputEvent::SigmaMinus => "Σ-".to_string(),
+			InputEvent::Recip => "1/x".to_string(),
+			InputEvent::Pow => "pow".to_string(),
+			InputEvent::Sqrt => "sqrt".to_string(),
+			InputEvent::Square => "x^2".to_string(),
+			InputEvent::Log => "log".to_string(),
+			InputEvent::TenX => "10^x".to_string(),
+			InputEvent::Ln => "ln".to_string(),
+			InputEvent::EX => "e^x".to_string(),
+			InputEvent::Xeq => "xeq".to_string(),
+			InputEvent::Gto => "gto".to_string(),
+			InputEvent::Sto => "sto".to_string(),
+			InputEvent::Complex => "y+xi".to_string(),
+			InputEvent::Rcl => "rcl".to_string(),
+			InputEvent::Percent => "%".to_string(),
+			InputEvent::RotateDown => "R↓".to_string(),
+			InputEvent::Pi => "π".to_string(),
+			InputEvent::Sin => "sin".to_string(),
+			InputEvent::Asin => "asin".to_string(),
+			InputEvent::Cos => "cos".to_string(),
+			InputEvent::Acos => "acos".to_string(),
+			InputEvent::Tan => "tan".to_string(),
+			InputEvent::Atan => "atan".to_string(),
+			InputEvent::Enter => "↵".to_string(),
+			InputEvent::Swap => "swap".to_string(),
+			InputEvent::LastX => "Undo".to_string(),
+			InputEvent::Neg => "±".to_string(),
+			InputEvent::Modes => "Modes".to_string(),
+			InputEvent::E => "ᴇ".to_string(),
+			InputEvent::Disp => "Disp".to_string(),
+			InputEvent::Backspace => "←".to_string(),
+			InputEvent::Clear => "Clear".to_string(),
+			InputEvent::Up => "↑".to_string(),
+			InputEvent::Bst => "Bst".to_string(),
+			InputEvent::Solver => "Solver".to_string(),
+			InputEvent::Integrate => "∫".to_string(),
+			InputEvent::Matrix => "Matrix".to_string(),
+			InputEvent::Div => "÷".to_string(),
+			InputEvent::Stat => "Stat".to_string(),
+			InputEvent::Down => "↓".to_string(),
+			InputEvent::Sst => "Sst".to_string(),
+			InputEvent::Base => "Base".to_string(),
+			InputEvent::Convert => "Convert".to_string(),
+			InputEvent::Flags => "Flags".to_string(),
+			InputEvent::Mul => "×".to_string(),
+			InputEvent::Prob => "Prob".to_string(),
+			InputEvent::Assign => "Assign".to_string(),
+			InputEvent::Custom => "Custom".to_string(),
+			InputEvent::ProgramFunc => "PrgFn".to_string(),
+			InputEvent::Sub => "-".to_string(),
+			InputEvent::Print => "Print".to_string(),
+			InputEvent::Exit => "Exit".to_string(),
+			InputEvent::Off => "Off".to_string(),
+			InputEvent::Setup => "Setup".to_string(),
+			InputEvent::Show => "Show".to_string(),
+			InputEvent::Run => "Run".to_string(),
+			InputEvent::Program => "Prgm".to_string(),
+			InputEvent::Add => "+".to_string(),
+			InputEvent::Catalog => "Catalog".to_string(),
+			InputEvent::Screenshot => "Screenshot".to_string(),
+		}
+	}
 }
 
 pub trait InputQueue {

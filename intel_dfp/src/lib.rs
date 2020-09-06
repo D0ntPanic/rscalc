@@ -96,6 +96,10 @@ impl Decimal {
 		}
 	}
 
+	pub fn pi() -> Self {
+		Decimal::from_str("3.141592653589793238462643383279503")
+	}
+
 	pub fn to_str(&self) -> String {
 		let mut buf = [0; 64];
 		unsafe {

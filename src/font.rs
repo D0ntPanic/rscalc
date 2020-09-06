@@ -77,6 +77,12 @@ pub fn char_to_idx(ch: char) -> Option<usize> {
 		'Ω' => Some(0x96),
 		'ω' => Some(0x97),
 		'…' => Some(0x98),
+		'▪' => Some(0x99),
+		'◂' => Some(0x9a),
+		'▴' => Some(0x9b),
+		'▸' => Some(0x9c),
+		'▾' => Some(0x9d),
+		'≠' => Some(0x9e),
 		_ => None,
 	}
 }

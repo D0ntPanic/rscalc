@@ -20,16 +20,16 @@ mod simulated;
 
 mod edit;
 mod font;
+mod functions;
 mod input;
 mod number;
 mod screen;
 mod stack;
+mod state;
 
-use input::{AlphaMode, InputEvent, InputMode, InputQueue};
-use intel_dfp::Decimal;
-use number::{Number, NumberFormat};
+use input::{AlphaMode, InputMode, InputQueue};
 use screen::{Color, Rect, Screen};
-use stack::Stack;
+use state::{InputResult, State};
 
 fn draw_header<ScreenT: Screen>(screen: &mut ScreenT, mode: &InputMode) {
     screen.fill(
@@ -75,174 +75,29 @@ fn header_size() -> i32 {
 pub fn calc_main<ScreenT: Screen, InputT: InputQueue>(mut screen: ScreenT, mut input: InputT) {
     screen.clear();
 
-    let mut stack = Stack::new();
-    let mut mode = InputMode {
-        alpha: AlphaMode::Normal,
-        shift: false,
-    };
-    let mut format = NumberFormat::new();
+    let mut state = State::new();
 
     loop {
         screen.clear();
-        draw_header(&mut screen, &mode);
+        draw_header(&mut screen, &state.input_mode);
+
+        state.function_keys.update(&state.format);
+        state.function_keys.render(&mut screen, &state);
 
         let stack_area = Rect {
             x: 0,
             y: header_size(),
             w: screen.width(),
-            h: screen.height() - header_size(),
+            h: screen.height() - header_size() - state.function_keys.height(),
         };
 
-        stack.render(&mut screen, &format, stack_area);
+        state.stack.render(&mut screen, &state.format, stack_area);
         screen.refresh();
 
-        match input.wait(&mut mode) {
-            InputEvent::Character(ch) => match ch {
-                '0'..='9' | 'A'..='Z' | 'a'..='z' | '.' => {
-                    stack.push_char(ch, &format);
-                }
-                _ => (),
-            },
-            InputEvent::E => {
-                stack.exponent();
-            }
-            InputEvent::Enter => {
-                stack.enter();
-            }
-            InputEvent::Backspace => {
-                stack.backspace();
-            }
-            InputEvent::Neg => {
-                stack.neg();
-            }
-            InputEvent::Add => {
-                if stack.len() >= 2 {
-                    let value = stack.entry(1) + stack.entry(0);
-                    stack.replace_entries(2, value);
-                }
-            }
-            InputEvent::Sub => {
-                if stack.len() >= 2 {
-                    let value = stack.entry(1) - stack.entry(0);
-                    stack.replace_entries(2, value);
-                }
-            }
-            InputEvent::Mul => {
-                if stack.len() >= 2 {
-                    let value = stack.entry(1) * stack.entry(0);
-                    stack.replace_entries(2, value);
-                }
-            }
-            InputEvent::Div => {
-                if stack.len() >= 2 {
-                    let value = stack.entry(1) / stack.entry(0);
-                    stack.replace_entries(2, value);
-                }
-            }
-            InputEvent::Recip => {
-                let one: Number = 1.into();
-                let value = &one / stack.top();
-                stack.set_top(value);
-            }
-            InputEvent::Pow => {
-                if stack.len() >= 2 {
-                    let value = stack.entry(1).pow(stack.entry(0));
-                    stack.replace_entries(2, value);
-                }
-            }
-            InputEvent::Sqrt => {
-                let value = stack.top().sqrt();
-                stack.set_top(value);
-            }
-            InputEvent::Square => {
-                let value = stack.top() * stack.top();
-                stack.set_top(value);
-            }
-            InputEvent::Log => {
-                let value = stack.top().log();
-                stack.set_top(value);
-            }
-            InputEvent::TenX => {
-                let value = stack.top().exp10();
-                stack.set_top(value);
-            }
-            InputEvent::Ln => {
-                let value = stack.top().log();
-                stack.set_top(value);
-            }
-            InputEvent::EX => {
-                let value = stack.top().exp();
-                stack.set_top(value);
-            }
-            InputEvent::Percent => {
-                if stack.len() >= 2 {
-                    let one_hundred: Number = 100.into();
-                    let value = stack.entry(1) * &(stack.entry(0) / &one_hundred);
-                    stack.set_top(value);
-                }
-            }
-            InputEvent::Pi => stack.input_num(Number::Decimal(Decimal::from_str(
-                "3.141592653589793238462643383279503",
-            ))),
-            InputEvent::Sin => {
-                let value = stack.top().sin();
-                stack.set_top(value);
-            }
-            InputEvent::Cos => {
-                let value = stack.top().cos();
-                stack.set_top(value);
-            }
-            InputEvent::Tan => {
-                let value = stack.top().tan();
-                stack.set_top(value);
-            }
-            InputEvent::Asin => {
-                let value = stack.top().asin();
-                stack.set_top(value);
-            }
-            InputEvent::Acos => {
-                let value = stack.top().acos();
-                stack.set_top(value);
-            }
-            InputEvent::Atan => {
-                let value = stack.top().atan();
-                stack.set_top(value);
-            }
-            InputEvent::RotateDown => {
-                if stack.len() >= 2 {
-                    stack.rotate_down();
-                }
-            }
-            InputEvent::Swap => {
-                if stack.len() >= 2 {
-                    stack.swap(0, 1);
-                }
-            }
-            InputEvent::Base => {
-                if format.integer_radix == 10 {
-                    format.integer_radix = 16;
-                    stack.end_edit();
-                } else if format.integer_radix == 16 {
-                    format.integer_radix = 10;
-                    stack.end_edit();
-                }
-            }
-            InputEvent::FunctionKey(func, _) => {
-                if format.integer_radix == 16 {
-                    stack.push_char(
-                        char::from_u32('A' as u32 + func as u32 - 1).unwrap(),
-                        &format,
-                    );
-                }
-            }
-            InputEvent::Setup => {
-                #[cfg(feature = "dm42")]
-                dm42::show_system_setup_menu();
-            }
-            InputEvent::Off => {
-                input.suspend();
-            }
-            _ => (),
+        let input_event = input.wait(&mut state.input_mode);
+        match state.handle_input(input_event) {
+            InputResult::Normal => (),
+            InputResult::Suspend => input.suspend(),
         }
     }
 }

@@ -406,7 +406,16 @@ impl NumberFormat {
 
 	pub fn format_number(&self, num: &Number) -> String {
 		match num {
-			Number::Integer(int) => self.format_bigint(int),
+			Number::Integer(int) => match self.mode {
+				NumberFormatMode::Normal | NumberFormatMode::Rational => self.format_bigint(int),
+				NumberFormatMode::Scientific | NumberFormatMode::Engineering => {
+					if self.integer_radix == 10 {
+						self.format_decimal(&num.to_decimal())
+					} else {
+						self.format_bigint(int)
+					}
+				}
+			},
 			Number::Rational(_, _) => self.format_decimal(&num.to_decimal()),
 			Number::Decimal(value) => self.format_decimal(value),
 		}
