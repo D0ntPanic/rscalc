@@ -1,4 +1,4 @@
-use crate::number::{Number, NumberFormat};
+use crate::number::{Number, NumberDecimalPointMode, NumberFormat};
 use alloc::string::String;
 use alloc::vec::Vec;
 use intel_dfp::Decimal;
@@ -136,7 +136,10 @@ impl NumberEditor {
 		}
 		result += format.format_bigint(&self.integer).as_str();
 		if self.state != NumberEditorState::Integer {
-			result += ".";
+			result += match format.decimal_point {
+				NumberDecimalPointMode::Period => ".",
+				NumberDecimalPointMode::Comma => ",",
+			};
 			let mut decimal_chars = Vec::new();
 			for digit in &self.fraction_digits {
 				decimal_chars.push(digit + '0' as u32 as u8);

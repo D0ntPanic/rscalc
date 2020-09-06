@@ -1,7 +1,7 @@
 use crate::edit::NumberEditor;
 use crate::font::{SANS_16, SANS_20, SANS_24};
 use crate::num_bigint::ToBigInt;
-use crate::number::{Number, NumberFormat, NumberFormatMode};
+use crate::number::{IntegerMode, Number, NumberFormat, NumberFormatMode};
 use crate::screen::{Color, Rect, Screen};
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -26,6 +26,38 @@ impl Stack {
 
 	pub fn len(&self) -> usize {
 		self.entries.len()
+	}
+
+	pub fn editing(&self) -> bool {
+		self.editor.is_some()
+	}
+
+	pub fn value_for_integer_mode(mode: &IntegerMode, value: &Number) -> Number {
+		match mode {
+			IntegerMode::Float => value.clone(),
+			IntegerMode::BigInteger => {
+				if let Some(int) = value.to_int() {
+					Number::Integer(int)
+				} else {
+					value.clone()
+				}
+			}
+			IntegerMode::SizedInteger(size, signed) => {
+				if let Some(int) = value.to_int() {
+					let mask = 2.to_bigint().unwrap().pow(*size as u32) - 1.to_bigint().unwrap();
+					let mut int = &int & &mask;
+					if *signed {
+						let sign_bit = 2.to_bigint().unwrap().pow((*size - 1) as u32);
+						if (&int & &sign_bit) != 0.to_bigint().unwrap() {
+							int = -((int ^ mask) + 1.to_bigint().unwrap());
+						}
+					}
+					Number::Integer(int)
+				} else {
+					value.clone()
+				}
+			}
+		}
 	}
 
 	pub fn push(&mut self, num: Number) {
@@ -197,12 +229,12 @@ impl Stack {
 			let label_width = 4 + SANS_16.width(&label);
 
 			// Render stack entry
-			let entry = self.entry(idx);
+			let entry = Self::value_for_integer_mode(&format.integer_mode, self.entry(idx));
 			let height = render_entry(
 				screen,
 				format,
 				if idx == 0 { &self.editor } else { &None },
-				entry,
+				&entry,
 				area.x + label_width,
 				area.w - label_width - 4,
 				bottom,
@@ -411,7 +443,7 @@ fn render_entry<ScreenT: Screen>(
 					break;
 				}
 				match chars[(chars.len() - 1) - (split_point - i)] {
-					',' | '.' | 'x' => {
+					',' | '.' | 'x' | ' ' | '\'' => {
 						split_point -= i;
 						break;
 					}

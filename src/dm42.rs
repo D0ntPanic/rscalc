@@ -212,6 +212,22 @@ fn rtc_wakeup_delay() {
 	}
 }
 
+pub fn read_power_voltage() -> u32 {
+	unsafe {
+		let func_ptr: usize = LIBRARY_BASE + 232;
+		let func: extern "C" fn() -> u32 = core::mem::transmute(func_ptr);
+		func()
+	}
+}
+
+pub fn usb_powered() -> bool {
+	unsafe {
+		let func_ptr: usize = LIBRARY_BASE + 288;
+		let func: extern "C" fn() -> i32 = core::mem::transmute(func_ptr);
+		func() != 0
+	}
+}
+
 fn key_empty() -> bool {
 	unsafe {
 		let func_ptr: usize = LIBRARY_BASE + 380;

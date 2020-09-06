@@ -25,8 +25,16 @@ pub enum NumberDecimalPointMode {
 	Comma,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum IntegerMode {
+	Float,
+	BigInteger,
+	SizedInteger(usize, bool),
+}
+
 pub struct NumberFormat {
 	pub mode: NumberFormatMode,
+	pub integer_mode: IntegerMode,
 	pub decimal_point: NumberDecimalPointMode,
 	pub thousands: bool,
 	pub precision: usize,
@@ -70,6 +78,57 @@ impl Number {
 				Self::bigint_to_decimal(&num) / Self::bigint_to_decimal(&denom.to_bigint().unwrap())
 			}
 			Number::Decimal(value) => value.clone(),
+		}
+	}
+
+	pub fn to_int(&self) -> Option<BigInt> {
+		match self {
+			Number::Integer(int) => Some(int.clone()),
+			Number::Rational(num, denom) => Some(num / denom.to_bigint().unwrap()),
+			Number::Decimal(num) => {
+				let num = num.trunc();
+
+				let raw_str = num.to_str();
+
+				// Split string on the 'E' to decode parts of number. For non inf/NaN there
+				// will always be an exponent.
+				let parts: Vec<&str> = raw_str.split('E').collect();
+				if parts.len() == 1 {
+					// Not a normal number, cannot be converted to integer
+					return None;
+				}
+				// There is always a sign at the start of the string
+				let sign = &raw_str[0..1] == "-";
+
+				// Get digits and parse exponent
+				let digit_str = &parts[0][1..];
+				let exponent: isize = parts[1].parse().unwrap();
+
+				// Compute the number of digits in the integer portion of the number.
+				let integer_part_digits = digit_str.len() as isize + exponent;
+				if integer_part_digits <= 0 {
+					// Number is less than one, so the integer is zero.
+					return Some(0.into());
+				}
+
+				let mut result = 0.to_bigint().unwrap();
+				for ch in digit_str.chars() {
+					result *= 10.to_bigint().unwrap();
+					result += (ch as u32 as u8 - '0' as u32 as u8).to_bigint().unwrap();
+				}
+
+				if integer_part_digits > digit_str.len() as isize {
+					result *= 10
+						.to_bigint()
+						.unwrap()
+						.pow(integer_part_digits as u32 - digit_str.len() as u32);
+				}
+
+				if sign {
+					result = -result;
+				}
+				Some(result)
+			}
 		}
 	}
 
@@ -355,6 +414,7 @@ impl NumberFormat {
 	pub fn new() -> Self {
 		NumberFormat {
 			mode: NumberFormatMode::Rational,
+			integer_mode: IntegerMode::Float,
 			decimal_point: NumberDecimalPointMode::Period,
 			thousands: true,
 			precision: 12,
@@ -368,6 +428,7 @@ impl NumberFormat {
 	pub fn exponent_format(&self) -> Self {
 		NumberFormat {
 			mode: NumberFormatMode::Normal,
+			integer_mode: IntegerMode::BigInteger,
 			decimal_point: self.decimal_point,
 			thousands: false,
 			precision: 4,
@@ -381,6 +442,10 @@ impl NumberFormat {
 	pub fn hex_format(&self) -> Self {
 		NumberFormat {
 			mode: NumberFormatMode::Normal,
+			integer_mode: match &self.integer_mode {
+				IntegerMode::Float => IntegerMode::BigInteger,
+				integer_mode => *integer_mode,
+			},
 			decimal_point: self.decimal_point,
 			thousands: self.thousands,
 			precision: self.precision,
@@ -394,6 +459,7 @@ impl NumberFormat {
 	pub fn decimal_format(&self) -> Self {
 		NumberFormat {
 			mode: NumberFormatMode::Normal,
+			integer_mode: self.integer_mode,
 			decimal_point: self.decimal_point,
 			thousands: self.thousands,
 			precision: self.precision,
@@ -440,19 +506,21 @@ impl NumberFormat {
 			// Check for thousands separator
 			if digits % 3 == 0 && digits > 0 && self.integer_radix == 10 && self.thousands {
 				match self.decimal_point {
-					NumberDecimalPointMode::Period => result.push(',' as u32 as u8),
-					NumberDecimalPointMode::Comma => result.push('.' as u32 as u8),
+					NumberDecimalPointMode::Period => result.push(','),
+					NumberDecimalPointMode::Comma => result.push('.'),
 				}
+			} else if digits % 4 == 0 && digits > 0 && self.integer_radix == 16 && self.thousands {
+				result.push('\'');
 			}
 
 			// Get the lowest digit for the current radix and push it
 			// onto the result.
 			let digit: u8 = (&val % &radix).try_into().unwrap();
 			if digit >= 10 {
-				result.push('A' as u32 as u8 + digit - 10);
+				result.push(char::from_u32('A' as u32 + digit as u32 - 10).unwrap());
 				non_decimal = true;
 			} else {
-				result.push('0' as u32 as u8 + digit);
+				result.push(char::from_u32('0' as u32 + digit as u32).unwrap());
 			}
 
 			// Update value to exclude this digit
@@ -462,26 +530,26 @@ impl NumberFormat {
 
 		// If value was zero, ensure the string isn't blank
 		if result.len() == 0 {
-			result.push('0' as u32 as u8);
+			result.push('0');
 		}
 
 		// Add prefixes for hex and oct modes
 		if self.integer_radix == 16 && (result.len() > 1 || non_decimal) {
-			result.push('x' as u32 as u8);
-			result.push('0' as u32 as u8);
+			result.push('x');
+			result.push('0');
 		}
 		if self.integer_radix == 8 && result.len() > 1 {
-			result.push('0' as u32 as u8);
+			result.push('0');
 		}
 
 		// Add in sign
 		if int.sign() == Sign::Minus {
-			result.push('-' as u32 as u8);
+			result.push('-');
 		}
 
 		// Create string
 		result.reverse();
-		String::from_utf8(result).unwrap()
+		result.iter().collect()
 	}
 
 	fn format_decimal_post_round(&self, num: &Decimal, mode: NumberFormatMode) -> String {
@@ -617,7 +685,11 @@ impl NumberFormat {
 		};
 
 		if fraction_digits.len() > 0 {
-			sign_str.to_string() + &integer_str + "." + &fraction_str + &exponent_str
+			let decimal = match self.decimal_point {
+				NumberDecimalPointMode::Period => ".",
+				NumberDecimalPointMode::Comma => ",",
+			};
+			sign_str.to_string() + &integer_str + decimal + &fraction_str + &exponent_str
 		} else {
 			sign_str.to_string() + &integer_str + &exponent_str
 		}
