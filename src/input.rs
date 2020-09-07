@@ -71,7 +71,6 @@ pub struct InputMode {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputEvent {
-	ModeChange,
 	Character(char),
 	FunctionKey(u8, bool),
 	SigmaPlus,
@@ -118,7 +117,7 @@ pub enum InputEvent {
 	Sst,
 	Base,
 	Convert,
-	Flags,
+	Logic,
 	Mul,
 	Prob,
 	Assign,
@@ -140,7 +139,6 @@ pub enum InputEvent {
 impl InputEvent {
 	pub fn to_str(&self) -> String {
 		match self {
-			InputEvent::ModeChange => "Mode".to_string(),
 			InputEvent::Character(ch) => {
 				let mut result = String::new();
 				result.push(*ch);
@@ -199,7 +197,7 @@ impl InputEvent {
 			InputEvent::Sst => "Sst".to_string(),
 			InputEvent::Base => "Base".to_string(),
 			InputEvent::Convert => "Convert".to_string(),
-			InputEvent::Flags => "Flags".to_string(),
+			InputEvent::Logic => "Logic".to_string(),
 			InputEvent::Mul => "×".to_string(),
 			InputEvent::Prob => "Prob".to_string(),
 			InputEvent::Assign => "Assign".to_string(),
@@ -223,144 +221,144 @@ impl InputEvent {
 pub trait InputQueue {
 	fn has_input(&self) -> bool;
 	fn pop_raw(&mut self) -> Option<KeyEvent>;
-	fn wait_raw(&mut self) -> KeyEvent;
+	fn wait_raw(&mut self) -> Option<KeyEvent>;
 
-	fn wait(&mut self, mode: &mut InputMode) -> InputEvent {
+	fn wait(&mut self, mode: &mut InputMode) -> Option<InputEvent> {
 		loop {
 			match self.wait_raw() {
-				KeyEvent::Press(key) => {
+				Some(KeyEvent::Press(key)) => {
 					let shift = mode.shift;
 					mode.shift = false;
 					match key {
 						Key::Sigma => match mode.alpha {
-							AlphaMode::UpperAlpha => return InputEvent::Character('A'),
-							AlphaMode::LowerAlpha => return InputEvent::Character('a'),
+							AlphaMode::UpperAlpha => return Some(InputEvent::Character('A')),
+							AlphaMode::LowerAlpha => return Some(InputEvent::Character('a')),
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::SigmaMinus;
+									return Some(InputEvent::SigmaMinus);
 								} else {
-									return InputEvent::SigmaPlus;
+									return Some(InputEvent::SigmaPlus);
 								}
 							}
 						},
 						Key::Recip => match mode.alpha {
-							AlphaMode::UpperAlpha => return InputEvent::Character('B'),
-							AlphaMode::LowerAlpha => return InputEvent::Character('b'),
+							AlphaMode::UpperAlpha => return Some(InputEvent::Character('B')),
+							AlphaMode::LowerAlpha => return Some(InputEvent::Character('b')),
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Pow;
+									return Some(InputEvent::Pow);
 								} else {
-									return InputEvent::Recip;
+									return Some(InputEvent::Recip);
 								}
 							}
 						},
 						Key::Sqrt => match mode.alpha {
-							AlphaMode::UpperAlpha => return InputEvent::Character('C'),
-							AlphaMode::LowerAlpha => return InputEvent::Character('c'),
+							AlphaMode::UpperAlpha => return Some(InputEvent::Character('C')),
+							AlphaMode::LowerAlpha => return Some(InputEvent::Character('c')),
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Square;
+									return Some(InputEvent::Square);
 								} else {
-									return InputEvent::Sqrt;
+									return Some(InputEvent::Sqrt);
 								}
 							}
 						},
 						Key::Log => match mode.alpha {
-							AlphaMode::UpperAlpha => return InputEvent::Character('D'),
-							AlphaMode::LowerAlpha => return InputEvent::Character('d'),
+							AlphaMode::UpperAlpha => return Some(InputEvent::Character('D')),
+							AlphaMode::LowerAlpha => return Some(InputEvent::Character('d')),
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::TenX;
+									return Some(InputEvent::TenX);
 								} else {
-									return InputEvent::Log;
+									return Some(InputEvent::Log);
 								}
 							}
 						},
 						Key::Ln => match mode.alpha {
-							AlphaMode::UpperAlpha => return InputEvent::Character('E'),
-							AlphaMode::LowerAlpha => return InputEvent::Character('e'),
+							AlphaMode::UpperAlpha => return Some(InputEvent::Character('E')),
+							AlphaMode::LowerAlpha => return Some(InputEvent::Character('e')),
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::EX;
+									return Some(InputEvent::EX);
 								} else {
-									return InputEvent::Ln;
+									return Some(InputEvent::Ln);
 								}
 							}
 						},
 						Key::Xeq => match mode.alpha {
-							AlphaMode::UpperAlpha => return InputEvent::Character('F'),
-							AlphaMode::LowerAlpha => return InputEvent::Character('f'),
+							AlphaMode::UpperAlpha => return Some(InputEvent::Character('F')),
+							AlphaMode::LowerAlpha => return Some(InputEvent::Character('f')),
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Gto;
+									return Some(InputEvent::Gto);
 								} else {
-									return InputEvent::Xeq;
+									return Some(InputEvent::Xeq);
 								}
 							}
 						},
 						Key::Sto => match mode.alpha {
-							AlphaMode::UpperAlpha => return InputEvent::Character('G'),
-							AlphaMode::LowerAlpha => return InputEvent::Character('g'),
+							AlphaMode::UpperAlpha => return Some(InputEvent::Character('G')),
+							AlphaMode::LowerAlpha => return Some(InputEvent::Character('g')),
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Complex;
+									return Some(InputEvent::Complex);
 								} else {
-									return InputEvent::Sto;
+									return Some(InputEvent::Sto);
 								}
 							}
 						},
 						Key::Rcl => match mode.alpha {
-							AlphaMode::UpperAlpha => return InputEvent::Character('H'),
-							AlphaMode::LowerAlpha => return InputEvent::Character('h'),
+							AlphaMode::UpperAlpha => return Some(InputEvent::Character('H')),
+							AlphaMode::LowerAlpha => return Some(InputEvent::Character('h')),
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Percent;
+									return Some(InputEvent::Percent);
 								} else {
-									return InputEvent::Rcl;
+									return Some(InputEvent::Rcl);
 								}
 							}
 						},
 						Key::RotateDown => match mode.alpha {
-							AlphaMode::UpperAlpha => return InputEvent::Character('I'),
-							AlphaMode::LowerAlpha => return InputEvent::Character('i'),
+							AlphaMode::UpperAlpha => return Some(InputEvent::Character('I')),
+							AlphaMode::LowerAlpha => return Some(InputEvent::Character('i')),
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Pi;
+									return Some(InputEvent::Pi);
 								} else {
-									return InputEvent::RotateDown;
+									return Some(InputEvent::RotateDown);
 								}
 							}
 						},
 						Key::Sin => match mode.alpha {
-							AlphaMode::UpperAlpha => return InputEvent::Character('J'),
-							AlphaMode::LowerAlpha => return InputEvent::Character('j'),
+							AlphaMode::UpperAlpha => return Some(InputEvent::Character('J')),
+							AlphaMode::LowerAlpha => return Some(InputEvent::Character('j')),
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Asin;
+									return Some(InputEvent::Asin);
 								} else {
-									return InputEvent::Sin;
+									return Some(InputEvent::Sin);
 								}
 							}
 						},
 						Key::Cos => match mode.alpha {
-							AlphaMode::UpperAlpha => return InputEvent::Character('K'),
-							AlphaMode::LowerAlpha => return InputEvent::Character('k'),
+							AlphaMode::UpperAlpha => return Some(InputEvent::Character('K')),
+							AlphaMode::LowerAlpha => return Some(InputEvent::Character('k')),
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Acos;
+									return Some(InputEvent::Acos);
 								} else {
-									return InputEvent::Cos;
+									return Some(InputEvent::Cos);
 								}
 							}
 						},
 						Key::Tan => match mode.alpha {
-							AlphaMode::UpperAlpha => return InputEvent::Character('L'),
-							AlphaMode::LowerAlpha => return InputEvent::Character('l'),
+							AlphaMode::UpperAlpha => return Some(InputEvent::Character('L')),
+							AlphaMode::LowerAlpha => return Some(InputEvent::Character('l')),
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Atan;
+									return Some(InputEvent::Atan);
 								} else {
-									return InputEvent::Tan;
+									return Some(InputEvent::Tan);
 								}
 							}
 						},
@@ -372,420 +370,420 @@ pub trait InputQueue {
 									}
 									AlphaMode::Normal => AlphaMode::UpperAlpha,
 								};
-								return InputEvent::ModeChange;
+								return None;
 							} else {
-								return InputEvent::Enter;
+								return Some(InputEvent::Enter);
 							}
 						}
 						Key::Swap => match mode.alpha {
-							AlphaMode::UpperAlpha => return InputEvent::Character('M'),
-							AlphaMode::LowerAlpha => return InputEvent::Character('m'),
+							AlphaMode::UpperAlpha => return Some(InputEvent::Character('M')),
+							AlphaMode::LowerAlpha => return Some(InputEvent::Character('m')),
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::LastX;
+									return Some(InputEvent::LastX);
 								} else {
-									return InputEvent::Swap;
+									return Some(InputEvent::Swap);
 								}
 							}
 						},
 						Key::Neg => match mode.alpha {
-							AlphaMode::UpperAlpha => return InputEvent::Character('N'),
-							AlphaMode::LowerAlpha => return InputEvent::Character('n'),
+							AlphaMode::UpperAlpha => return Some(InputEvent::Character('N')),
+							AlphaMode::LowerAlpha => return Some(InputEvent::Character('n')),
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Modes;
+									return Some(InputEvent::Modes);
 								} else {
-									return InputEvent::Neg;
+									return Some(InputEvent::Neg);
 								}
 							}
 						},
 						Key::E => match mode.alpha {
-							AlphaMode::UpperAlpha => return InputEvent::Character('O'),
-							AlphaMode::LowerAlpha => return InputEvent::Character('o'),
+							AlphaMode::UpperAlpha => return Some(InputEvent::Character('O')),
+							AlphaMode::LowerAlpha => return Some(InputEvent::Character('o')),
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Disp;
+									return Some(InputEvent::Disp);
 								} else {
-									return InputEvent::E;
+									return Some(InputEvent::E);
 								}
 							}
 						},
 						Key::Backspace => {
 							if shift {
-								return InputEvent::Clear;
+								return Some(InputEvent::Clear);
 							} else {
-								return InputEvent::Backspace;
+								return Some(InputEvent::Backspace);
 							}
 						}
 						Key::Up => match mode.alpha {
 							AlphaMode::UpperAlpha | AlphaMode::LowerAlpha => {
 								if shift {
-									return InputEvent::Up;
+									return Some(InputEvent::Up);
 								} else {
 									mode.alpha = AlphaMode::UpperAlpha;
-									return InputEvent::ModeChange;
+									return None;
 								}
 							}
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Bst;
+									return Some(InputEvent::Bst);
 								} else {
-									return InputEvent::Up;
+									return Some(InputEvent::Up);
 								}
 							}
 						},
 						Key::Seven => match mode.alpha {
 							AlphaMode::UpperAlpha => {
 								if shift {
-									return InputEvent::Character('7');
+									return Some(InputEvent::Character('7'));
 								} else {
-									return InputEvent::Character('P');
+									return Some(InputEvent::Character('P'));
 								}
 							}
 							AlphaMode::LowerAlpha => {
 								if shift {
-									return InputEvent::Character('7');
+									return Some(InputEvent::Character('7'));
 								} else {
-									return InputEvent::Character('p');
+									return Some(InputEvent::Character('p'));
 								}
 							}
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Solver;
+									return Some(InputEvent::Solver);
 								} else {
-									return InputEvent::Character('7');
+									return Some(InputEvent::Character('7'));
 								}
 							}
 						},
 						Key::Eight => match mode.alpha {
 							AlphaMode::UpperAlpha => {
 								if shift {
-									return InputEvent::Character('8');
+									return Some(InputEvent::Character('8'));
 								} else {
-									return InputEvent::Character('Q');
+									return Some(InputEvent::Character('Q'));
 								}
 							}
 							AlphaMode::LowerAlpha => {
 								if shift {
-									return InputEvent::Character('8');
+									return Some(InputEvent::Character('8'));
 								} else {
-									return InputEvent::Character('q');
+									return Some(InputEvent::Character('q'));
 								}
 							}
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Integrate;
+									return Some(InputEvent::Integrate);
 								} else {
-									return InputEvent::Character('8');
+									return Some(InputEvent::Character('8'));
 								}
 							}
 						},
 						Key::Nine => match mode.alpha {
 							AlphaMode::UpperAlpha => {
 								if shift {
-									return InputEvent::Character('9');
+									return Some(InputEvent::Character('9'));
 								} else {
-									return InputEvent::Character('R');
+									return Some(InputEvent::Character('R'));
 								}
 							}
 							AlphaMode::LowerAlpha => {
 								if shift {
-									return InputEvent::Character('9');
+									return Some(InputEvent::Character('9'));
 								} else {
-									return InputEvent::Character('r');
+									return Some(InputEvent::Character('r'));
 								}
 							}
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Matrix;
+									return Some(InputEvent::Matrix);
 								} else {
-									return InputEvent::Character('9');
+									return Some(InputEvent::Character('9'));
 								}
 							}
 						},
 						Key::Div => match mode.alpha {
-							AlphaMode::UpperAlpha => return InputEvent::Character('S'),
-							AlphaMode::LowerAlpha => return InputEvent::Character('s'),
+							AlphaMode::UpperAlpha => return Some(InputEvent::Character('S')),
+							AlphaMode::LowerAlpha => return Some(InputEvent::Character('s')),
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Stat;
+									return Some(InputEvent::Stat);
 								} else {
-									return InputEvent::Div;
+									return Some(InputEvent::Div);
 								}
 							}
 						},
 						Key::Down => match mode.alpha {
 							AlphaMode::UpperAlpha | AlphaMode::LowerAlpha => {
 								if shift {
-									return InputEvent::Down;
+									return Some(InputEvent::Down);
 								} else {
 									mode.alpha = AlphaMode::LowerAlpha;
-									return InputEvent::ModeChange;
+									return None;
 								}
 							}
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Sst;
+									return Some(InputEvent::Sst);
 								} else {
-									return InputEvent::Down;
+									return Some(InputEvent::Down);
 								}
 							}
 						},
 						Key::Four => match mode.alpha {
 							AlphaMode::UpperAlpha => {
 								if shift {
-									return InputEvent::Character('4');
+									return Some(InputEvent::Character('4'));
 								} else {
-									return InputEvent::Character('T');
+									return Some(InputEvent::Character('T'));
 								}
 							}
 							AlphaMode::LowerAlpha => {
 								if shift {
-									return InputEvent::Character('4');
+									return Some(InputEvent::Character('4'));
 								} else {
-									return InputEvent::Character('t');
+									return Some(InputEvent::Character('t'));
 								}
 							}
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Base;
+									return Some(InputEvent::Base);
 								} else {
-									return InputEvent::Character('4');
+									return Some(InputEvent::Character('4'));
 								}
 							}
 						},
 						Key::Five => match mode.alpha {
 							AlphaMode::UpperAlpha => {
 								if shift {
-									return InputEvent::Character('5');
+									return Some(InputEvent::Character('5'));
 								} else {
-									return InputEvent::Character('U');
+									return Some(InputEvent::Character('U'));
 								}
 							}
 							AlphaMode::LowerAlpha => {
 								if shift {
-									return InputEvent::Character('5');
+									return Some(InputEvent::Character('5'));
 								} else {
-									return InputEvent::Character('u');
+									return Some(InputEvent::Character('u'));
 								}
 							}
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Convert;
+									return Some(InputEvent::Convert);
 								} else {
-									return InputEvent::Character('5');
+									return Some(InputEvent::Character('5'));
 								}
 							}
 						},
 						Key::Six => match mode.alpha {
 							AlphaMode::UpperAlpha => {
 								if shift {
-									return InputEvent::Character('6');
+									return Some(InputEvent::Character('6'));
 								} else {
-									return InputEvent::Character('V');
+									return Some(InputEvent::Character('V'));
 								}
 							}
 							AlphaMode::LowerAlpha => {
 								if shift {
-									return InputEvent::Character('6');
+									return Some(InputEvent::Character('6'));
 								} else {
-									return InputEvent::Character('v');
+									return Some(InputEvent::Character('v'));
 								}
 							}
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Flags;
+									return Some(InputEvent::Logic);
 								} else {
-									return InputEvent::Character('6');
+									return Some(InputEvent::Character('6'));
 								}
 							}
 						},
 						Key::Mul => match mode.alpha {
-							AlphaMode::UpperAlpha => return InputEvent::Character('S'),
-							AlphaMode::LowerAlpha => return InputEvent::Character('s'),
+							AlphaMode::UpperAlpha => return Some(InputEvent::Character('S')),
+							AlphaMode::LowerAlpha => return Some(InputEvent::Character('s')),
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Stat;
+									return Some(InputEvent::Stat);
 								} else {
-									return InputEvent::Mul;
+									return Some(InputEvent::Mul);
 								}
 							}
 						},
 						Key::Shift => {
 							mode.shift = !shift;
-							return InputEvent::ModeChange;
+							return None;
 						}
 						Key::One => match mode.alpha {
 							AlphaMode::UpperAlpha => {
 								if shift {
-									return InputEvent::Character('1');
+									return Some(InputEvent::Character('1'));
 								} else {
-									return InputEvent::Character('X');
+									return Some(InputEvent::Character('X'));
 								}
 							}
 							AlphaMode::LowerAlpha => {
 								if shift {
-									return InputEvent::Character('1');
+									return Some(InputEvent::Character('1'));
 								} else {
-									return InputEvent::Character('x');
+									return Some(InputEvent::Character('x'));
 								}
 							}
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Assign;
+									return Some(InputEvent::Assign);
 								} else {
-									return InputEvent::Character('1');
+									return Some(InputEvent::Character('1'));
 								}
 							}
 						},
 						Key::Two => match mode.alpha {
 							AlphaMode::UpperAlpha => {
 								if shift {
-									return InputEvent::Character('2');
+									return Some(InputEvent::Character('2'));
 								} else {
-									return InputEvent::Character('Y');
+									return Some(InputEvent::Character('Y'));
 								}
 							}
 							AlphaMode::LowerAlpha => {
 								if shift {
-									return InputEvent::Character('2');
+									return Some(InputEvent::Character('2'));
 								} else {
-									return InputEvent::Character('y');
+									return Some(InputEvent::Character('y'));
 								}
 							}
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Custom;
+									return Some(InputEvent::Custom);
 								} else {
-									return InputEvent::Character('2');
+									return Some(InputEvent::Character('2'));
 								}
 							}
 						},
 						Key::Three => match mode.alpha {
 							AlphaMode::UpperAlpha => {
 								if shift {
-									return InputEvent::Character('3');
+									return Some(InputEvent::Character('3'));
 								} else {
-									return InputEvent::Character('Z');
+									return Some(InputEvent::Character('Z'));
 								}
 							}
 							AlphaMode::LowerAlpha => {
 								if shift {
-									return InputEvent::Character('3');
+									return Some(InputEvent::Character('3'));
 								} else {
-									return InputEvent::Character('z');
+									return Some(InputEvent::Character('z'));
 								}
 							}
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::ProgramFunc;
+									return Some(InputEvent::ProgramFunc);
 								} else {
-									return InputEvent::Character('3');
+									return Some(InputEvent::Character('3'));
 								}
 							}
 						},
 						Key::Sub => match mode.alpha {
 							AlphaMode::UpperAlpha | AlphaMode::LowerAlpha => {
-								return InputEvent::Character('-');
+								return Some(InputEvent::Character('-'));
 							}
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Print;
+									return Some(InputEvent::Print);
 								} else {
-									return InputEvent::Sub;
+									return Some(InputEvent::Sub);
 								}
 							}
 						},
 						Key::Exit => match mode.alpha {
 							AlphaMode::UpperAlpha | AlphaMode::LowerAlpha => {
 								mode.alpha = AlphaMode::Normal;
-								return InputEvent::ModeChange;
+								return None;
 							}
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Off;
+									return Some(InputEvent::Off);
 								} else {
-									return InputEvent::Exit;
+									return Some(InputEvent::Exit);
 								}
 							}
 						},
 						Key::Zero => match mode.alpha {
 							AlphaMode::UpperAlpha | AlphaMode::LowerAlpha => {
 								if shift {
-									return InputEvent::Character('0');
+									return Some(InputEvent::Character('0'));
 								} else {
-									return InputEvent::Character(':');
+									return Some(InputEvent::Character(':'));
 								}
 							}
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Setup;
+									return Some(InputEvent::Setup);
 								} else {
-									return InputEvent::Character('0');
+									return Some(InputEvent::Character('0'));
 								}
 							}
 						},
 						Key::Dot => match mode.alpha {
 							AlphaMode::UpperAlpha | AlphaMode::LowerAlpha => {
-								return InputEvent::Character('.');
+								return Some(InputEvent::Character('.'));
 							}
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Show;
+									return Some(InputEvent::Show);
 								} else {
-									return InputEvent::Character('.');
+									return Some(InputEvent::Character('.'));
 								}
 							}
 						},
 						Key::Run => match mode.alpha {
 							AlphaMode::UpperAlpha | AlphaMode::LowerAlpha => {
-								return InputEvent::Character('?');
+								return Some(InputEvent::Character('?'));
 							}
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Program;
+									return Some(InputEvent::Program);
 								} else {
-									return InputEvent::Run;
+									return Some(InputEvent::Run);
 								}
 							}
 						},
 						Key::Add => match mode.alpha {
 							AlphaMode::UpperAlpha | AlphaMode::LowerAlpha => {
 								if shift {
-									return InputEvent::Character('+');
+									return Some(InputEvent::Character('+'));
 								} else {
-									return InputEvent::Character(' ');
+									return Some(InputEvent::Character(' '));
 								}
 							}
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Catalog;
+									return Some(InputEvent::Catalog);
 								} else {
-									return InputEvent::Add;
+									return Some(InputEvent::Add);
 								}
 							}
 						},
-						Key::F1 => return InputEvent::FunctionKey(1, shift),
-						Key::F2 => return InputEvent::FunctionKey(2, shift),
-						Key::F3 => return InputEvent::FunctionKey(3, shift),
-						Key::F4 => return InputEvent::FunctionKey(4, shift),
-						Key::F5 => return InputEvent::FunctionKey(5, shift),
-						Key::F6 => return InputEvent::FunctionKey(6, shift),
-						Key::Screenshot => return InputEvent::Screenshot,
+						Key::F1 => return Some(InputEvent::FunctionKey(1, shift)),
+						Key::F2 => return Some(InputEvent::FunctionKey(2, shift)),
+						Key::F3 => return Some(InputEvent::FunctionKey(3, shift)),
+						Key::F4 => return Some(InputEvent::FunctionKey(4, shift)),
+						Key::F5 => return Some(InputEvent::FunctionKey(5, shift)),
+						Key::F6 => return Some(InputEvent::FunctionKey(6, shift)),
+						Key::Screenshot => return Some(InputEvent::Screenshot),
 						Key::ShiftUp => match mode.alpha {
 							AlphaMode::UpperAlpha | AlphaMode::LowerAlpha => {
 								if shift {
 									mode.alpha = AlphaMode::UpperAlpha;
-									return InputEvent::ModeChange;
+									return None;
 								} else {
-									return InputEvent::Up;
+									return Some(InputEvent::Up);
 								}
 							}
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Up;
+									return Some(InputEvent::Up);
 								} else {
-									return InputEvent::Bst;
+									return Some(InputEvent::Bst);
 								}
 							}
 						},
@@ -793,23 +791,24 @@ pub trait InputQueue {
 							AlphaMode::UpperAlpha | AlphaMode::LowerAlpha => {
 								if shift {
 									mode.alpha = AlphaMode::LowerAlpha;
-									return InputEvent::ModeChange;
+									return None;
 								} else {
-									return InputEvent::Down;
+									return Some(InputEvent::Down);
 								}
 							}
 							AlphaMode::Normal => {
 								if shift {
-									return InputEvent::Down;
+									return Some(InputEvent::Down);
 								} else {
-									return InputEvent::Sst;
+									return Some(InputEvent::Sst);
 								}
 							}
 						},
-						Key::DoubleRelease => (),
+						Key::DoubleRelease => continue,
 					}
 				}
-				KeyEvent::Release => (),
+				Some(KeyEvent::Release) => continue,
+				None => return None,
 			}
 		}
 	}

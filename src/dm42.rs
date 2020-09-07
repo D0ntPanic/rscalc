@@ -3,7 +3,9 @@ use crate::font;
 use crate::input::{InputQueue, Key, KeyEvent};
 use crate::screen::{Color, Rect, Screen};
 use alloc::alloc::Layout;
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use core::alloc::GlobalAlloc;
+use spin::Mutex;
 
 struct Heap;
 
@@ -20,6 +22,10 @@ const STAT_RUNNING: u32 = 1 << 1;
 const STAT_SUSPENDED: u32 = 1 << 2;
 const STAT_OFF: u32 = 1 << 4;
 const STAT_PGM_END: u32 = 1 << 9;
+const STAT_CLK_WKUP_ENABLE: u32 = 1 << 10;
+const STAT_CLK_WKUP_SECONDS: u32 = 1 << 11;
+const STAT_CLK_WKUP_FLAG: u32 = 1 << 12;
+const STAT_POWER_CHANGE: u32 = 1 << 15;
 
 extern "C" {
 	#[link_name = "post_main"]
@@ -46,7 +52,7 @@ fn panic_handler(_info: &core::panic::PanicInfo) -> ! {
 		"Press a key to restart...",
 		Color::ContentText,
 	);
-	screen.refresh();
+	lcd_forced_refresh();
 	wait_for_key_press();
 	unsafe {
 		post_main();
@@ -72,7 +78,7 @@ fn alloc_error_handler(_layout: Layout) -> ! {
 		"Press a key to restart...",
 		Color::ContentText,
 	);
-	screen.refresh();
+	lcd_forced_refresh();
 	wait_for_key_press();
 	unsafe {
 		post_main();
@@ -98,7 +104,7 @@ pub fn __aeabi_unwind_cpp_pr0() -> ! {
 		"Press a key to restart...",
 		Color::ContentText,
 	);
-	screen.refresh();
+	lcd_forced_refresh();
 	wait_for_key_press();
 	unsafe {
 		post_main();
@@ -114,6 +120,10 @@ pub extern "C" fn __aeabi_d2f(value: f64) -> f32 {
 #[global_allocator]
 static ALLOCATOR: Heap = Heap;
 
+lazy_static! {
+	static ref CLOCK_CHANGED: Mutex<bool> = Mutex::new(true);
+}
+
 unsafe impl GlobalAlloc for Heap {
 	unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
 		let func_ptr: usize = LIBRARY_BASE + 0;
@@ -126,6 +136,22 @@ unsafe impl GlobalAlloc for Heap {
 		let free: extern "C" fn(ptr: *mut u8) -> *mut u8 = core::mem::transmute(func_ptr);
 		free(ptr);
 	}
+}
+
+#[repr(C)]
+struct dt_t {
+	year: u16,
+	month: u8,
+	day: u8,
+}
+
+#[repr(C)]
+struct tm_t {
+	hour: u8,
+	min: u8,
+	sec: u8,
+	csec: u8,
+	dow: u8,
 }
 
 #[allow(non_snake_case)]
@@ -163,9 +189,9 @@ fn lcd_clear_buf() {
 	}
 }
 
-fn lcd_refresh() {
+fn lcd_refresh_dma() {
 	unsafe {
-		let func_ptr: usize = LIBRARY_BASE + 48;
+		let func_ptr: usize = LIBRARY_BASE + 644;
 		let func: extern "C" fn() = core::mem::transmute(func_ptr);
 		func();
 	}
@@ -188,6 +214,14 @@ fn lcd_fill_rect(x: u32, y: u32, dx: u32, dy: u32, val: i32) {
 	}
 }
 
+fn lcd_fill_lines(y: u32, value: u8, count: u32) {
+	unsafe {
+		let func_ptr: usize = LIBRARY_BASE + 80;
+		let func: extern "C" fn(y: u32, value: u8, count: u32) = core::mem::transmute(func_ptr);
+		func(y, value, count);
+	}
+}
+
 fn lcd_set_buf_cleared(val: i32) {
 	unsafe {
 		let func_ptr: usize = LIBRARY_BASE + 84;
@@ -202,6 +236,31 @@ fn lcd_get_buf_cleared() -> bool {
 		let func: extern "C" fn() -> i32 = core::mem::transmute(func_ptr);
 		func() != 0
 	}
+}
+
+pub fn rtc_read() -> NaiveDateTime {
+	unsafe {
+		*CLOCK_CHANGED.lock() = false;
+		let func_ptr: usize = LIBRARY_BASE + 204;
+		let func: extern "C" fn(time: *mut tm_t, date: *mut dt_t) = core::mem::transmute(func_ptr);
+		let mut date = core::mem::MaybeUninit::<dt_t>::uninit();
+		let mut time = core::mem::MaybeUninit::<tm_t>::uninit();
+		func(time.as_mut_ptr(), date.as_mut_ptr());
+		let date = date.assume_init();
+		let time = time.assume_init();
+		let date = NaiveDate::from_ymd(date.year as i32, date.month as u32, date.day as u32);
+		let time = NaiveTime::from_hms_milli(
+			time.hour as u32,
+			time.min as u32,
+			time.sec as u32,
+			time.csec as u32 * 10,
+		);
+		NaiveDateTime::new(date, time)
+	}
+}
+
+pub fn rtc_updated() -> bool {
+	*CLOCK_CHANGED.lock()
 }
 
 fn rtc_wakeup_delay() {
@@ -299,7 +358,9 @@ fn clear_state(bit: u32) {
 
 pub fn show_system_setup_menu() {
 	unsafe {
+		set_state(STAT_CLK_WKUP_SECONDS);
 		system_setup_menu();
+		clear_state(STAT_CLK_WKUP_SECONDS);
 		lcd_clear_buf();
 	}
 }
@@ -320,19 +381,24 @@ impl Screen for DM42Screen {
 	}
 
 	fn refresh(&mut self) {
-		lcd_refresh();
+		lcd_refresh_dma();
 	}
 
 	fn fill(&mut self, rect: Rect, color: Color) {
 		let rect = rect.clipped_to_screen(self);
 		let color = color.to_bw();
-		lcd_fill_rect(
-			rect.x as u32,
-			rect.y as u32,
-			rect.w as u32,
-			rect.h as u32,
-			if color { 1 } else { 0 },
-		);
+
+		if rect.x == 0 && rect.w == WIDTH {
+			lcd_fill_lines(rect.y as u32, if color { 0 } else { 0xff }, rect.h as u32);
+		} else {
+			lcd_fill_rect(
+				rect.x as u32,
+				rect.y as u32,
+				rect.w as u32,
+				rect.h as u32,
+				if color { 1 } else { 0 },
+			);
+		}
 	}
 
 	fn draw_bits(&mut self, x: i32, y: i32, bits: u32, width: u8, color: Color) {
@@ -417,11 +483,15 @@ impl InputQueue for DM42InputQueue {
 		}
 	}
 
-	fn wait_raw(&mut self) -> KeyEvent {
+	fn wait_raw(&mut self) -> Option<KeyEvent> {
 		if let Some(key) = self.pop_raw() {
 			reset_auto_off();
-			return key;
+			return Some(key);
 		}
+
+		clear_state(STAT_CLK_WKUP_SECONDS);
+		clear_state(STAT_CLK_WKUP_FLAG);
+		set_state(STAT_CLK_WKUP_ENABLE);
 
 		loop {
 			if (state(STAT_PGM_END) && state(STAT_SUSPENDED))
@@ -436,6 +506,7 @@ impl InputQueue for DM42InputQueue {
 					lcd_set_buf_cleared(0);
 					draw_power_off_image(1);
 					LCD_power_off(0);
+					clear_state(STAT_CLK_WKUP_ENABLE);
 					set_state(STAT_SUSPENDED);
 					set_state(STAT_OFF);
 				}
@@ -445,18 +516,35 @@ impl InputQueue for DM42InputQueue {
 			set_state(STAT_RUNNING);
 			clear_state(STAT_SUSPENDED);
 
+			let mut changes = false;
 			if state(STAT_OFF) {
 				LCD_power_on();
 				rtc_wakeup_delay();
 				clear_state(STAT_OFF);
+				set_state(STAT_CLK_WKUP_ENABLE);
+				*CLOCK_CHANGED.lock() = true;
 				if !lcd_get_buf_cleared() {
 					lcd_forced_refresh();
 				}
+				changes = true;
+			}
+
+			if state(STAT_CLK_WKUP_FLAG) {
+				clear_state(STAT_CLK_WKUP_FLAG);
+				*CLOCK_CHANGED.lock() = true;
+				changes = true;
+			}
+
+			if state(STAT_POWER_CHANGE) {
+				clear_state(STAT_POWER_CHANGE);
+				changes = true;
 			}
 
 			if let Some(key) = self.pop_raw() {
 				reset_auto_off();
-				return key;
+				return Some(key);
+			} else if changes {
+				return None;
 			}
 		}
 	}

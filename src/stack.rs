@@ -1,13 +1,14 @@
 use crate::edit::NumberEditor;
-use crate::font::{SANS_16, SANS_20, SANS_24};
+use crate::font::SANS_16;
 use crate::num_bigint::ToBigInt;
-use crate::number::{IntegerMode, Number, NumberFormat, NumberFormatMode};
+use crate::number::{IntegerMode, Number, NumberFormat};
 use crate::screen::{Color, Rect, Screen};
-use alloc::string::{String, ToString};
+use crate::value::Value;
+use alloc::string::ToString;
 use alloc::vec::Vec;
 
 pub struct Stack {
-	entries: Vec<Number>,
+	entries: Vec<Value>,
 	editor: Option<NumberEditor>,
 	push_new_entry: bool,
 }
@@ -16,7 +17,7 @@ impl Stack {
 	pub fn new() -> Self {
 		let zero: Number = 0.into();
 		let mut entries = Vec::new();
-		entries.push(zero);
+		entries.push(zero.into());
 		Stack {
 			entries,
 			editor: None,
@@ -32,12 +33,12 @@ impl Stack {
 		self.editor.is_some()
 	}
 
-	pub fn value_for_integer_mode(mode: &IntegerMode, value: &Number) -> Number {
+	pub fn value_for_integer_mode(mode: &IntegerMode, value: &Value) -> Value {
 		match mode {
 			IntegerMode::Float => value.clone(),
 			IntegerMode::BigInteger => {
 				if let Some(int) = value.to_int() {
-					Number::Integer(int)
+					Value::Number(Number::Integer(int))
 				} else {
 					value.clone()
 				}
@@ -52,7 +53,7 @@ impl Stack {
 							int = -((int ^ mask) + 1.to_bigint().unwrap());
 						}
 					}
-					Number::Integer(int)
+					Value::Number(Number::Integer(int))
 				} else {
 					value.clone()
 				}
@@ -60,45 +61,45 @@ impl Stack {
 		}
 	}
 
-	pub fn push(&mut self, num: Number) {
-		self.entries.push(num);
+	pub fn push(&mut self, value: Value) {
+		self.entries.push(value);
 		self.push_new_entry = true;
 		self.editor = None;
 	}
 
-	pub fn entry(&self, idx: usize) -> &Number {
+	pub fn entry(&self, idx: usize) -> &Value {
 		&self.entries[(self.entries.len() - 1) - idx]
 	}
 
-	pub fn entry_mut(&mut self, idx: usize) -> &mut Number {
+	pub fn entry_mut(&mut self, idx: usize) -> &mut Value {
 		let len = self.entries.len();
 		&mut self.entries[(len - 1) - idx]
 	}
 
-	pub fn top(&self) -> &Number {
+	pub fn top(&self) -> &Value {
 		self.entry(0)
 	}
 
-	pub fn top_mut(&mut self) -> &mut Number {
+	pub fn top_mut(&mut self) -> &mut Value {
 		self.entry_mut(0)
 	}
 
-	pub fn set_top(&mut self, num: Number) {
-		*self.top_mut() = num;
+	pub fn set_top(&mut self, value: Value) {
+		*self.top_mut() = value;
 		self.push_new_entry = true;
 		self.editor = None;
 	}
 
-	pub fn replace_entries(&mut self, count: usize, num: Number) {
+	pub fn replace_entries(&mut self, count: usize, value: Value) {
 		for _ in 1..count {
 			self.pop();
 		}
-		self.set_top(num);
+		self.set_top(value);
 		self.push_new_entry = true;
 		self.editor = None;
 	}
 
-	pub fn pop(&mut self) -> Number {
+	pub fn pop(&mut self) -> Value {
 		let result = self.entries.pop().unwrap();
 		if self.entries.len() == 0 {
 			self.entries.push(0.into());
@@ -129,11 +130,11 @@ impl Stack {
 		self.push_new_entry = false;
 	}
 
-	pub fn input_num(&mut self, num: Number) {
+	pub fn input_value(&mut self, value: Value) {
 		if self.push_new_entry {
-			self.push(num);
+			self.push(value);
 		} else {
-			self.set_top(num);
+			self.set_top(value);
 		}
 	}
 
@@ -157,7 +158,7 @@ impl Stack {
 		if let Some(cur_editor) = &mut self.editor {
 			if cur_editor.push_char(ch) {
 				let value = cur_editor.number();
-				*self.top_mut() = value;
+				*self.top_mut() = Value::Number(value);
 			}
 		}
 	}
@@ -166,7 +167,7 @@ impl Stack {
 		if let Some(cur_editor) = &mut self.editor {
 			cur_editor.exponent();
 			let value = cur_editor.number();
-			*self.top_mut() = value;
+			*self.top_mut() = Value::Number(value);
 		}
 	}
 
@@ -174,7 +175,7 @@ impl Stack {
 		if let Some(cur_editor) = &mut self.editor {
 			if cur_editor.backspace() {
 				let value = cur_editor.number();
-				*self.top_mut() = value;
+				*self.top_mut() = Value::Number(value);
 			} else {
 				self.set_top(0.into());
 				self.push_new_entry = false;
@@ -182,7 +183,7 @@ impl Stack {
 		} else {
 			let mut new_entry = self.entries.len() > 1;
 			self.pop();
-			if let Number::Integer(int) = self.top() {
+			if let Some(Number::Integer(int)) = self.top().number() {
 				if int == &0.to_bigint().unwrap() {
 					new_entry = false;
 				}
@@ -195,14 +196,17 @@ impl Stack {
 		if let Some(cur_editor) = &mut self.editor {
 			cur_editor.neg();
 			let value = cur_editor.number();
-			*self.top_mut() = value;
+			*self.top_mut() = Value::Number(value);
 		} else {
-			let value = -self.top();
-			self.set_top(value);
+			if let Some(value) = -self.top() {
+				self.set_top(value);
+			}
 		}
 	}
 
 	pub fn render<ScreenT: Screen>(&self, screen: &mut ScreenT, format: &NumberFormat, area: Rect) {
+		screen.fill(area.clone(), Color::ContentBackground);
+
 		let mut bottom = area.y + area.h;
 
 		for idx in 0..self.len() {
@@ -228,16 +232,21 @@ impl Stack {
 			let label = label + ": ";
 			let label_width = 4 + SANS_16.width(&label);
 
-			// Render stack entry
+			// Render stack entry to a layout
 			let entry = Self::value_for_integer_mode(&format.integer_mode, self.entry(idx));
-			let height = render_entry(
+			let width = area.w - label_width - 8;
+			let layout = entry.render(format, if idx == 0 { &self.editor } else { &None }, width);
+
+			// Draw the entry
+			let height = layout.height();
+			layout.render(
 				screen,
-				format,
-				if idx == 0 { &self.editor } else { &None },
-				&entry,
-				area.x + label_width,
-				area.w - label_width - 4,
-				bottom,
+				Rect {
+					x: area.x + label_width + 4,
+					y: bottom - height,
+					w: width,
+					h: height,
+				},
 			);
 
 			// Draw the label
@@ -252,263 +261,4 @@ impl Stack {
 			bottom -= height;
 		}
 	}
-}
-
-fn render_entry<ScreenT: Screen>(
-	screen: &mut ScreenT,
-	format: &NumberFormat,
-	editor: &Option<NumberEditor>,
-	value: &Number,
-	x: i32,
-	w: i32,
-	bottom: i32,
-) -> i32 {
-	// Get string for number. If there is an editor, use editor state instead.
-	let string = match editor {
-		Some(editor) => editor.to_str(format),
-		None => format.format_number(value),
-	};
-
-	// Check for alternate representation strings
-	let mut alt_string = match value {
-		Number::Integer(int) => {
-			// Integer, if number is ten or greater check for the
-			// hexadecimal alternate form
-			if format.show_alt_hex
-				&& (format.integer_radix != 10
-					|| format.mode == NumberFormatMode::Normal
-					|| format.mode == NumberFormatMode::Rational)
-				&& (int <= &-10.to_bigint().unwrap()
-					|| int >= &10.to_bigint().unwrap()
-					|| int <= &(-(format.integer_radix as i8)).to_bigint().unwrap()
-					|| int >= &(format.integer_radix as i8).to_bigint().unwrap())
-			{
-				if format.integer_radix == 10 {
-					Some(format.hex_format().format_number(value))
-				} else {
-					Some(format.decimal_format().format_number(value))
-				}
-			} else {
-				None
-			}
-		}
-		Number::Rational(_, _) => {
-			// Rational, show floating point as alternate form if enabled
-			if format.show_alt_float && format.mode == NumberFormatMode::Rational {
-				Some(format.decimal_format().format_decimal(&value.to_decimal()))
-			} else {
-				None
-			}
-		}
-		Number::Decimal(_) => None,
-	};
-
-	// If alternate representation is too wide, don't display it
-	if let Some(alt) = &alt_string {
-		let width = SANS_16.width(alt) + 4;
-		if width > w {
-			alt_string = None;
-		}
-	}
-
-	let mut top = bottom;
-	let mut y = top;
-
-	let mut rational = false;
-	if format.mode == NumberFormatMode::Rational {
-		if let Number::Rational(num, denom) = value {
-			// Rational number, display as an integer and fraction
-			top -= SANS_20.height * 2;
-			if alt_string.is_some() {
-				top -= SANS_16.height;
-			}
-
-			// Break rational into an integer part and fractional part
-			let int = num / denom.to_bigint().unwrap();
-			let mut num = if &int < &0.to_bigint().unwrap() {
-				-num - -&int * &denom.to_bigint().unwrap()
-			} else {
-				num - &int * &denom.to_bigint().unwrap()
-			};
-
-			// Get strings for the parts of the rational
-			let int_str = if int == 0.to_bigint().unwrap() {
-				if &num < &0.to_bigint().unwrap() {
-					num = -num;
-					"-".to_string()
-				} else {
-					"".to_string()
-				}
-			} else {
-				format.format_bigint(&int) + " "
-			};
-			let num_str = format.format_bigint(&num);
-			let denom_str = format.format_bigint(&denom.to_bigint().unwrap());
-
-			// Find sizes for the parts of the rational
-			let int_width = SANS_24.width(&int_str);
-			let num_width = SANS_20.width(&num_str);
-			let denom_width = SANS_20.width(&denom_str);
-			let fraction_width = core::cmp::max(num_width, denom_width);
-
-			// Check fractional representation width
-			let total_width = int_width + fraction_width;
-			if total_width <= w {
-				// Fractional representation fits, draw integer part
-				y = top;
-				SANS_24.draw(
-					screen,
-					x + w - (int_width + fraction_width + 4),
-					y + SANS_20.height - (SANS_24.height / 2),
-					&int_str,
-					Color::ContentText,
-				);
-
-				// Draw numerator
-				SANS_20.draw(
-					screen,
-					x + w - (4 + fraction_width / 2) - (num_width / 2),
-					y,
-					&num_str,
-					Color::ContentText,
-				);
-
-				// Draw line between numerator and denominator
-				screen.fill(
-					Rect {
-						x: x + w - (fraction_width + 4),
-						y: y + SANS_20.height,
-						w: fraction_width,
-						h: 1,
-					},
-					Color::ContentText,
-				);
-
-				// Draw denominator
-				SANS_20.draw(
-					screen,
-					x + w - (4 + fraction_width / 2) - (denom_width / 2),
-					y + SANS_20.height,
-					&denom_str,
-					Color::ContentText,
-				);
-
-				y += SANS_20.height * 2;
-				rational = true;
-			} else {
-				// Fractional representation is too wide, represent as float
-				top = bottom;
-				alt_string = None;
-			}
-		}
-	}
-
-	if !rational {
-		// Integer or decimal float, render string formatted earlier
-		let mut lines = Vec::new();
-		lines.push(string.clone());
-
-		// Determine string width
-		let width = SANS_24.width(&string) + 4;
-		if width > w * 2 {
-			// String cannot fit onto two lines, render as decimal float
-			lines[0] = format.format_decimal(&value.to_decimal());
-		} else if width > w {
-			// String does not fit, try to split it to two lines
-			let chars: Vec<char> = string.chars().collect();
-			let mut split_point = 0;
-			let mut width = 0;
-			for i in 0..chars.len() {
-				let mut char_str = String::new();
-				char_str.push(chars[(chars.len() - 1) - i]);
-
-				split_point = i;
-
-				// Add in the width of this character
-				if i == 0 {
-					width += SANS_24.width(&char_str);
-				} else {
-					width += SANS_24.advance(&char_str);
-				}
-
-				if width > w {
-					break;
-				}
-			}
-
-			// Check for a puncuation point near the split point, and move the split
-			// there if there is one.
-			for i in 0..4 {
-				if i > split_point {
-					break;
-				}
-				match chars[(chars.len() - 1) - (split_point - i)] {
-					',' | '.' | 'x' | ' ' | '\'' => {
-						split_point -= i;
-						break;
-					}
-					_ => (),
-				}
-			}
-
-			// Split the line into two lines
-			let (first, second) = chars.split_at(chars.len() - split_point);
-			let first_str: String = first.iter().collect();
-			let second_str: String = second.iter().collect();
-			let first_width = SANS_24.width(&first_str) + 4;
-			let second_width = SANS_24.width(&second_str) + 4;
-
-			if first_width > w || second_width > w {
-				// String cannot fit onto two lines, render as decimal float
-				lines[0] = format.format_decimal(&value.to_decimal());
-			} else {
-				// String fits onto two lines
-				lines.clear();
-				lines.push(first_str);
-				lines.push(second_str);
-			}
-		}
-
-		if let Some(alt) = &alt_string {
-			if lines.len() == 1 && alt == &lines[0] {
-				// Alternate representation is the same as this representation,
-				// don't use the alternate.
-				alt_string = None;
-			}
-		}
-
-		top -= SANS_24.height * lines.len() as i32;
-		if alt_string.is_some() {
-			top -= SANS_16.height;
-		}
-
-		// Render lines
-		y = top;
-		for line in lines {
-			let width = SANS_24.width(&line) + 4;
-			SANS_24.draw(screen, x + w - width, y, &line, Color::ContentText);
-			y += SANS_24.height;
-		}
-
-		if editor.is_some() {
-			// If there is an editor, render cursor
-			screen.fill(
-				Rect {
-					x: x + w - 3,
-					y: y - SANS_24.height,
-					w: 3,
-					h: SANS_24.height,
-				},
-				Color::ContentText,
-			);
-		}
-	}
-
-	// Render alternate string if there was one
-	if let Some(alt_string) = alt_string {
-		let width = SANS_16.width(&alt_string) + 4;
-		SANS_16.draw(screen, x + w - width, y, &alt_string, Color::ContentText);
-	}
-
-	bottom - top
 }

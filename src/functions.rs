@@ -3,8 +3,10 @@ use crate::input::InputEvent;
 use crate::number::{IntegerMode, Number, NumberDecimalPointMode, NumberFormat, NumberFormatMode};
 use crate::screen::{Color, Rect, Screen};
 use crate::state::State;
+use crate::value::Value;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use core::cell::RefCell;
 use core::convert::TryFrom;
 use num_bigint::ToBigInt;
 
@@ -356,7 +358,7 @@ impl Function {
 				if state.stack.len() >= 2 {
 					if let Some(y) = state.stack.entry(1).to_int() {
 						if let Some(x) = state.stack.entry(0).to_int() {
-							let value = Number::Integer(y & x);
+							let value = Value::Number(Number::Integer(y & x));
 							state.replace_entries(2, value);
 						}
 					}
@@ -366,7 +368,7 @@ impl Function {
 				if state.stack.len() >= 2 {
 					if let Some(y) = state.stack.entry(1).to_int() {
 						if let Some(x) = state.stack.entry(0).to_int() {
-							let value = Number::Integer(y | x);
+							let value = Value::Number(Number::Integer(y | x));
 							state.replace_entries(2, value);
 						}
 					}
@@ -376,7 +378,7 @@ impl Function {
 				if state.stack.len() >= 2 {
 					if let Some(y) = state.stack.entry(1).to_int() {
 						if let Some(x) = state.stack.entry(0).to_int() {
-							let value = Number::Integer(y ^ x);
+							let value = Value::Number(Number::Integer(y ^ x));
 							state.replace_entries(2, value);
 						}
 					}
@@ -385,7 +387,7 @@ impl Function {
 			Function::Not => {
 				if let Some(x) = state.stack.top().to_int() {
 					let value = Number::Integer(!x);
-					state.set_top(value);
+					state.set_top(Value::Number(value));
 				}
 			}
 			Function::ShiftLeft => {
@@ -399,7 +401,7 @@ impl Function {
 								}
 							}
 							if let Ok(x) = u32::try_from(x) {
-								let value = Number::Integer(y << x);
+								let value = Value::Number(Number::Integer(y << x));
 								state.replace_entries(2, value);
 							}
 						}
@@ -417,7 +419,7 @@ impl Function {
 								}
 							}
 							if let Ok(x) = u32::try_from(x) {
-								let value = Number::Integer(y >> x);
+								let value = Value::Number(Number::Integer(y >> x));
 								state.replace_entries(2, value);
 							}
 						}
@@ -435,7 +437,7 @@ impl Function {
 								}
 								if let Ok(x) = u32::try_from(x) {
 									let value = (&y << &x) | (&y >> (&(size as u32) - &x));
-									state.replace_entries(2, Number::Integer(value));
+									state.replace_entries(2, Value::Number(Number::Integer(value)));
 								}
 							}
 						}
@@ -453,7 +455,7 @@ impl Function {
 								}
 								if let Ok(x) = u32::try_from(x) {
 									let value = (&y >> &x) | (&y << (&(size as u32) - &x));
-									state.replace_entries(2, Number::Integer(value));
+									state.replace_entries(2, Value::Number(Number::Integer(value)));
 								}
 							}
 						}
@@ -493,6 +495,7 @@ pub enum FunctionMenu {
 	Base,
 	SignedInteger,
 	UnsignedInteger,
+	Logic,
 }
 
 impl FunctionMenu {
@@ -518,14 +521,6 @@ impl FunctionMenu {
 				Some(Function::Float),
 				Some(Function::SignedInteger),
 				Some(Function::UnsignedInteger),
-				Some(Function::And),
-				Some(Function::Or),
-				Some(Function::Xor),
-				Some(Function::Not),
-				Some(Function::ShiftLeft),
-				Some(Function::ShiftRight),
-				Some(Function::RotateLeft),
-				Some(Function::RotateRight),
 			]
 			.to_vec(),
 			FunctionMenu::SignedInteger => [
@@ -546,6 +541,17 @@ impl FunctionMenu {
 				Some(Function::Unsigned128Bit),
 			]
 			.to_vec(),
+			FunctionMenu::Logic => [
+				Some(Function::And),
+				Some(Function::Or),
+				Some(Function::Xor),
+				Some(Function::Not),
+				Some(Function::ShiftLeft),
+				Some(Function::ShiftRight),
+				Some(Function::RotateLeft),
+				Some(Function::RotateRight),
+			]
+			.to_vec(),
 		}
 	}
 }
@@ -556,6 +562,7 @@ pub struct FunctionKeyState {
 	page: usize,
 	menu_stack: Vec<(Option<FunctionMenu>, usize)>,
 	quick_functions: Vec<Option<Function>>,
+	menu_strings: RefCell<Vec<String>>,
 }
 
 impl FunctionKeyState {
@@ -566,6 +573,7 @@ impl FunctionKeyState {
 			page: 0,
 			menu_stack: Vec::new(),
 			quick_functions: Vec::new(),
+			menu_strings: RefCell::new(Vec::new()),
 		}
 	}
 
@@ -610,19 +618,29 @@ impl FunctionKeyState {
 		}
 	}
 
+	pub fn update_menu_strings(&self, state: &State) -> bool {
+		let mut strings = Vec::new();
+		for i in 0..6 {
+			if let Some(function) = self.function((i + 1) as u8) {
+				strings.push(function.to_str(state));
+			} else {
+				strings.push("".to_string());
+			}
+		}
+		if strings != *self.menu_strings.borrow() {
+			*self.menu_strings.borrow_mut() = strings;
+			true
+		} else {
+			false
+		}
+	}
+
 	pub fn exit_menu(&mut self, format: &NumberFormat) {
 		// Set menu state from previous stack entry and update the function list
 		if let Some((menu, page)) = self.menu_stack.pop() {
 			self.menu = menu;
 			self.page = page;
 			self.update(format);
-		}
-	}
-
-	pub fn exit_all_menus(&mut self, format: &NumberFormat) {
-		// Pop off the menu stack until it is empty
-		while self.menu_stack.len() > 0 {
-			self.exit_menu(format);
 		}
 	}
 
@@ -661,7 +679,7 @@ impl FunctionKeyState {
 		}
 	}
 
-	pub fn render<ScreenT: Screen>(&self, screen: &mut ScreenT, state: &State) {
+	pub fn render<ScreenT: Screen>(&self, screen: &mut ScreenT) {
 		let top = screen.height() - SANS_13.height;
 
 		// Clear menu area
@@ -694,8 +712,8 @@ impl FunctionKeyState {
 			screen.set_pixel(max_x - 1, top, Color::ContentBackground);
 
 			// Render key text if there is one
-			if let Some(function) = self.function((i + 1) as u8) {
-				let mut string = function.to_str(state);
+			if let Some(string) = self.menu_strings.borrow().get(i as usize) {
+				let mut string = string.clone();
 
 				// Trim string until it fits
 				let mut width = SANS_13.width(&string);

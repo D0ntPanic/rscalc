@@ -8,9 +8,17 @@ extern crate intel_dfp;
 extern crate num_bigint;
 
 #[cfg(not(feature = "dm42"))]
+extern crate chrono;
+#[cfg(not(feature = "dm42"))]
 extern crate glib;
 #[cfg(not(feature = "dm42"))]
 extern crate gtk;
+
+#[cfg(feature = "dm42")]
+#[macro_use]
+extern crate lazy_static;
+#[cfg(feature = "dm42")]
+extern crate spin;
 
 #[cfg(feature = "dm42")]
 mod dm42;
@@ -22,10 +30,13 @@ mod edit;
 mod font;
 mod functions;
 mod input;
+mod layout;
 mod number;
 mod screen;
 mod stack;
 mod state;
+mod time;
+mod value;
 
 use input::InputQueue;
 use screen::Screen;
@@ -35,14 +46,17 @@ pub fn calc_main<ScreenT: Screen, InputT: InputQueue>(mut screen: ScreenT, mut i
     screen.clear();
 
     let mut state = State::new();
+    state.render(&mut screen);
 
     loop {
-        state.render(&mut screen);
-
-        let input_event = input.wait(&mut state.input_mode);
-        match state.handle_input(input_event) {
-            InputResult::Normal => (),
-            InputResult::Suspend => input.suspend(),
+        if let Some(input_event) = input.wait(&mut state.input_mode) {
+            match state.handle_input(input_event) {
+                InputResult::Normal => (),
+                InputResult::Suspend => input.suspend(),
+            }
+            state.render(&mut screen);
+        } else {
+            state.update_header(&mut screen);
         }
     }
 }

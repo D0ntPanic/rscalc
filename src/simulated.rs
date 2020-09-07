@@ -6,6 +6,7 @@ use glib::source::{timeout_add_local, Continue};
 use gtk::*;
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
+use std::time::Duration;
 
 const WIDTH: i32 = 400;
 const HEIGHT: i32 = 240;
@@ -174,7 +175,7 @@ impl Content {
 		key!(keyboard_bottom, "▼", "SST", "", 0, 2, 1, Key::Down);
 		key!(keyboard_bottom, "4", "BASE", "T", 1, 2, 1, Key::Four);
 		key!(keyboard_bottom, "5", "CNVRT", "U", 2, 2, 1, Key::Five);
-		key!(keyboard_bottom, "6", "FLAGS", "V", 3, 2, 1, Key::Six);
+		key!(keyboard_bottom, "6", "LOGIC", "V", 3, 2, 1, Key::Six);
 		key!(keyboard_bottom, "×", "PROB", "W", 4, 2, 1, Key::Mul);
 
 		key!(keyboard_bottom, "SHIFT", "", "", 0, 4, 1, Key::Shift);
@@ -305,12 +306,20 @@ impl InputQueue for VirtualInputQueue {
 		queue.pop()
 	}
 
-	fn wait_raw(&mut self) -> KeyEvent {
+	fn wait_raw(&mut self) -> Option<KeyEvent> {
 		let mut queue = self.queue.lock().unwrap();
-		while queue.len() == 0 {
-			queue = self.event.wait(queue).unwrap();
+		if queue.len() == 0 {
+			queue = self
+				.event
+				.wait_timeout(queue, Duration::from_secs(1))
+				.unwrap()
+				.0;
 		}
-		queue.pop().unwrap()
+		if queue.len() != 0 {
+			Some(queue.pop().unwrap())
+		} else {
+			None
+		}
 	}
 
 	fn suspend(&self) {}
