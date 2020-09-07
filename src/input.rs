@@ -107,14 +107,14 @@ pub enum InputEvent {
 	Backspace,
 	Clear,
 	Up,
-	Bst,
+	ShiftUp,
 	Solver,
 	Integrate,
 	Matrix,
 	Div,
 	Stat,
 	Down,
-	Sst,
+	ShiftDown,
 	Base,
 	Convert,
 	Logic,
@@ -187,14 +187,14 @@ impl InputEvent {
 			InputEvent::Backspace => "←".to_string(),
 			InputEvent::Clear => "Clear".to_string(),
 			InputEvent::Up => "↑".to_string(),
-			InputEvent::Bst => "Bst".to_string(),
+			InputEvent::ShiftUp => "⬏↑".to_string(),
 			InputEvent::Solver => "Solver".to_string(),
 			InputEvent::Integrate => "∫".to_string(),
 			InputEvent::Matrix => "Matrix".to_string(),
 			InputEvent::Div => "÷".to_string(),
 			InputEvent::Stat => "Stat".to_string(),
 			InputEvent::Down => "↓".to_string(),
-			InputEvent::Sst => "Sst".to_string(),
+			InputEvent::ShiftDown => "⬏↓".to_string(),
 			InputEvent::Base => "Base".to_string(),
 			InputEvent::Convert => "Convert".to_string(),
 			InputEvent::Logic => "Logic".to_string(),
@@ -426,7 +426,7 @@ pub trait InputQueue {
 							}
 							AlphaMode::Normal => {
 								if shift {
-									return Some(InputEvent::Bst);
+									return Some(InputEvent::ShiftUp);
 								} else {
 									return Some(InputEvent::Up);
 								}
@@ -523,7 +523,7 @@ pub trait InputQueue {
 							}
 							AlphaMode::Normal => {
 								if shift {
-									return Some(InputEvent::Sst);
+									return Some(InputEvent::ShiftDown);
 								} else {
 									return Some(InputEvent::Down);
 								}
@@ -783,7 +783,7 @@ pub trait InputQueue {
 								if shift {
 									return Some(InputEvent::Up);
 								} else {
-									return Some(InputEvent::Bst);
+									return Some(InputEvent::ShiftUp);
 								}
 							}
 						},
@@ -800,7 +800,7 @@ pub trait InputQueue {
 								if shift {
 									return Some(InputEvent::Down);
 								} else {
-									return Some(InputEvent::Sst);
+									return Some(InputEvent::ShiftDown);
 								}
 							}
 						},

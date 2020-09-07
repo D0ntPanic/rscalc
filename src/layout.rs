@@ -50,7 +50,7 @@ impl Layout {
 		}
 	}
 
-	pub fn render<ScreenT: Screen>(&self, screen: &mut ScreenT, rect: Rect) {
+	pub fn render<ScreenT: Screen>(&self, screen: &mut ScreenT, rect: Rect, clip_rect: &Rect) {
 		// Determine the size of the layout and render it right jusitified
 		// and centered vertically.
 		let width = self.width();
@@ -62,18 +62,27 @@ impl Layout {
 			h: height,
 		};
 
+		// Check to see if the layout is entirely out of the clipping bounds
+		let clipped_rect = rect.clipped_to(clip_rect);
+		if clipped_rect.w == 0 || clipped_rect.h == 0 {
+			return;
+		}
+
 		// Render the layout to the screen
 		match self {
-			Layout::Text(string, font, color) => font.draw(screen, rect.x, rect.y, string, *color),
+			Layout::Text(string, font, color) => {
+				font.draw_clipped(screen, clip_rect, rect.x, rect.y, string, *color)
+			}
 			Layout::EditText(string, font, color) => {
-				font.draw(screen, rect.x, rect.y, string, *color);
+				font.draw_clipped(screen, clip_rect, rect.x, rect.y, string, *color);
 				screen.fill(
 					Rect {
 						x: rect.x + rect.w - 1,
 						y: rect.y,
 						w: 3,
 						h: rect.h,
-					},
+					}
+					.clipped_to(clip_rect),
 					*color,
 				);
 			}
@@ -90,6 +99,7 @@ impl Layout {
 							w: item_width,
 							h: rect.h,
 						},
+						clip_rect,
 					);
 					rect.x += item_width;
 					rect.w -= item_width;
@@ -108,6 +118,7 @@ impl Layout {
 							w: rect.w,
 							h: item_height,
 						},
+						clip_rect,
 					);
 					rect.y += item_height;
 					rect.h -= item_height;
@@ -129,6 +140,7 @@ impl Layout {
 						w: numer_width,
 						h: numer_height,
 					},
+					clip_rect,
 				);
 
 				// Render the denominator cenetered at the bottom
@@ -140,6 +152,7 @@ impl Layout {
 						w: denom_width,
 						h: denom_height,
 					},
+					clip_rect,
 				);
 
 				// Render the line separating the numerator and the denominator
@@ -149,7 +162,8 @@ impl Layout {
 						y: rect.y + numer_height + (height - (numer_height + denom_height)) / 2,
 						w: rect.w,
 						h: 1,
-					},
+					}
+					.clipped_to(clip_rect),
 					*color,
 				);
 			}

@@ -247,11 +247,13 @@ impl Stack {
 					w: width,
 					h: height,
 				},
+				&area,
 			);
 
 			// Draw the label
-			SANS_16.draw(
+			SANS_16.draw_clipped(
 				screen,
+				&area,
 				4,
 				(bottom - height) + (height - SANS_16.height) / 2,
 				&label,
