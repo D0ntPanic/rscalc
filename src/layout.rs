@@ -9,6 +9,7 @@ pub enum Layout {
 	Horizontal(Vec<Layout>),
 	Vertical(Vec<Layout>),
 	Fraction(Box<Layout>, Box<Layout>, Color),
+	Power(Box<Layout>, Box<Layout>),
 	HorizontalSpace(i32),
 	VerticalSpace(i32),
 }
@@ -31,6 +32,7 @@ impl Layout {
 				.iter()
 				.fold(0, |width, item| core::cmp::max(width, item.width())),
 			Layout::Fraction(numer, denom, _) => core::cmp::max(numer.width(), denom.width()),
+			Layout::Power(base, power) => base.width() + power.width(),
 			Layout::HorizontalSpace(width) => *width,
 			Layout::VerticalSpace(_) => 0,
 		}
@@ -45,6 +47,7 @@ impl Layout {
 				.fold(0, |height, item| core::cmp::max(height, item.height())),
 			Layout::Vertical(items) => items.iter().fold(0, |height, item| height + item.height()),
 			Layout::Fraction(numer, denom, _) => numer.height() + denom.height(),
+			Layout::Power(base, power) => core::cmp::max(base.height(), power.height()),
 			Layout::HorizontalSpace(_) => 0,
 			Layout::VerticalSpace(height) => *height,
 		}
@@ -165,6 +168,37 @@ impl Layout {
 					}
 					.clipped_to(clip_rect),
 					*color,
+				);
+			}
+			Layout::Power(base, power) => {
+				// Determine the sizes of the base and the power
+				let base_width = base.width();
+				let base_height = base.height();
+				let power_width = power.width();
+				let power_height = power.height();
+
+				// Render the base
+				base.render(
+					screen,
+					Rect {
+						x: rect.x,
+						y: rect.y + rect.h - base_height,
+						w: base_width,
+						h: base_height,
+					},
+					clip_rect,
+				);
+
+				// Render the power
+				power.render(
+					screen,
+					Rect {
+						x: rect.x + rect.w - power_width,
+						y: rect.y,
+						w: power_width,
+						h: power_height,
+					},
+					clip_rect,
 				);
 			}
 			Layout::VerticalSpace(_) | Layout::HorizontalSpace(_) => (),

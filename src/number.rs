@@ -11,6 +11,10 @@ pub enum Number {
 	Decimal(Decimal),
 }
 
+pub trait ToNumber {
+	fn to_number(self) -> Number;
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum NumberFormatMode {
 	Normal,
@@ -842,6 +846,114 @@ impl From<f64> for Number {
 	}
 }
 
+impl From<Decimal> for Number {
+	fn from(val: Decimal) -> Self {
+		Number::Decimal(val)
+	}
+}
+
+impl From<BigInt> for Number {
+	fn from(val: BigInt) -> Self {
+		Number::Integer(val)
+	}
+}
+
+impl From<BigUint> for Number {
+	fn from(val: BigUint) -> Self {
+		Number::Integer(val.to_bigint().unwrap())
+	}
+}
+
+impl ToNumber for u8 {
+	fn to_number(self) -> Number {
+		self.into()
+	}
+}
+
+impl ToNumber for i8 {
+	fn to_number(self) -> Number {
+		self.into()
+	}
+}
+
+impl ToNumber for u16 {
+	fn to_number(self) -> Number {
+		self.into()
+	}
+}
+
+impl ToNumber for i16 {
+	fn to_number(self) -> Number {
+		self.into()
+	}
+}
+
+impl ToNumber for u32 {
+	fn to_number(self) -> Number {
+		self.into()
+	}
+}
+
+impl ToNumber for i32 {
+	fn to_number(self) -> Number {
+		self.into()
+	}
+}
+
+impl ToNumber for u64 {
+	fn to_number(self) -> Number {
+		self.into()
+	}
+}
+
+impl ToNumber for i64 {
+	fn to_number(self) -> Number {
+		self.into()
+	}
+}
+
+impl ToNumber for u128 {
+	fn to_number(self) -> Number {
+		self.into()
+	}
+}
+
+impl ToNumber for i128 {
+	fn to_number(self) -> Number {
+		self.into()
+	}
+}
+
+impl ToNumber for f32 {
+	fn to_number(self) -> Number {
+		self.into()
+	}
+}
+
+impl ToNumber for f64 {
+	fn to_number(self) -> Number {
+		self.into()
+	}
+}
+
+impl ToNumber for Decimal {
+	fn to_number(self) -> Number {
+		self.into()
+	}
+}
+
+impl ToNumber for BigInt {
+	fn to_number(self) -> Number {
+		self.into()
+	}
+}
+
+impl ToNumber for BigUint {
+	fn to_number(self) -> Number {
+		self.into()
+	}
+}
+
 impl core::ops::Add for Number {
 	type Output = Self;
 
@@ -934,8 +1046,7 @@ impl core::ops::Neg for Number {
 	type Output = Self;
 
 	fn neg(self) -> Self::Output {
-		let zero: Number = 0.into();
-		zero.num_sub(&self)
+		0.to_number().num_sub(&self)
 	}
 }
 
@@ -943,7 +1054,6 @@ impl core::ops::Neg for &Number {
 	type Output = Number;
 
 	fn neg(self) -> Self::Output {
-		let zero: Number = 0.into();
-		zero.num_sub(self)
+		0.to_number().num_sub(self)
 	}
 }

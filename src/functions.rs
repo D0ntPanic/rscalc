@@ -1,9 +1,12 @@
 use crate::font::SANS_13;
 use crate::input::InputEvent;
-use crate::number::{IntegerMode, Number, NumberDecimalPointMode, NumberFormat, NumberFormatMode};
+use crate::number::{
+	IntegerMode, Number, NumberDecimalPointMode, NumberFormat, NumberFormatMode, ToNumber,
+};
 use crate::screen::{Color, Rect, Screen};
 use crate::state::State;
 use crate::time::Now;
+use crate::unit::{CompositeUnit, DistanceUnit, TimeUnit};
 use crate::value::Value;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -50,10 +53,78 @@ pub enum Function {
 	Hex,
 	Octal,
 	Decimal,
+	ConstCatalog,
+	SpeedOfLight,
 	TimeCatalog,
 	Now,
 	Date,
 	Time,
+	TimeUnits,
+	Nanoseconds,
+	Microseconds,
+	Milliseconds,
+	Seconds,
+	Minutes,
+	Hours,
+	Days,
+	Years,
+	InverseTimeUnits,
+	InverseNanoseconds,
+	InverseMicroseconds,
+	InverseMilliseconds,
+	InverseSeconds,
+	InverseMinutes,
+	InverseHours,
+	InverseDays,
+	InverseYears,
+	ToTimeUnits,
+	ToNanoseconds,
+	ToMicroseconds,
+	ToMilliseconds,
+	ToSeconds,
+	ToMinutes,
+	ToHours,
+	ToDays,
+	ToYears,
+	DistanceUnits,
+	Nanometers,
+	Micrometers,
+	Millimeters,
+	Centimeters,
+	Meters,
+	Kilometers,
+	Inches,
+	Feet,
+	Yards,
+	Miles,
+	NauticalMiles,
+	AstronomicalUnits,
+	InverseDistanceUnits,
+	InverseNanometers,
+	InverseMicrometers,
+	InverseMillimeters,
+	InverseCentimeters,
+	InverseMeters,
+	InverseKilometers,
+	InverseInches,
+	InverseFeet,
+	InverseYards,
+	InverseMiles,
+	InverseNauticalMiles,
+	InverseAstronomicalUnits,
+	ToDistanceUnits,
+	ToNanometers,
+	ToMicrometers,
+	ToMillimeters,
+	ToCentimeters,
+	ToMeters,
+	ToKilometers,
+	ToInches,
+	ToFeet,
+	ToYards,
+	ToMiles,
+	ToNauticalMiles,
+	ToAstronomicalUnits,
 }
 
 impl Function {
@@ -251,10 +322,78 @@ impl Function {
 					"Dec".to_string()
 				}
 			}
+			Function::ConstCatalog => "Const".to_string(),
+			Function::SpeedOfLight => "c".to_string(),
 			Function::TimeCatalog => "Time".to_string(),
 			Function::Now => "Now".to_string(),
 			Function::Date => "Date".to_string(),
 			Function::Time => "Time".to_string(),
+			Function::TimeUnits => "Time".to_string(),
+			Function::Nanoseconds => "ns".to_string(),
+			Function::Microseconds => "μs".to_string(),
+			Function::Milliseconds => "ms".to_string(),
+			Function::Seconds => "sec".to_string(),
+			Function::Minutes => "min".to_string(),
+			Function::Hours => "hr".to_string(),
+			Function::Days => "day".to_string(),
+			Function::Years => "yr".to_string(),
+			Function::InverseTimeUnits => "/Time".to_string(),
+			Function::InverseNanoseconds => "/ns".to_string(),
+			Function::InverseMicroseconds => "/μs".to_string(),
+			Function::InverseMilliseconds => "/ms".to_string(),
+			Function::InverseSeconds => "/sec".to_string(),
+			Function::InverseMinutes => "/min".to_string(),
+			Function::InverseHours => "/hr".to_string(),
+			Function::InverseDays => "/day".to_string(),
+			Function::InverseYears => "/yr".to_string(),
+			Function::ToTimeUnits => "▸Time".to_string(),
+			Function::ToNanoseconds => "▸ns".to_string(),
+			Function::ToMicroseconds => "▸μs".to_string(),
+			Function::ToMilliseconds => "▸ms".to_string(),
+			Function::ToSeconds => "▸sec".to_string(),
+			Function::ToMinutes => "▸min".to_string(),
+			Function::ToHours => "▸hr".to_string(),
+			Function::ToDays => "▸day".to_string(),
+			Function::ToYears => "▸yr".to_string(),
+			Function::DistanceUnits => "Dist".to_string(),
+			Function::Meters => "m".to_string(),
+			Function::Inches => "in".to_string(),
+			Function::Feet => "ft".to_string(),
+			Function::Yards => "yd".to_string(),
+			Function::Miles => "mi".to_string(),
+			Function::NauticalMiles => "nmi".to_string(),
+			Function::Nanometers => "nm".to_string(),
+			Function::Micrometers => "μm".to_string(),
+			Function::Millimeters => "mm".to_string(),
+			Function::Centimeters => "cm".to_string(),
+			Function::Kilometers => "km".to_string(),
+			Function::AstronomicalUnits => "au".to_string(),
+			Function::InverseDistanceUnits => "/Dist".to_string(),
+			Function::InverseMeters => "/m".to_string(),
+			Function::InverseInches => "/in".to_string(),
+			Function::InverseFeet => "/ft".to_string(),
+			Function::InverseYards => "/yd".to_string(),
+			Function::InverseMiles => "/mi".to_string(),
+			Function::InverseNauticalMiles => "/nmi".to_string(),
+			Function::InverseNanometers => "/nm".to_string(),
+			Function::InverseMicrometers => "/μm".to_string(),
+			Function::InverseMillimeters => "/mm".to_string(),
+			Function::InverseCentimeters => "/cm".to_string(),
+			Function::InverseKilometers => "/km".to_string(),
+			Function::InverseAstronomicalUnits => "/au".to_string(),
+			Function::ToDistanceUnits => "▸Dist".to_string(),
+			Function::ToMeters => "▸m".to_string(),
+			Function::ToInches => "▸in".to_string(),
+			Function::ToFeet => "▸ft".to_string(),
+			Function::ToYards => "▸yd".to_string(),
+			Function::ToMiles => "▸mi".to_string(),
+			Function::ToNauticalMiles => "▸nmi".to_string(),
+			Function::ToNanometers => "▸nm".to_string(),
+			Function::ToMicrometers => "▸μm".to_string(),
+			Function::ToMillimeters => "▸mm".to_string(),
+			Function::ToCentimeters => "▸cm".to_string(),
+			Function::ToKilometers => "▸km".to_string(),
+			Function::ToAstronomicalUnits => "▸au".to_string(),
 		}
 	}
 
@@ -495,6 +634,16 @@ impl Function {
 				state.format.integer_radix = 10;
 				state.stack.end_edit();
 			}
+			Function::ConstCatalog => state.function_keys.show_menu(FunctionMenu::ConstCatalog),
+			Function::SpeedOfLight => {
+				state.stack.input_value(Value::NumberWithUnit(
+					299_792_458.to_number(),
+					CompositeUnit::ratio_unit(
+						DistanceUnit::Meters.into(),
+						TimeUnit::Seconds.into(),
+					),
+				));
+			}
 			Function::TimeCatalog => state.function_keys.show_menu(FunctionMenu::TimeCatalog),
 			Function::Now => {
 				state
@@ -529,7 +678,7 @@ impl Function {
 					state.stack.set_top(Value::Time(time));
 				} else if state.stack.len() >= 3 {
 					if let Some(nano) = state.stack.entry(0)
-						* &Value::Number(Number::Integer(1000000000.to_bigint().unwrap()))
+						* &Value::Number(Number::Integer(1_000_000_000.to_bigint().unwrap()))
 					{
 						if let (Some(hr), Some(min), Some(sec)) = (
 							state.stack.entry(2).to_int(),
@@ -539,8 +688,8 @@ impl Function {
 							if let (Ok(hr), Ok(min), Ok(sec)) =
 								(u8::try_from(hr), u8::try_from(min), u64::try_from(sec))
 							{
-								let nsec = (sec % 1000000000) as u32;
-								let sec = (sec / 1000000000) as u32;
+								let nsec = (sec % 1_000_000_000) as u32;
+								let sec = (sec / 1_000_000_000) as u32;
 								if let Some(time) =
 									NaiveTime::from_hms_nano_opt(hr as u32, min as u32, sec, nsec)
 								{
@@ -549,6 +698,438 @@ impl Function {
 							}
 						}
 					}
+				}
+			}
+			Function::TimeUnits => state.function_keys.show_menu(FunctionMenu::TimeUnit),
+			Function::Nanoseconds => {
+				if let Some(value) = state.stack.top().add_unit(TimeUnit::Nanoseconds.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::Microseconds => {
+				if let Some(value) = state.stack.top().add_unit(TimeUnit::Microseconds.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::Milliseconds => {
+				if let Some(value) = state.stack.top().add_unit(TimeUnit::Milliseconds.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::Seconds => {
+				if let Some(value) = state.stack.top().add_unit(TimeUnit::Seconds.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::Minutes => {
+				if let Some(value) = state.stack.top().add_unit(TimeUnit::Minutes.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::Hours => {
+				if let Some(value) = state.stack.top().add_unit(TimeUnit::Hours.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::Days => {
+				if let Some(value) = state.stack.top().add_unit(TimeUnit::Days.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::Years => {
+				if let Some(value) = state.stack.top().add_unit(TimeUnit::Years.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::InverseTimeUnits => {
+				state.function_keys.show_menu(FunctionMenu::InverseTimeUnit)
+			}
+			Function::InverseNanoseconds => {
+				if let Some(value) = state.stack.top().add_unit_inv(TimeUnit::Nanoseconds.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::InverseMicroseconds => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.add_unit_inv(TimeUnit::Microseconds.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::InverseMilliseconds => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.add_unit_inv(TimeUnit::Milliseconds.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::InverseSeconds => {
+				if let Some(value) = state.stack.top().add_unit_inv(TimeUnit::Seconds.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::InverseMinutes => {
+				if let Some(value) = state.stack.top().add_unit_inv(TimeUnit::Minutes.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::InverseHours => {
+				if let Some(value) = state.stack.top().add_unit_inv(TimeUnit::Hours.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::InverseDays => {
+				if let Some(value) = state.stack.top().add_unit_inv(TimeUnit::Days.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::InverseYears => {
+				if let Some(value) = state.stack.top().add_unit_inv(TimeUnit::Years.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::ToTimeUnits => state.function_keys.show_menu(FunctionMenu::ToTimeUnit),
+			Function::ToNanoseconds => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.convert_single_unit(TimeUnit::Nanoseconds.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::ToMicroseconds => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.convert_single_unit(TimeUnit::Microseconds.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::ToMilliseconds => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.convert_single_unit(TimeUnit::Milliseconds.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::ToSeconds => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.convert_single_unit(TimeUnit::Seconds.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::ToMinutes => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.convert_single_unit(TimeUnit::Minutes.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::ToHours => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.convert_single_unit(TimeUnit::Hours.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::ToDays => {
+				if let Some(value) = state.stack.top().convert_single_unit(TimeUnit::Days.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::ToYears => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.convert_single_unit(TimeUnit::Years.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::DistanceUnits => state.function_keys.show_menu(FunctionMenu::DistanceUnit),
+			Function::Nanometers => {
+				if let Some(value) = state.stack.top().add_unit(DistanceUnit::Nanometers.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::Micrometers => {
+				if let Some(value) = state.stack.top().add_unit(DistanceUnit::Micrometers.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::Millimeters => {
+				if let Some(value) = state.stack.top().add_unit(DistanceUnit::Millimeters.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::Centimeters => {
+				if let Some(value) = state.stack.top().add_unit(DistanceUnit::Centimeters.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::Meters => {
+				if let Some(value) = state.stack.top().add_unit(DistanceUnit::Meters.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::Kilometers => {
+				if let Some(value) = state.stack.top().add_unit(DistanceUnit::Kilometers.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::Inches => {
+				if let Some(value) = state.stack.top().add_unit(DistanceUnit::Inches.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::Feet => {
+				if let Some(value) = state.stack.top().add_unit(DistanceUnit::Feet.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::Yards => {
+				if let Some(value) = state.stack.top().add_unit(DistanceUnit::Yards.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::Miles => {
+				if let Some(value) = state.stack.top().add_unit(DistanceUnit::Miles.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::NauticalMiles => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.add_unit(DistanceUnit::NauticalMiles.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::AstronomicalUnits => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.add_unit(DistanceUnit::AstronomicalUnits.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::InverseDistanceUnits => state
+				.function_keys
+				.show_menu(FunctionMenu::InverseDistanceUnit),
+			Function::InverseNanometers => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.add_unit_inv(DistanceUnit::Nanometers.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::InverseMicrometers => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.add_unit_inv(DistanceUnit::Micrometers.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::InverseMillimeters => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.add_unit_inv(DistanceUnit::Millimeters.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::InverseCentimeters => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.add_unit_inv(DistanceUnit::Centimeters.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::InverseMeters => {
+				if let Some(value) = state.stack.top().add_unit_inv(DistanceUnit::Meters.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::InverseKilometers => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.add_unit_inv(DistanceUnit::Kilometers.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::InverseInches => {
+				if let Some(value) = state.stack.top().add_unit_inv(DistanceUnit::Inches.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::InverseFeet => {
+				if let Some(value) = state.stack.top().add_unit_inv(DistanceUnit::Feet.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::InverseYards => {
+				if let Some(value) = state.stack.top().add_unit_inv(DistanceUnit::Yards.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::InverseMiles => {
+				if let Some(value) = state.stack.top().add_unit_inv(DistanceUnit::Miles.into()) {
+					state.set_top(value);
+				}
+			}
+			Function::InverseNauticalMiles => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.add_unit_inv(DistanceUnit::NauticalMiles.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::InverseAstronomicalUnits => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.add_unit_inv(DistanceUnit::AstronomicalUnits.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::ToDistanceUnits => {
+				state.function_keys.show_menu(FunctionMenu::ToDistanceUnit)
+			}
+			Function::ToNanometers => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.convert_single_unit(DistanceUnit::Nanometers.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::ToMicrometers => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.convert_single_unit(DistanceUnit::Micrometers.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::ToMillimeters => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.convert_single_unit(DistanceUnit::Millimeters.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::ToCentimeters => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.convert_single_unit(DistanceUnit::Centimeters.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::ToMeters => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.convert_single_unit(DistanceUnit::Meters.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::ToKilometers => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.convert_single_unit(DistanceUnit::Kilometers.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::ToInches => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.convert_single_unit(DistanceUnit::Inches.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::ToFeet => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.convert_single_unit(DistanceUnit::Feet.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::ToYards => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.convert_single_unit(DistanceUnit::Yards.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::ToMiles => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.convert_single_unit(DistanceUnit::Miles.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::ToNauticalMiles => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.convert_single_unit(DistanceUnit::NauticalMiles.into())
+				{
+					state.set_top(value);
+				}
+			}
+			Function::ToAstronomicalUnits => {
+				if let Some(value) = state
+					.stack
+					.top()
+					.convert_single_unit(DistanceUnit::AstronomicalUnits.into())
+				{
+					state.set_top(value);
 				}
 			}
 		}
@@ -563,7 +1144,15 @@ pub enum FunctionMenu {
 	UnsignedInteger,
 	Logic,
 	Catalog,
+	ConstCatalog,
 	TimeCatalog,
+	Units,
+	TimeUnit,
+	InverseTimeUnit,
+	ToTimeUnit,
+	DistanceUnit,
+	InverseDistanceUnit,
+	ToDistanceUnit,
 }
 
 impl FunctionMenu {
@@ -620,11 +1209,116 @@ impl FunctionMenu {
 				Some(Function::RotateRight),
 			]
 			.to_vec(),
-			FunctionMenu::Catalog => [Some(Function::TimeCatalog)].to_vec(),
+			FunctionMenu::Catalog => {
+				[Some(Function::ConstCatalog), Some(Function::TimeCatalog)].to_vec()
+			}
+			FunctionMenu::ConstCatalog => [Some(Function::SpeedOfLight)].to_vec(),
 			FunctionMenu::TimeCatalog => [
 				Some(Function::Now),
 				Some(Function::Date),
 				Some(Function::Time),
+			]
+			.to_vec(),
+			FunctionMenu::Units => [
+				Some(Function::DistanceUnits),
+				Some(Function::TimeUnits),
+				None,
+				None,
+				None,
+				None,
+				Some(Function::ToDistanceUnits),
+				Some(Function::ToTimeUnits),
+				None,
+				None,
+				None,
+				None,
+				Some(Function::InverseDistanceUnits),
+				Some(Function::InverseTimeUnits),
+				None,
+				None,
+				None,
+				None,
+			]
+			.to_vec(),
+			FunctionMenu::TimeUnit => [
+				Some(Function::Seconds),
+				Some(Function::Minutes),
+				Some(Function::Hours),
+				Some(Function::Days),
+				Some(Function::Years),
+				None,
+				Some(Function::Milliseconds),
+				Some(Function::Microseconds),
+				Some(Function::Nanoseconds),
+			]
+			.to_vec(),
+			FunctionMenu::InverseTimeUnit => [
+				Some(Function::InverseSeconds),
+				Some(Function::InverseMinutes),
+				Some(Function::InverseHours),
+				Some(Function::InverseDays),
+				Some(Function::InverseYears),
+				None,
+				Some(Function::InverseMilliseconds),
+				Some(Function::InverseMicroseconds),
+				Some(Function::InverseNanoseconds),
+			]
+			.to_vec(),
+			FunctionMenu::ToTimeUnit => [
+				Some(Function::ToSeconds),
+				Some(Function::ToMinutes),
+				Some(Function::ToHours),
+				Some(Function::ToDays),
+				Some(Function::ToYears),
+				None,
+				Some(Function::ToMilliseconds),
+				Some(Function::ToMicroseconds),
+				Some(Function::ToNanoseconds),
+			]
+			.to_vec(),
+			FunctionMenu::DistanceUnit => [
+				Some(Function::Meters),
+				Some(Function::Kilometers),
+				Some(Function::Feet),
+				Some(Function::Yards),
+				Some(Function::Miles),
+				Some(Function::NauticalMiles),
+				Some(Function::Nanometers),
+				Some(Function::Micrometers),
+				Some(Function::Millimeters),
+				Some(Function::Centimeters),
+				Some(Function::Inches),
+				Some(Function::AstronomicalUnits),
+			]
+			.to_vec(),
+			FunctionMenu::InverseDistanceUnit => [
+				Some(Function::InverseMeters),
+				Some(Function::InverseKilometers),
+				Some(Function::InverseFeet),
+				Some(Function::InverseYards),
+				Some(Function::InverseMiles),
+				Some(Function::InverseNauticalMiles),
+				Some(Function::InverseNanometers),
+				Some(Function::InverseMicrometers),
+				Some(Function::InverseMillimeters),
+				Some(Function::InverseCentimeters),
+				Some(Function::InverseInches),
+				Some(Function::InverseAstronomicalUnits),
+			]
+			.to_vec(),
+			FunctionMenu::ToDistanceUnit => [
+				Some(Function::ToMeters),
+				Some(Function::ToKilometers),
+				Some(Function::ToFeet),
+				Some(Function::ToYards),
+				Some(Function::ToMiles),
+				Some(Function::ToNauticalMiles),
+				Some(Function::ToNanometers),
+				Some(Function::ToMicrometers),
+				Some(Function::ToMillimeters),
+				Some(Function::ToCentimeters),
+				Some(Function::ToInches),
+				Some(Function::ToAstronomicalUnits),
 			]
 			.to_vec(),
 		}

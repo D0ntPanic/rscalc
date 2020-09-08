@@ -15,9 +15,8 @@ pub struct Stack {
 
 impl Stack {
 	pub fn new() -> Self {
-		let zero: Number = 0.into();
 		let mut entries = Vec::new();
-		entries.push(zero.into());
+		entries.push(0.into());
 		Stack {
 			entries,
 			editor: None,

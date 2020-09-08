@@ -1,9 +1,10 @@
 use crate::edit::NumberEditor;
-use crate::font::{SANS_16, SANS_20, SANS_24};
+use crate::font::{SANS_13, SANS_16, SANS_20, SANS_24};
 use crate::layout::Layout;
-use crate::number::{Number, NumberFormat, NumberFormatMode};
+use crate::number::{Number, NumberFormat, NumberFormatMode, ToNumber};
 use crate::screen::Color;
 use crate::time::{SimpleDateTimeFormat, SimpleDateTimeToString};
+use crate::unit::{CompositeUnit, TimeUnit, Unit};
 use alloc::boxed::Box;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -15,6 +16,7 @@ use num_bigint::{BigInt, ToBigInt};
 #[derive(Clone)]
 pub enum Value {
 	Number(Number),
+	NumberWithUnit(Number, CompositeUnit),
 	DateTime(NaiveDateTime),
 	Date(NaiveDate),
 	Time(NaiveTime),
@@ -24,6 +26,7 @@ impl Value {
 	pub fn is_numeric(&self) -> bool {
 		match self {
 			Value::Number(_) => true,
+			Value::NumberWithUnit(_, _) => true,
 			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => false,
 		}
 	}
@@ -31,6 +34,7 @@ impl Value {
 	pub fn number(&self) -> Option<&Number> {
 		match self {
 			Value::Number(num) => Some(num),
+			Value::NumberWithUnit(num, _) => Some(num),
 			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
 		}
 	}
@@ -38,6 +42,7 @@ impl Value {
 	pub fn to_int(&self) -> Option<BigInt> {
 		match self {
 			Value::Number(num) => num.to_int(),
+			Value::NumberWithUnit(num, _) => num.to_int(),
 			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
 		}
 	}
@@ -45,6 +50,7 @@ impl Value {
 	pub fn to_str(&self) -> String {
 		match self {
 			Value::Number(num) => num.to_str(),
+			Value::NumberWithUnit(num, _) => num.to_str(),
 			Value::DateTime(dt) => dt.to_str(&SimpleDateTimeFormat::full()),
 			Value::Date(date) => date.to_str(&SimpleDateTimeFormat::date()),
 			Value::Time(time) => time.to_str(&SimpleDateTimeFormat::time()),
@@ -54,6 +60,7 @@ impl Value {
 	pub fn format(&self, format: &NumberFormat) -> String {
 		match self {
 			Value::Number(num) => format.format_number(num),
+			Value::NumberWithUnit(num, _) => format.format_number(num),
 			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => self.to_str(),
 		}
 	}
@@ -154,9 +161,64 @@ impl Value {
 		}
 	}
 
+	pub fn add_unit(&self, unit: Unit) -> Option<Value> {
+		match self {
+			Value::Number(num) => Some(Value::NumberWithUnit(
+				num.clone(),
+				CompositeUnit::single_unit(unit),
+			)),
+			Value::NumberWithUnit(num, existing_unit) => {
+				let mut new_unit = existing_unit.clone();
+				let new_num = new_unit.add_unit(num, unit);
+				if new_unit.unitless() {
+					Some(Value::Number(new_num))
+				} else {
+					Some(Value::NumberWithUnit(new_num, new_unit))
+				}
+			}
+			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
+		}
+	}
+
+	pub fn add_unit_inv(&self, unit: Unit) -> Option<Value> {
+		match self {
+			Value::Number(num) => Some(Value::NumberWithUnit(
+				num.clone(),
+				CompositeUnit::single_unit_inv(unit),
+			)),
+			Value::NumberWithUnit(num, existing_unit) => {
+				let mut new_unit = existing_unit.clone();
+				let new_num = new_unit.add_unit_inv(num, unit);
+				if new_unit.unitless() {
+					Some(Value::Number(new_num))
+				} else {
+					Some(Value::NumberWithUnit(new_num, new_unit))
+				}
+			}
+			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
+		}
+	}
+
+	pub fn convert_single_unit(&self, unit: Unit) -> Option<Value> {
+		match self {
+			Value::NumberWithUnit(num, existing_unit) => {
+				let mut new_unit = existing_unit.clone();
+				if let Some(new_num) = new_unit.convert_single_unit(num, unit) {
+					if new_unit.unitless() {
+						Some(Value::Number(new_num))
+					} else {
+						Some(Value::NumberWithUnit(new_num, new_unit))
+					}
+				} else {
+					None
+				}
+			}
+			Value::Number(_) | Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
+		}
+	}
+
 	fn datetime_add_secs(&self, dt: &NaiveDateTime, secs: &Number) -> Option<Value> {
-		let to_nano: Number = 1000000000.into();
-		if let Some(int) = (secs * &to_nano).to_int() {
+		if let Some(int) = (secs * &1_000_000_000.to_number()).to_int() {
 			if let Ok(nano) = i64::try_from(int) {
 				Some(Value::DateTime(dt.add(Duration::nanoseconds(nano))))
 			} else {
@@ -180,8 +242,7 @@ impl Value {
 	}
 
 	fn time_add_secs(&self, time: &NaiveTime, secs: &Number) -> Option<Value> {
-		let to_nano: Number = 1000000000.into();
-		if let Some(int) = (secs * &to_nano).to_int() {
+		if let Some(int) = (secs * &1_000_000_000.to_number()).to_int() {
 			if let Ok(nano) = i64::try_from(int) {
 				Some(Value::Time(time.add(Duration::nanoseconds(nano))))
 			} else {
@@ -196,16 +257,82 @@ impl Value {
 		match self {
 			Value::Number(left) => match rhs {
 				Value::Number(right) => Some(Value::Number(left + right)),
+				Value::NumberWithUnit(right, right_unit) => {
+					Some(Value::NumberWithUnit(left + right, right_unit.clone()))
+				}
 				Value::DateTime(right) => self.datetime_add_secs(right, left),
 				Value::Date(right) => self.date_add_days(right, left),
 				Value::Time(right) => self.time_add_secs(right, left),
 			},
+			Value::NumberWithUnit(left, left_unit) => match rhs {
+				Value::Number(right) => {
+					Some(Value::NumberWithUnit(left + right, left_unit.clone()))
+				}
+				Value::NumberWithUnit(right, right_unit) => {
+					if let Some(left_coerce) = left_unit.coerce_to_other(left, right_unit) {
+						Some(Value::NumberWithUnit(
+							&left_coerce + right,
+							right_unit.clone(),
+						))
+					} else {
+						None
+					}
+				}
+				Value::DateTime(right) => {
+					if let Some(left_seconds) = left_unit.coerce_to_other(
+						left,
+						&CompositeUnit::single_unit(TimeUnit::Seconds.into()),
+					) {
+						self.datetime_add_secs(right, &left_seconds)
+					} else {
+						None
+					}
+				}
+				Value::Date(right) => {
+					if let Some(left_seconds) = left_unit
+						.coerce_to_other(left, &CompositeUnit::single_unit(TimeUnit::Days.into()))
+					{
+						self.date_add_days(right, &left_seconds)
+					} else {
+						None
+					}
+				}
+				Value::Time(right) => {
+					if let Some(left_seconds) = left_unit.coerce_to_other(
+						left,
+						&CompositeUnit::single_unit(TimeUnit::Seconds.into()),
+					) {
+						self.time_add_secs(right, &left_seconds)
+					} else {
+						None
+					}
+				}
+			},
 			Value::DateTime(left) => match rhs {
 				Value::Number(right) => self.datetime_add_secs(left, right),
+				Value::NumberWithUnit(right, right_unit) => {
+					if let Some(right_seconds) = right_unit.coerce_to_other(
+						right,
+						&CompositeUnit::single_unit(TimeUnit::Seconds.into()),
+					) {
+						self.datetime_add_secs(left, &right_seconds)
+					} else {
+						None
+					}
+				}
 				_ => None,
 			},
 			Value::Date(left) => match rhs {
 				Value::Number(right) => self.date_add_days(left, right),
+				Value::NumberWithUnit(right, right_unit) => {
+					if let Some(right_seconds) = right_unit
+						.coerce_to_other(right, &CompositeUnit::single_unit(TimeUnit::Days.into()))
+					{
+						self.date_add_days(left, &right_seconds)
+					} else {
+						None
+					}
+				}
 				Value::Time(right) => Some(Value::DateTime(NaiveDateTime::new(
 					left.clone(),
 					right.clone(),
@@ -214,6 +341,16 @@ impl Value {
 			},
 			Value::Time(left) => match rhs {
 				Value::Number(right) => self.time_add_secs(left, right),
+				Value::NumberWithUnit(right, right_unit) => {
+					if let Some(right_seconds) = right_unit.coerce_to_other(
+						right,
+						&CompositeUnit::single_unit(TimeUnit::Seconds.into()),
+					) {
+						self.time_add_secs(left, &right_seconds)
+					} else {
+						None
+					}
+				}
 				Value::Date(right) => Some(Value::DateTime(NaiveDateTime::new(
 					right.clone(),
 					left.clone(),
@@ -227,16 +364,46 @@ impl Value {
 		match self {
 			Value::Number(left) => match rhs {
 				Value::Number(right) => Some(Value::Number(left - right)),
+				Value::NumberWithUnit(right, right_unit) => {
+					Some(Value::NumberWithUnit(left - right, right_unit.clone()))
+				}
+				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
+			},
+			Value::NumberWithUnit(left, left_unit) => match rhs {
+				Value::Number(right) => {
+					Some(Value::NumberWithUnit(left - right, left_unit.clone()))
+				}
+				Value::NumberWithUnit(right, right_unit) => {
+					if let Some(left_coerce) = left_unit.coerce_to_other(left, right_unit) {
+						Some(Value::NumberWithUnit(
+							&left_coerce - right,
+							right_unit.clone(),
+						))
+					} else {
+						None
+					}
+				}
 				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
 			},
 			Value::DateTime(left) => match rhs {
 				Value::Number(right) => self.datetime_add_secs(left, &-right),
+				Value::NumberWithUnit(right, right_unit) => {
+					if let Some(right_seconds) = right_unit.coerce_to_other(
+						right,
+						&CompositeUnit::single_unit(TimeUnit::Seconds.into()),
+					) {
+						self.datetime_add_secs(left, &-right_seconds)
+					} else {
+						None
+					}
+				}
 				Value::DateTime(right) => {
 					if let Some(nanoseconds) = left.signed_duration_since(*right).num_nanoseconds()
 					{
-						let nanoseconds: Number = nanoseconds.into();
-						let nanosec_to_secs: Number = 1000000000.into();
-						Some(Value::Number(nanoseconds / nanosec_to_secs))
+						Some(Value::NumberWithUnit(
+							nanoseconds.to_number() / 1_000_000_000.to_number(),
+							CompositeUnit::single_unit(TimeUnit::Seconds.into()),
+						))
 					} else {
 						None
 					}
@@ -245,20 +412,43 @@ impl Value {
 			},
 			Value::Date(left) => match rhs {
 				Value::Number(right) => self.date_add_days(left, &-right),
+				Value::NumberWithUnit(right, right_unit) => {
+					if let Some(right_seconds) = right_unit
+						.coerce_to_other(right, &CompositeUnit::single_unit(TimeUnit::Days.into()))
+					{
+						self.date_add_days(left, &-right_seconds)
+					} else {
+						None
+					}
+				}
 				Value::Date(right) => {
 					let days: Number = left.signed_duration_since(*right).num_days().into();
-					Some(Value::Number(days))
+					Some(Value::NumberWithUnit(
+						days,
+						CompositeUnit::single_unit(TimeUnit::Days.into()),
+					))
 				}
 				_ => None,
 			},
 			Value::Time(left) => match rhs {
 				Value::Number(right) => self.time_add_secs(left, &-right),
+				Value::NumberWithUnit(right, right_unit) => {
+					if let Some(right_seconds) = right_unit.coerce_to_other(
+						right,
+						&CompositeUnit::single_unit(TimeUnit::Seconds.into()),
+					) {
+						self.time_add_secs(left, &-right_seconds)
+					} else {
+						None
+					}
+				}
 				Value::Time(right) => {
 					if let Some(nanoseconds) = left.signed_duration_since(*right).num_nanoseconds()
 					{
-						let nanoseconds: Number = nanoseconds.into();
-						let nanosec_to_secs: Number = 1000000000.into();
-						Some(Value::Number(nanoseconds / nanosec_to_secs))
+						Some(Value::NumberWithUnit(
+							nanoseconds.to_number() / 1_000_000_000.to_number(),
+							CompositeUnit::single_unit(TimeUnit::Seconds.into()),
+						))
 					} else {
 						None
 					}
@@ -272,6 +462,20 @@ impl Value {
 		match self {
 			Value::Number(left) => match rhs {
 				Value::Number(right) => Some(Value::Number(left * right)),
+				Value::NumberWithUnit(right, right_unit) => {
+					Some(Value::NumberWithUnit(left * right, right_unit.clone()))
+				}
+				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
+			},
+			Value::NumberWithUnit(left, left_unit) => match rhs {
+				Value::Number(right) => {
+					Some(Value::NumberWithUnit(left * right, left_unit.clone()))
+				}
+				Value::NumberWithUnit(right, right_unit) => {
+					let mut unit = left_unit.clone();
+					let left = unit.combine(left, right_unit);
+					Some(Value::NumberWithUnit(&left * right, unit))
+				}
 				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
 			},
 			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
@@ -282,9 +486,160 @@ impl Value {
 		match self {
 			Value::Number(left) => match rhs {
 				Value::Number(right) => Some(Value::Number(left / right)),
+				Value::NumberWithUnit(right, right_unit) => {
+					Some(Value::NumberWithUnit(left / right, right_unit.inverse()))
+				}
+				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
+			},
+			Value::NumberWithUnit(left, left_unit) => match rhs {
+				Value::Number(right) => {
+					Some(Value::NumberWithUnit(left / right, left_unit.clone()))
+				}
+				Value::NumberWithUnit(right, right_unit) => {
+					let mut unit = left_unit.clone();
+					let left = unit.combine(left, &right_unit.inverse());
+					Some(Value::NumberWithUnit(&left / right, unit))
+				}
 				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
 			},
 			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
+		}
+	}
+
+	fn render_units(&self) -> Option<Layout> {
+		match self {
+			Value::NumberWithUnit(_, units) => {
+				// Font sizes are different depending on if the units have a fraction
+				// representation or not, so keep track of both
+				let mut numer_layout = Vec::new();
+				let mut numer_only_layout = Vec::new();
+				let mut denom_layout = Vec::new();
+				let mut denom_only_layout = Vec::new();
+
+				// Sort units into numerator and denominator layout lists
+				for (_, unit) in &units.units {
+					if unit.1 < 0 {
+						// Power is negative, unit is in denominator
+						if denom_layout.len() != 0 {
+							// Add multiplication symbol to separate unit names
+							denom_layout.push(Layout::Text(
+								"∙".to_string(),
+								&SANS_20,
+								Color::ContentText,
+							));
+							denom_only_layout.push(Layout::Text(
+								"∙".to_string(),
+								&SANS_24,
+								Color::ContentText,
+							));
+						}
+
+						// Create layout in denomator of a fraction
+						let unit_text = Layout::Text(unit.0.to_str(), &SANS_20, Color::ContentText);
+						let layout = if unit.1 < -1 {
+							Layout::Power(
+								Box::new(unit_text),
+								Box::new(Layout::Text(
+									(-unit.1).to_number().to_str(),
+									&SANS_13,
+									Color::ContentText,
+								)),
+							)
+						} else {
+							unit_text
+						};
+						denom_layout.push(layout);
+
+						// Create layout if there is no numerator
+						denom_only_layout.push(Layout::Power(
+							Box::new(Layout::Text(unit.0.to_str(), &SANS_24, Color::ContentText)),
+							Box::new(Layout::Text(
+								unit.1.to_number().to_str(),
+								&SANS_16,
+								Color::ContentText,
+							)),
+						));
+					} else if unit.1 > 0 {
+						// Power is positive, unit is in numerator
+						if numer_layout.len() != 0 {
+							// Add multiplication symbol to separate unit names
+							numer_layout.push(Layout::Text(
+								"∙".to_string(),
+								&SANS_20,
+								Color::ContentText,
+							));
+							numer_only_layout.push(Layout::Text(
+								"∙".to_string(),
+								&SANS_24,
+								Color::ContentText,
+							));
+						}
+
+						// Create layout in numerator of a fraction
+						let unit_text = Layout::Text(unit.0.to_str(), &SANS_20, Color::ContentText);
+						let layout = if unit.1 > 1 {
+							Layout::Power(
+								Box::new(unit_text),
+								Box::new(Layout::Text(
+									unit.1.to_number().to_str(),
+									&SANS_13,
+									Color::ContentText,
+								)),
+							)
+						} else {
+							unit_text
+						};
+						numer_layout.push(layout);
+
+						// Create layout if there is no denominator
+						let unit_text = Layout::Text(unit.0.to_str(), &SANS_24, Color::ContentText);
+						let layout = if unit.1 > 1 {
+							Layout::Power(
+								Box::new(unit_text),
+								Box::new(Layout::Text(
+									unit.1.to_number().to_str(),
+									&SANS_16,
+									Color::ContentText,
+								)),
+							)
+						} else {
+							unit_text
+						};
+						numer_only_layout.push(layout);
+					}
+				}
+
+				// Create final layout
+				if numer_layout.len() == 0 && denom_layout.len() == 0 {
+					// No unit
+					None
+				} else if denom_layout.len() == 0 {
+					// Numerator only
+					numer_only_layout.insert(
+						0,
+						Layout::Text(" ".to_string(), &SANS_24, Color::ContentText),
+					);
+					Some(Layout::Horizontal(numer_only_layout))
+				} else if numer_layout.len() == 0 {
+					// Denominator only
+					denom_only_layout.insert(
+						0,
+						Layout::Text(" ".to_string(), &SANS_24, Color::ContentText),
+					);
+					Some(Layout::Horizontal(denom_only_layout))
+				} else {
+					// Fraction
+					let mut final_layout = Vec::new();
+					final_layout.push(Layout::Text(" ".to_string(), &SANS_24, Color::ContentText));
+					final_layout.push(Layout::Fraction(
+						Box::new(Layout::Horizontal(numer_layout)),
+						Box::new(Layout::Horizontal(denom_layout)),
+						Color::ContentText,
+					));
+					Some(Layout::Horizontal(final_layout))
+				}
+			}
+			_ => None,
 		}
 	}
 
@@ -294,6 +649,8 @@ impl Value {
 		editor: &Option<NumberEditor>,
 		max_width: i32,
 	) -> Layout {
+		let mut max_width = max_width;
+
 		// Get string for number. If there is an editor, use editor state instead.
 		let string = match editor {
 			Some(editor) => editor.to_str(format),
@@ -343,6 +700,19 @@ impl Value {
 			let width = SANS_16.width(alt) + 4;
 			if width > max_width {
 				alt_string = None;
+			}
+		}
+
+		// Generate unit layout if there are units
+		let mut unit_layout = self.render_units();
+		if let Some(layout) = &unit_layout {
+			let width = layout.width();
+			if width > max_width / 2 {
+				// Units take up too much room, don't display them
+				unit_layout = None;
+			} else {
+				// Reduce remaining maximum width by width of units
+				max_width -= width;
 			}
 		}
 
@@ -513,6 +883,14 @@ impl Value {
 			}
 		}
 
+		// Add units to layout
+		if let Some(unit_layout) = unit_layout {
+			let mut items = Vec::new();
+			items.push(layout);
+			items.push(unit_layout);
+			layout = Layout::Horizontal(items);
+		}
+
 		// Add alternate string to layout if there was one
 		if let Some(alt_string) = alt_string {
 			let mut alt_layout_items = Vec::new();
@@ -671,8 +1049,7 @@ impl core::ops::Neg for Value {
 	type Output = Option<Value>;
 
 	fn neg(self) -> Self::Output {
-		let zero: Value = 0.into();
-		zero.value_sub(&self)
+		Value::Number(0.into()).value_sub(&self)
 	}
 }
 
@@ -680,7 +1057,6 @@ impl core::ops::Neg for &Value {
 	type Output = Option<Value>;
 
 	fn neg(self) -> Self::Output {
-		let zero: Value = 0.into();
-		zero.value_sub(self)
+		Value::Number(0.into()).value_sub(self)
 	}
 }

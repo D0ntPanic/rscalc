@@ -148,8 +148,7 @@ impl State {
 				}
 			}
 			InputEvent::Recip => {
-				let one: Value = 1.into();
-				if let Some(value) = one / self.top() {
+				if let Some(value) = Value::Number(1.into()) / self.top() {
 					self.set_top(value);
 				}
 			}
@@ -192,8 +191,7 @@ impl State {
 			}
 			InputEvent::Percent => {
 				if self.stack.len() >= 2 {
-					let one_hundred: Value = 100.into();
-					if let Some(factor) = self.entry(0) / one_hundred {
+					if let Some(factor) = self.entry(0) / Value::Number(100.into()) {
 						if let Some(value) = self.entry(1) * factor {
 							self.set_top(value);
 						}
@@ -252,6 +250,12 @@ impl State {
 			InputEvent::Logic => {
 				self.function_keys.show_toplevel_menu(FunctionMenu::Logic);
 			}
+			InputEvent::Convert => {
+				self.function_keys.show_toplevel_menu(FunctionMenu::Units);
+			}
+			InputEvent::Catalog => {
+				self.function_keys.show_toplevel_menu(FunctionMenu::Catalog);
+			}
 			InputEvent::FunctionKey(func, _) => {
 				if let Some(func) = self.function_keys.function(func) {
 					func.execute(self);
@@ -267,9 +271,6 @@ impl State {
 				#[cfg(feature = "dm42")]
 				show_system_setup_menu();
 				self.force_refresh = true;
-			}
-			InputEvent::Catalog => {
-				self.function_keys.show_toplevel_menu(FunctionMenu::Catalog);
 			}
 			InputEvent::Exit => {
 				if self.stack.editing() {
