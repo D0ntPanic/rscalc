@@ -3,44 +3,58 @@ use crate::font::{SANS_16, SANS_20, SANS_24};
 use crate::layout::Layout;
 use crate::number::{Number, NumberFormat, NumberFormatMode};
 use crate::screen::Color;
+use crate::time::{SimpleDateTimeFormat, SimpleDateTimeToString};
 use alloc::boxed::Box;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use chrono::{Duration, NaiveDate, NaiveDateTime, NaiveTime};
+use core::convert::TryFrom;
+use core::ops::Add;
 use num_bigint::{BigInt, ToBigInt};
 
 #[derive(Clone)]
 pub enum Value {
 	Number(Number),
+	DateTime(NaiveDateTime),
+	Date(NaiveDate),
+	Time(NaiveTime),
 }
 
 impl Value {
 	pub fn is_numeric(&self) -> bool {
 		match self {
 			Value::Number(_) => true,
+			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => false,
 		}
 	}
 
 	pub fn number(&self) -> Option<&Number> {
 		match self {
 			Value::Number(num) => Some(num),
+			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
 		}
 	}
 
 	pub fn to_int(&self) -> Option<BigInt> {
 		match self {
 			Value::Number(num) => num.to_int(),
+			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
 		}
 	}
 
 	pub fn to_str(&self) -> String {
 		match self {
 			Value::Number(num) => num.to_str(),
+			Value::DateTime(dt) => dt.to_str(&SimpleDateTimeFormat::full()),
+			Value::Date(date) => date.to_str(&SimpleDateTimeFormat::date()),
+			Value::Time(time) => time.to_str(&SimpleDateTimeFormat::time()),
 		}
 	}
 
 	pub fn format(&self, format: &NumberFormat) -> String {
 		match self {
 			Value::Number(num) => format.format_number(num),
+			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => self.to_str(),
 		}
 	}
 
@@ -140,10 +154,71 @@ impl Value {
 		}
 	}
 
+	fn datetime_add_secs(&self, dt: &NaiveDateTime, secs: &Number) -> Option<Value> {
+		let to_nano: Number = 1000000000.into();
+		if let Some(int) = (secs * &to_nano).to_int() {
+			if let Ok(nano) = i64::try_from(int) {
+				Some(Value::DateTime(dt.add(Duration::nanoseconds(nano))))
+			} else {
+				None
+			}
+		} else {
+			None
+		}
+	}
+
+	fn date_add_days(&self, date: &NaiveDate, days: &Number) -> Option<Value> {
+		if let Some(int) = days.to_int() {
+			if let Ok(days) = i64::try_from(int) {
+				Some(Value::Date(date.add(Duration::days(days))))
+			} else {
+				None
+			}
+		} else {
+			None
+		}
+	}
+
+	fn time_add_secs(&self, time: &NaiveTime, secs: &Number) -> Option<Value> {
+		let to_nano: Number = 1000000000.into();
+		if let Some(int) = (secs * &to_nano).to_int() {
+			if let Ok(nano) = i64::try_from(int) {
+				Some(Value::Time(time.add(Duration::nanoseconds(nano))))
+			} else {
+				None
+			}
+		} else {
+			None
+		}
+	}
+
 	fn value_add(&self, rhs: &Value) -> Option<Value> {
 		match self {
 			Value::Number(left) => match rhs {
 				Value::Number(right) => Some(Value::Number(left + right)),
+				Value::DateTime(right) => self.datetime_add_secs(right, left),
+				Value::Date(right) => self.date_add_days(right, left),
+				Value::Time(right) => self.time_add_secs(right, left),
+			},
+			Value::DateTime(left) => match rhs {
+				Value::Number(right) => self.datetime_add_secs(left, right),
+				_ => None,
+			},
+			Value::Date(left) => match rhs {
+				Value::Number(right) => self.date_add_days(left, right),
+				Value::Time(right) => Some(Value::DateTime(NaiveDateTime::new(
+					left.clone(),
+					right.clone(),
+				))),
+				_ => None,
+			},
+			Value::Time(left) => match rhs {
+				Value::Number(right) => self.time_add_secs(left, right),
+				Value::Date(right) => Some(Value::DateTime(NaiveDateTime::new(
+					right.clone(),
+					left.clone(),
+				))),
+				_ => None,
 			},
 		}
 	}
@@ -152,6 +227,43 @@ impl Value {
 		match self {
 			Value::Number(left) => match rhs {
 				Value::Number(right) => Some(Value::Number(left - right)),
+				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
+			},
+			Value::DateTime(left) => match rhs {
+				Value::Number(right) => self.datetime_add_secs(left, &-right),
+				Value::DateTime(right) => {
+					if let Some(nanoseconds) = left.signed_duration_since(*right).num_nanoseconds()
+					{
+						let nanoseconds: Number = nanoseconds.into();
+						let nanosec_to_secs: Number = 1000000000.into();
+						Some(Value::Number(nanoseconds / nanosec_to_secs))
+					} else {
+						None
+					}
+				}
+				_ => None,
+			},
+			Value::Date(left) => match rhs {
+				Value::Number(right) => self.date_add_days(left, &-right),
+				Value::Date(right) => {
+					let days: Number = left.signed_duration_since(*right).num_days().into();
+					Some(Value::Number(days))
+				}
+				_ => None,
+			},
+			Value::Time(left) => match rhs {
+				Value::Number(right) => self.time_add_secs(left, &-right),
+				Value::Time(right) => {
+					if let Some(nanoseconds) = left.signed_duration_since(*right).num_nanoseconds()
+					{
+						let nanoseconds: Number = nanoseconds.into();
+						let nanosec_to_secs: Number = 1000000000.into();
+						Some(Value::Number(nanoseconds / nanosec_to_secs))
+					} else {
+						None
+					}
+				}
+				_ => None,
 			},
 		}
 	}
@@ -160,7 +272,9 @@ impl Value {
 		match self {
 			Value::Number(left) => match rhs {
 				Value::Number(right) => Some(Value::Number(left * right)),
+				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
 			},
+			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
 		}
 	}
 
@@ -168,7 +282,9 @@ impl Value {
 		match self {
 			Value::Number(left) => match rhs {
 				Value::Number(right) => Some(Value::Number(left / right)),
+				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
 			},
+			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
 		}
 	}
 

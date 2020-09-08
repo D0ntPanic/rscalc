@@ -68,7 +68,7 @@ impl State {
 	}
 
 	fn time_string() -> String {
-		NaiveDateTime::now().to_str(&SimpleDateTimeFormat::new())
+		NaiveDateTime::now().to_str(&SimpleDateTimeFormat::status_bar())
 	}
 
 	pub fn top(&self) -> Value {
@@ -267,6 +267,9 @@ impl State {
 				#[cfg(feature = "dm42")]
 				show_system_setup_menu();
 				self.force_refresh = true;
+			}
+			InputEvent::Catalog => {
+				self.function_keys.show_toplevel_menu(FunctionMenu::Catalog);
 			}
 			InputEvent::Exit => {
 				if self.stack.editing() {

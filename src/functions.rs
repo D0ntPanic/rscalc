@@ -3,9 +3,11 @@ use crate::input::InputEvent;
 use crate::number::{IntegerMode, Number, NumberDecimalPointMode, NumberFormat, NumberFormatMode};
 use crate::screen::{Color, Rect, Screen};
 use crate::state::State;
+use crate::time::Now;
 use crate::value::Value;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use core::cell::RefCell;
 use core::convert::TryFrom;
 use num_bigint::ToBigInt;
@@ -48,6 +50,10 @@ pub enum Function {
 	Hex,
 	Octal,
 	Decimal,
+	TimeCatalog,
+	Now,
+	Date,
+	Time,
 }
 
 impl Function {
@@ -245,6 +251,10 @@ impl Function {
 					"Dec".to_string()
 				}
 			}
+			Function::TimeCatalog => "Time".to_string(),
+			Function::Now => "Now".to_string(),
+			Function::Date => "Date".to_string(),
+			Function::Time => "Time".to_string(),
 		}
 	}
 
@@ -485,6 +495,62 @@ impl Function {
 				state.format.integer_radix = 10;
 				state.stack.end_edit();
 			}
+			Function::TimeCatalog => state.function_keys.show_menu(FunctionMenu::TimeCatalog),
+			Function::Now => {
+				state
+					.stack
+					.input_value(Value::DateTime(NaiveDateTime::now()));
+			}
+			Function::Date => {
+				if let Value::DateTime(dt) = state.stack.top() {
+					let date = dt.date();
+					state.stack.set_top(Value::Date(date));
+				} else if state.stack.len() >= 3 {
+					if let (Some(year), Some(month), Some(day)) = (
+						state.stack.entry(2).to_int(),
+						state.stack.entry(1).to_int(),
+						state.stack.entry(0).to_int(),
+					) {
+						if let (Ok(year), Ok(month), Ok(day)) =
+							(i32::try_from(year), u8::try_from(month), u8::try_from(day))
+						{
+							if let Some(date) =
+								NaiveDate::from_ymd_opt(year, month as u32, day as u32)
+							{
+								state.stack.replace_entries(3, Value::Date(date));
+							}
+						}
+					}
+				}
+			}
+			Function::Time => {
+				if let Value::DateTime(dt) = state.stack.top() {
+					let time = dt.time();
+					state.stack.set_top(Value::Time(time));
+				} else if state.stack.len() >= 3 {
+					if let Some(nano) = state.stack.entry(0)
+						* &Value::Number(Number::Integer(1000000000.to_bigint().unwrap()))
+					{
+						if let (Some(hr), Some(min), Some(sec)) = (
+							state.stack.entry(2).to_int(),
+							state.stack.entry(1).to_int(),
+							nano.to_int(),
+						) {
+							if let (Ok(hr), Ok(min), Ok(sec)) =
+								(u8::try_from(hr), u8::try_from(min), u64::try_from(sec))
+							{
+								let nsec = (sec % 1000000000) as u32;
+								let sec = (sec / 1000000000) as u32;
+								if let Some(time) =
+									NaiveTime::from_hms_nano_opt(hr as u32, min as u32, sec, nsec)
+								{
+									state.stack.replace_entries(3, Value::Time(time));
+								}
+							}
+						}
+					}
+				}
+			}
 		}
 	}
 }
@@ -496,6 +562,8 @@ pub enum FunctionMenu {
 	SignedInteger,
 	UnsignedInteger,
 	Logic,
+	Catalog,
+	TimeCatalog,
 }
 
 impl FunctionMenu {
@@ -550,6 +618,13 @@ impl FunctionMenu {
 				Some(Function::ShiftRight),
 				Some(Function::RotateLeft),
 				Some(Function::RotateRight),
+			]
+			.to_vec(),
+			FunctionMenu::Catalog => [Some(Function::TimeCatalog)].to_vec(),
+			FunctionMenu::TimeCatalog => [
+				Some(Function::Now),
+				Some(Function::Date),
+				Some(Function::Time),
 			]
 			.to_vec(),
 		}

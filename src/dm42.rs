@@ -516,7 +516,6 @@ impl InputQueue for DM42InputQueue {
 			set_state(STAT_RUNNING);
 			clear_state(STAT_SUSPENDED);
 
-			let mut changes = false;
 			if state(STAT_OFF) {
 				LCD_power_on();
 				rtc_wakeup_delay();
@@ -526,9 +525,10 @@ impl InputQueue for DM42InputQueue {
 				if !lcd_get_buf_cleared() {
 					lcd_forced_refresh();
 				}
-				changes = true;
+				return None;
 			}
 
+			let mut changes = false;
 			if state(STAT_CLK_WKUP_FLAG) {
 				clear_state(STAT_CLK_WKUP_FLAG);
 				*CLOCK_CHANGED.lock() = true;
