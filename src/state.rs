@@ -1,12 +1,15 @@
-use crate::font::{SANS_13, SANS_16};
+use crate::font::{SANS_13, SANS_16, SANS_24};
 use crate::functions::{FunctionKeyState, FunctionMenu};
 use crate::input::{AlphaMode, InputEvent, InputMode};
-use crate::number::{IntegerMode, Number, NumberFormat};
+use crate::layout::Layout;
+use crate::number::{IntegerMode, Number, NumberFormat, ToNumber};
 use crate::screen::{Color, Font, Rect, Screen};
 use crate::stack::Stack;
 use crate::time::{Now, SimpleDateTimeFormat, SimpleDateTimeToString};
 use crate::value::Value;
+use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 use chrono::NaiveDateTime;
 use intel_dfp::Decimal;
 
@@ -23,6 +26,27 @@ struct CachedStatusBarState {
 	time_string: String,
 }
 
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub enum Location {
+	Integer(usize),
+	StackOffset(usize),
+	Variable(char),
+}
+
+#[derive(Clone)]
+struct LocationEntryState {
+	name: String,
+	stack: bool,
+	value: Option<usize>,
+}
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+enum InputState {
+	Normal,
+	Recall,
+	Store,
+}
+
 pub struct State {
 	pub stack: Stack,
 	pub input_mode: InputMode,
@@ -30,6 +54,9 @@ pub struct State {
 	pub function_keys: FunctionKeyState,
 	pub default_integer_format: IntegerMode,
 	pub prev_decimal_integer_mode: IntegerMode,
+	memory: BTreeMap<Location, Value>,
+	input_state: InputState,
+	location_entry: LocationEntryState,
 	cached_status_bar_state: CachedStatusBarState,
 	force_refresh: bool,
 }
@@ -37,6 +64,23 @@ pub struct State {
 pub enum InputResult {
 	Normal,
 	Suspend,
+}
+
+pub enum LocationInputResult {
+	Intermediate(InputResult),
+	Finished(Location),
+	Invalid,
+	Exit,
+}
+
+impl LocationEntryState {
+	fn new(name: String) -> Self {
+		LocationEntryState {
+			name,
+			stack: false,
+			value: None,
+		}
+	}
 }
 
 impl State {
@@ -62,6 +106,9 @@ impl State {
 			function_keys: FunctionKeyState::new(),
 			default_integer_format: IntegerMode::BigInteger,
 			prev_decimal_integer_mode: IntegerMode::Float,
+			memory: BTreeMap::new(),
+			input_state: InputState::Normal,
+			location_entry: LocationEntryState::new("".to_string()),
 			cached_status_bar_state,
 			force_refresh: true,
 		}
@@ -89,202 +136,392 @@ impl State {
 		self.stack.set_top(value);
 	}
 
-	pub fn handle_input(&mut self, input: InputEvent) -> InputResult {
-		match input {
-			InputEvent::Character(ch) => match ch {
-				'0'..='9' | 'A'..='Z' | 'a'..='z' | '.' => {
-					if ch != '.' || self.format.integer_mode == IntegerMode::Float {
-						self.stack.push_char(ch, &self.format);
-					}
-				}
-				_ => (),
-			},
-			InputEvent::E => {
-				if self.format.integer_mode == IntegerMode::Float {
-					self.stack.exponent();
-				}
-			}
-			InputEvent::Enter => {
-				self.stack.enter();
-			}
-			InputEvent::Backspace => {
-				self.stack.backspace();
-			}
-			InputEvent::Neg => {
-				if self.stack.editing() {
-					self.stack.neg();
+	pub fn set_entry(&mut self, offset: usize, value: Value) {
+		let value = Stack::value_for_integer_mode(&self.format.integer_mode, &value);
+		*self.stack.entry_mut(offset) = value;
+	}
+
+	pub fn read(&self, location: &Location) -> Option<Value> {
+		match location {
+			Location::StackOffset(offset) => {
+				if *offset < self.stack.len() {
+					Some(self.entry(*offset))
 				} else {
-					if let Some(value) = -self.top() {
-						self.set_top(value);
+					None
+				}
+			}
+			location => {
+				if let Some(value) = self.memory.get(location) {
+					Some(value.clone())
+				} else {
+					None
+				}
+			}
+		}
+	}
+
+	pub fn write(&mut self, location: Location, value: Value) -> bool {
+		match location {
+			Location::StackOffset(offset) => {
+				if offset < self.stack.len() {
+					self.set_entry(offset, value);
+					true
+				} else {
+					false
+				}
+			}
+			location => {
+				self.memory.insert(location, value);
+				true
+			}
+		}
+	}
+
+	pub fn handle_input(&mut self, input: InputEvent) -> InputResult {
+		match self.input_state {
+			InputState::Normal => {
+				match input {
+					InputEvent::Character(ch) => match ch {
+						'0'..='9' | 'A'..='Z' | 'a'..='z' | '.' => {
+							if ch != '.' || self.format.integer_mode == IntegerMode::Float {
+								self.stack.push_char(ch, &self.format);
+							}
+						}
+						_ => (),
+					},
+					InputEvent::E => {
+						if self.format.integer_mode == IntegerMode::Float {
+							self.stack.exponent();
+						}
+						self.input_mode.alpha = AlphaMode::Normal;
 					}
-				}
-			}
-			InputEvent::Add => {
-				if self.stack.len() >= 2 {
-					if let Some(value) = self.entry(1) + self.entry(0) {
-						self.replace_entries(2, value);
+					InputEvent::Enter => {
+						self.stack.enter();
+						self.input_mode.alpha = AlphaMode::Normal;
 					}
-				}
-			}
-			InputEvent::Sub => {
-				if self.stack.len() >= 2 {
-					if let Some(value) = self.entry(1) - self.entry(0) {
-						self.replace_entries(2, value);
+					InputEvent::Backspace => {
+						self.stack.backspace();
 					}
-				}
-			}
-			InputEvent::Mul => {
-				if self.stack.len() >= 2 {
-					if let Some(value) = self.entry(1) * self.entry(0) {
-						self.replace_entries(2, value);
+					InputEvent::Neg => {
+						if self.stack.editing() {
+							self.stack.neg();
+						} else {
+							if let Some(value) = -self.top() {
+								self.set_top(value);
+							}
+						}
+						self.input_mode.alpha = AlphaMode::Normal;
 					}
-				}
-			}
-			InputEvent::Div => {
-				if self.stack.len() >= 2 {
-					if let Some(value) = self.entry(1) / self.entry(0) {
-						self.replace_entries(2, value);
+					InputEvent::Add => {
+						if self.stack.len() >= 2 {
+							if let Some(value) = self.entry(1) + self.entry(0) {
+								self.replace_entries(2, value);
+							}
+						}
+						self.input_mode.alpha = AlphaMode::Normal;
 					}
-				}
-			}
-			InputEvent::Recip => {
-				if let Some(value) = Value::Number(1.into()) / self.top() {
-					self.set_top(value);
-				}
-			}
-			InputEvent::Pow => {
-				if self.stack.len() >= 2 {
-					if let Some(value) = self.entry(1).pow(&self.entry(0)) {
-						self.replace_entries(2, value);
+					InputEvent::Sub => {
+						if self.stack.len() >= 2 {
+							if let Some(value) = self.entry(1) - self.entry(0) {
+								self.replace_entries(2, value);
+							}
+						}
+						self.input_mode.alpha = AlphaMode::Normal;
 					}
-				}
-			}
-			InputEvent::Sqrt => {
-				if let Some(value) = self.top().sqrt() {
-					self.set_top(value);
-				}
-			}
-			InputEvent::Square => {
-				if let Some(value) = self.top() * self.top() {
-					self.set_top(value);
-				}
-			}
-			InputEvent::Log => {
-				if let Some(value) = self.top().log() {
-					self.set_top(value);
-				}
-			}
-			InputEvent::TenX => {
-				if let Some(value) = self.top().exp10() {
-					self.set_top(value);
-				}
-			}
-			InputEvent::Ln => {
-				if let Some(value) = self.top().log() {
-					self.set_top(value);
-				}
-			}
-			InputEvent::EX => {
-				if let Some(value) = self.top().exp() {
-					self.set_top(value);
-				}
-			}
-			InputEvent::Percent => {
-				if self.stack.len() >= 2 {
-					if let Some(factor) = self.entry(0) / Value::Number(100.into()) {
-						if let Some(value) = self.entry(1) * factor {
+					InputEvent::Mul => {
+						if self.stack.len() >= 2 {
+							if let Some(value) = self.entry(1) * self.entry(0) {
+								self.replace_entries(2, value);
+							}
+						}
+						self.input_mode.alpha = AlphaMode::Normal;
+					}
+					InputEvent::Div => {
+						if self.stack.len() >= 2 {
+							if let Some(value) = self.entry(1) / self.entry(0) {
+								self.replace_entries(2, value);
+							}
+						}
+						self.input_mode.alpha = AlphaMode::Normal;
+					}
+					InputEvent::Recip => {
+						if let Some(value) = Value::Number(1.into()) / self.top() {
 							self.set_top(value);
 						}
+						self.input_mode.alpha = AlphaMode::Normal;
+					}
+					InputEvent::Pow => {
+						if self.stack.len() >= 2 {
+							if let Some(value) = self.entry(1).pow(&self.entry(0)) {
+								self.replace_entries(2, value);
+							}
+						}
+						self.input_mode.alpha = AlphaMode::Normal;
+					}
+					InputEvent::Sqrt => {
+						if let Some(value) = self.top().sqrt() {
+							self.set_top(value);
+						}
+						self.input_mode.alpha = AlphaMode::Normal;
+					}
+					InputEvent::Square => {
+						if let Some(value) = self.top() * self.top() {
+							self.set_top(value);
+						}
+						self.input_mode.alpha = AlphaMode::Normal;
+					}
+					InputEvent::Log => {
+						if let Some(value) = self.top().log() {
+							self.set_top(value);
+						}
+						self.input_mode.alpha = AlphaMode::Normal;
+					}
+					InputEvent::TenX => {
+						if let Some(value) = self.top().exp10() {
+							self.set_top(value);
+						}
+						self.input_mode.alpha = AlphaMode::Normal;
+					}
+					InputEvent::Ln => {
+						if let Some(value) = self.top().log() {
+							self.set_top(value);
+						}
+						self.input_mode.alpha = AlphaMode::Normal;
+					}
+					InputEvent::EX => {
+						if let Some(value) = self.top().exp() {
+							self.set_top(value);
+						}
+						self.input_mode.alpha = AlphaMode::Normal;
+					}
+					InputEvent::Percent => {
+						if self.stack.len() >= 2 {
+							if let Some(factor) = self.entry(0) / Value::Number(100.into()) {
+								if let Some(value) = self.entry(1) * factor {
+									self.set_top(value);
+								}
+							}
+						}
+						self.input_mode.alpha = AlphaMode::Normal;
+					}
+					InputEvent::Pi => {
+						self.stack
+							.input_value(Value::Number(Number::Decimal(Decimal::pi())));
+						self.input_mode.alpha = AlphaMode::Normal;
+					}
+					InputEvent::Sin => {
+						if let Some(value) = self.top().sin() {
+							self.set_top(value);
+						}
+						self.input_mode.alpha = AlphaMode::Normal;
+					}
+					InputEvent::Cos => {
+						if let Some(value) = self.top().cos() {
+							self.set_top(value);
+						}
+						self.input_mode.alpha = AlphaMode::Normal;
+					}
+					InputEvent::Tan => {
+						if let Some(value) = self.top().tan() {
+							self.set_top(value);
+						}
+						self.input_mode.alpha = AlphaMode::Normal;
+					}
+					InputEvent::Asin => {
+						if let Some(value) = self.top().asin() {
+							self.set_top(value);
+						}
+						self.input_mode.alpha = AlphaMode::Normal;
+					}
+					InputEvent::Acos => {
+						if let Some(value) = self.top().acos() {
+							self.set_top(value);
+						}
+						self.input_mode.alpha = AlphaMode::Normal;
+					}
+					InputEvent::Atan => {
+						if let Some(value) = self.top().atan() {
+							self.set_top(value);
+						}
+						self.input_mode.alpha = AlphaMode::Normal;
+					}
+					InputEvent::RotateDown => {
+						if self.stack.len() >= 2 {
+							self.stack.rotate_down();
+						}
+						self.input_mode.alpha = AlphaMode::Normal;
+					}
+					InputEvent::Swap => {
+						if self.stack.len() >= 2 {
+							self.stack.swap(0, 1);
+						}
+						self.input_mode.alpha = AlphaMode::Normal;
+					}
+					InputEvent::Rcl => {
+						self.input_state = InputState::Recall;
+						self.location_entry = LocationEntryState::new("Rcl".to_string());
+						self.stack.end_edit();
+					}
+					InputEvent::Sto => {
+						self.input_state = InputState::Store;
+						self.location_entry = LocationEntryState::new("Sto".to_string());
+						self.stack.end_edit();
+					}
+					InputEvent::Disp => {
+						self.function_keys.show_toplevel_menu(FunctionMenu::Disp);
+					}
+					InputEvent::Base => {
+						self.function_keys.show_toplevel_menu(FunctionMenu::Base);
+					}
+					InputEvent::Logic => {
+						self.function_keys.show_toplevel_menu(FunctionMenu::Logic);
+					}
+					InputEvent::Convert => {
+						self.function_keys.show_toplevel_menu(FunctionMenu::Units);
+					}
+					InputEvent::Catalog => {
+						self.function_keys.show_toplevel_menu(FunctionMenu::Catalog);
+					}
+					InputEvent::FunctionKey(func, _) => {
+						if let Some(func) = self.function_keys.function(func) {
+							func.execute(self);
+							self.input_mode.alpha = AlphaMode::Normal;
+						}
+					}
+					InputEvent::Up => {
+						self.function_keys.prev_page();
+					}
+					InputEvent::Down => {
+						self.function_keys.next_page();
+					}
+					InputEvent::Setup => {
+						self.input_mode.alpha = AlphaMode::Normal;
+						#[cfg(feature = "dm42")]
+						show_system_setup_menu();
+						self.force_refresh = true;
+					}
+					InputEvent::Exit => {
+						if self.stack.editing() {
+							self.stack.end_edit();
+							self.input_mode.alpha = AlphaMode::Normal;
+						} else {
+							self.function_keys.exit_menu(&self.format);
+						}
+					}
+					InputEvent::Off => {
+						self.input_mode.alpha = AlphaMode::Normal;
+						return InputResult::Suspend;
+					}
+					_ => (),
+				}
+				InputResult::Normal
+			}
+			InputState::Recall => match self.handle_location_input(input) {
+				LocationInputResult::Intermediate(result) => result,
+				LocationInputResult::Finished(location) => {
+					if let Some(value) = self.read(&location) {
+						self.stack.input_value(value);
+					}
+					self.input_state = InputState::Normal;
+					self.input_mode.alpha = AlphaMode::Normal;
+					InputResult::Normal
+				}
+				LocationInputResult::Exit => {
+					self.input_state = InputState::Normal;
+					InputResult::Normal
+				}
+				LocationInputResult::Invalid => {
+					self.input_state = InputState::Normal;
+					InputResult::Normal
+				}
+			},
+			InputState::Store => match self.handle_location_input(input) {
+				LocationInputResult::Intermediate(result) => result,
+				LocationInputResult::Finished(location) => {
+					self.write(location, self.top());
+					self.input_state = InputState::Normal;
+					self.input_mode.alpha = AlphaMode::Normal;
+					InputResult::Normal
+				}
+				LocationInputResult::Exit => {
+					self.input_state = InputState::Normal;
+					self.input_mode.alpha = AlphaMode::Normal;
+					InputResult::Normal
+				}
+				LocationInputResult::Invalid => {
+					self.input_state = InputState::Normal;
+					self.input_mode.alpha = AlphaMode::Normal;
+					InputResult::Normal
+				}
+			},
+		}
+	}
+
+	fn handle_location_input(&mut self, input: InputEvent) -> LocationInputResult {
+		match input {
+			InputEvent::Character(ch) => match ch {
+				'0'..='9' => {
+					self.location_entry.value = if let Some(value) = self.location_entry.value {
+						Some(value * 10 + (ch as u32 - '0' as u32) as usize)
+					} else {
+						Some((ch as u32 - '0' as u32) as usize)
+					};
+					LocationInputResult::Intermediate(InputResult::Normal)
+				}
+				'.' => {
+					self.location_entry.stack = true;
+					LocationInputResult::Intermediate(InputResult::Normal)
+				}
+				'A'..='Z' | 'a'..='z' | 'α'..='ω' => {
+					if self.location_entry.stack {
+						match ch {
+							'x' | 'X' => LocationInputResult::Finished(Location::StackOffset(0)),
+							'y' | 'Y' => LocationInputResult::Finished(Location::StackOffset(1)),
+							'z' | 'Z' => LocationInputResult::Finished(Location::StackOffset(2)),
+							_ => LocationInputResult::Invalid,
+						}
+					} else if self.location_entry.value.is_some() {
+						LocationInputResult::Invalid
+					} else {
+						LocationInputResult::Finished(Location::Variable(ch))
 					}
 				}
-			}
-			InputEvent::Pi => self
-				.stack
-				.input_value(Value::Number(Number::Decimal(Decimal::pi()))),
-			InputEvent::Sin => {
-				if let Some(value) = self.top().sin() {
-					self.set_top(value);
-				}
-			}
-			InputEvent::Cos => {
-				if let Some(value) = self.top().cos() {
-					self.set_top(value);
-				}
-			}
-			InputEvent::Tan => {
-				if let Some(value) = self.top().tan() {
-					self.set_top(value);
-				}
-			}
-			InputEvent::Asin => {
-				if let Some(value) = self.top().asin() {
-					self.set_top(value);
-				}
-			}
-			InputEvent::Acos => {
-				if let Some(value) = self.top().acos() {
-					self.set_top(value);
-				}
-			}
-			InputEvent::Atan => {
-				if let Some(value) = self.top().atan() {
-					self.set_top(value);
-				}
-			}
-			InputEvent::RotateDown => {
-				if self.stack.len() >= 2 {
-					self.stack.rotate_down();
-				}
-			}
-			InputEvent::Swap => {
-				if self.stack.len() >= 2 {
-					self.stack.swap(0, 1);
-				}
-			}
-			InputEvent::Disp => {
-				self.function_keys.show_toplevel_menu(FunctionMenu::Disp);
-			}
-			InputEvent::Base => {
-				self.function_keys.show_toplevel_menu(FunctionMenu::Base);
-			}
-			InputEvent::Logic => {
-				self.function_keys.show_toplevel_menu(FunctionMenu::Logic);
-			}
-			InputEvent::Convert => {
-				self.function_keys.show_toplevel_menu(FunctionMenu::Units);
-			}
-			InputEvent::Catalog => {
-				self.function_keys.show_toplevel_menu(FunctionMenu::Catalog);
-			}
-			InputEvent::FunctionKey(func, _) => {
-				if let Some(func) = self.function_keys.function(func) {
-					func.execute(self);
-				}
-			}
-			InputEvent::Up => {
-				self.function_keys.prev_page();
-			}
-			InputEvent::Down => {
-				self.function_keys.next_page();
-			}
-			InputEvent::Setup => {
-				#[cfg(feature = "dm42")]
-				show_system_setup_menu();
-				self.force_refresh = true;
-			}
-			InputEvent::Exit => {
-				if self.stack.editing() {
-					self.stack.end_edit();
+				_ => LocationInputResult::Invalid,
+			},
+			InputEvent::Enter => {
+				if let Some(value) = self.location_entry.value {
+					if self.location_entry.stack {
+						LocationInputResult::Finished(Location::StackOffset(value))
+					} else {
+						LocationInputResult::Finished(Location::Integer(value))
+					}
 				} else {
-					self.function_keys.exit_menu(&self.format);
+					LocationInputResult::Invalid
 				}
 			}
-			InputEvent::Off => {
-				return InputResult::Suspend;
+			InputEvent::Backspace => {
+				if let Some(value) = self.location_entry.value {
+					let new_value = value / 10;
+					self.location_entry.value = if new_value == 0 {
+						None
+					} else {
+						Some(new_value)
+					};
+					LocationInputResult::Intermediate(InputResult::Normal)
+				} else if self.location_entry.stack {
+					self.location_entry.stack = false;
+					LocationInputResult::Intermediate(InputResult::Normal)
+				} else {
+					LocationInputResult::Exit
+				}
 			}
-			_ => (),
+			InputEvent::Exit => LocationInputResult::Exit,
+			InputEvent::Off => {
+				self.input_mode.alpha = AlphaMode::Normal;
+				LocationInputResult::Intermediate(InputResult::Suspend)
+			}
+			_ => LocationInputResult::Invalid,
 		}
-		InputResult::Normal
 	}
 
 	fn draw_status_bar_indicator<ScreenT: Screen>(
@@ -503,13 +740,74 @@ impl State {
 			self.function_keys.render(screen);
 		}
 
-		// Render the stack
-		let stack_area = Rect {
+		// Initialize stack area rectangle. It may be modified depending on extra
+		// state display.
+		let mut stack_area = Rect {
 			x: 0,
 			y: self.status_bar_size(),
 			w: screen.width(),
 			h: screen.height() - self.status_bar_size() - self.function_keys.height(),
 		};
+
+		// If there is an active location editor present, render it
+		if self.input_state == InputState::Recall || self.input_state == InputState::Store {
+			let mut items = Vec::new();
+			// Show use of location
+			items.push(Layout::Text(
+				self.location_entry.name.clone() + " ",
+				&SANS_24,
+				Color::ContentText,
+			));
+
+			// If this is a stack access, display "Stack"
+			if self.location_entry.stack {
+				items.push(Layout::Text(
+					"Stack ".to_string(),
+					&SANS_24,
+					Color::ContentText,
+				));
+			}
+
+			// Show currently edited number
+			items.push(Layout::EditText(
+				if let Some(value) = self.location_entry.value {
+					value.to_number().to_str()
+				} else {
+					"".to_string()
+				},
+				&SANS_24,
+				Color::ContentText,
+			));
+
+			items.push(Layout::HorizontalSpace(4));
+
+			// Render the layout and adjust the stack area to not include it
+			let layout = Layout::Horizontal(items);
+			let height = layout.height();
+			stack_area.h -= height;
+			let rect = Rect {
+				x: 0,
+				y: stack_area.y + stack_area.h,
+				w: screen.width(),
+				h: height,
+			};
+			let clip_rect = rect.clone();
+			screen.fill(rect.clone(), Color::ContentBackground);
+			layout.render(screen, rect, &clip_rect);
+
+			// Render a line to separate the stack area from the location editor
+			screen.fill(
+				Rect {
+					x: 0,
+					y: stack_area.y + stack_area.h,
+					w: screen.width(),
+					h: 1,
+				},
+				Color::ContentText,
+			);
+		}
+
+		// Render the stack
 		self.stack.render(screen, &self.format, stack_area);
 
 		// Refresh the LCD contents

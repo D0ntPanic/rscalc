@@ -66,9 +66,11 @@ impl Layout {
 		};
 
 		// Check to see if the layout is entirely out of the clipping bounds
-		let clipped_rect = rect.clipped_to(clip_rect);
-		if clipped_rect.w == 0 || clipped_rect.h == 0 {
-			return;
+		if width > 0 && height > 0 {
+			let clipped_rect = rect.clipped_to(clip_rect);
+			if clipped_rect.w == 0 || clipped_rect.h == 0 {
+				return;
+			}
 		}
 
 		// Render the layout to the screen

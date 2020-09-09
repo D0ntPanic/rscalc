@@ -588,7 +588,11 @@ impl NumberFormat {
 			NumberFormatMode::Engineering => {
 				let mut new_exponent = 1 - digit_str.len() as isize;
 				let mut display = exponent - new_exponent;
-				let offset = display % 3;
+				let offset = if (display < 0) && (display % 3 != 0) {
+					display % 3 + 3
+				} else {
+					display % 3
+				};
 				new_exponent += offset;
 				display -= offset;
 				exponent = new_exponent;
@@ -834,6 +838,18 @@ impl From<i128> for Number {
 	}
 }
 
+impl From<usize> for Number {
+	fn from(val: usize) -> Self {
+		Number::Integer(val.into())
+	}
+}
+
+impl From<isize> for Number {
+	fn from(val: isize) -> Self {
+		Number::Integer(val.into())
+	}
+}
+
 impl From<f32> for Number {
 	fn from(val: f32) -> Self {
 		Number::Decimal(val.into())
@@ -919,6 +935,18 @@ impl ToNumber for u128 {
 }
 
 impl ToNumber for i128 {
+	fn to_number(self) -> Number {
+		self.into()
+	}
+}
+
+impl ToNumber for usize {
+	fn to_number(self) -> Number {
+		self.into()
+	}
+}
+
+impl ToNumber for isize {
 	fn to_number(self) -> Number {
 		self.into()
 	}
