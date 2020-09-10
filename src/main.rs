@@ -27,6 +27,7 @@ mod dm42;
 mod simulated;
 
 mod edit;
+mod error;
 mod font;
 mod functions;
 mod input;
@@ -39,7 +40,7 @@ mod time;
 mod unit;
 mod value;
 
-use input::InputQueue;
+use input::{InputQueue, KeyEvent};
 use screen::Screen;
 use state::{InputResult, State};
 
@@ -52,8 +53,25 @@ pub fn calc_main<ScreenT: Screen, InputT: InputQueue>(mut screen: ScreenT, mut i
     loop {
         if let Some(input_event) = input.wait(&mut state.input_mode) {
             match state.handle_input(input_event) {
-                InputResult::Normal => (),
-                InputResult::Suspend => input.suspend(),
+                Ok(InputResult::Normal) => (),
+                Ok(InputResult::Suspend) => input.suspend(),
+                Err(error) => {
+                    state.show_error(error);
+                    state.render(&mut screen);
+
+                    for _ in 0..30 {
+                        #[cfg(feature = "dm42")]
+                        dm42::sys_delay(100);
+                        #[cfg(not(feature = "dm42"))]
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+
+                        if let Some(KeyEvent::Press(_)) = input.pop_raw() {
+                            break;
+                        }
+                    }
+
+                    state.hide_error();
+                }
             }
             state.render(&mut screen);
         } else {

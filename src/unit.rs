@@ -1,3 +1,4 @@
+use crate::error::{Error, Result};
 use crate::number::{Number, ToNumber};
 use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
@@ -223,15 +224,15 @@ impl CompositeUnit {
 		from_unit: &Unit,
 		to_unit: &Unit,
 		power: i32,
-	) -> Option<Number> {
+	) -> Result<Number> {
 		match from_unit {
 			Unit::Time(from) => match to_unit {
-				Unit::Time(to) => Some(from.to_unit_with_power(value, to, power)),
-				_ => None,
+				Unit::Time(to) => Ok(from.to_unit_with_power(value, to, power)),
+				_ => Err(Error::IncompatibleUnits),
 			},
 			Unit::Distance(from) => match to_unit {
-				Unit::Distance(to) => Some(from.to_unit_with_power(value, to, power)),
-				_ => None,
+				Unit::Distance(to) => Ok(from.to_unit_with_power(value, to, power)),
+				_ => Err(Error::IncompatibleUnits),
 			},
 		}
 	}
@@ -280,38 +281,41 @@ impl CompositeUnit {
 		CompositeUnit { units }
 	}
 
-	pub fn convert_single_unit(&mut self, value: &Number, target_unit: Unit) -> Option<Number> {
+	pub fn convert_single_unit(&mut self, value: &Number, target_unit: Unit) -> Result<Number> {
 		let unit_type = target_unit.unit_type();
 		if let Some(existing_unit) = self.units.get_mut(&unit_type) {
-			let value =
-				Self::convert_value_of_unit(value, &existing_unit.0, &target_unit, existing_unit.1)
-					.unwrap();
+			let value = Self::convert_value_of_unit(
+				value,
+				&existing_unit.0,
+				&target_unit,
+				existing_unit.1,
+			)?;
 			existing_unit.0 = target_unit;
-			Some(value)
+			Ok(value)
 		} else {
-			None
+			Err(Error::IncompatibleUnits)
 		}
 	}
 
-	pub fn coerce_to_other(&self, value: &Number, target_units: &CompositeUnit) -> Option<Number> {
+	pub fn coerce_to_other(&self, value: &Number, target_units: &CompositeUnit) -> Result<Number> {
 		// Check units to make sure they are compatible. There must be the same set of
 		// unit types and each unit type must be the same power.
 		for (unit_type, unit) in self.units.iter() {
 			if let Some(target) = target_units.units.get(&unit_type) {
 				if unit.1 != target.1 {
-					return None;
+					return Err(Error::IncompatibleUnits);
 				}
 			} else {
-				return None;
+				return Err(Error::IncompatibleUnits);
 			}
 		}
 		for (unit_type, unit) in target_units.units.iter() {
 			if let Some(target) = self.units.get(&unit_type) {
 				if unit.1 != target.1 {
-					return None;
+					return Err(Error::IncompatibleUnits);
 				}
 			} else {
-				return None;
+				return Err(Error::IncompatibleUnits);
 			}
 		}
 
@@ -321,7 +325,7 @@ impl CompositeUnit {
 		for (_, value) in target_units.units.iter() {
 			result = unit.convert_single_unit(&result, value.0).unwrap();
 		}
-		Some(result)
+		Ok(result)
 	}
 
 	pub fn combine(&mut self, value: &Number, target_units: &CompositeUnit) -> Number {

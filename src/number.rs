@@ -1,3 +1,4 @@
+use crate::error::{Error, Result};
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::convert::TryInto;
@@ -85,10 +86,10 @@ impl Number {
 		}
 	}
 
-	pub fn to_int(&self) -> Option<BigInt> {
+	pub fn to_int(&self) -> Result<BigInt> {
 		match self {
-			Number::Integer(int) => Some(int.clone()),
-			Number::Rational(num, denom) => Some(num / denom.to_bigint().unwrap()),
+			Number::Integer(int) => Ok(int.clone()),
+			Number::Rational(num, denom) => Ok(num / denom.to_bigint().unwrap()),
 			Number::Decimal(num) => {
 				let num = num.trunc();
 
@@ -99,7 +100,7 @@ impl Number {
 				let parts: Vec<&str> = raw_str.split('E').collect();
 				if parts.len() == 1 {
 					// Not a normal number, cannot be converted to integer
-					return None;
+					return Err(Error::InvalidInteger);
 				}
 				// There is always a sign at the start of the string
 				let sign = &raw_str[0..1] == "-";
@@ -112,7 +113,7 @@ impl Number {
 				let integer_part_digits = digit_str.len() as isize + exponent;
 				if integer_part_digits <= 0 {
 					// Number is less than one, so the integer is zero.
-					return Some(0.into());
+					return Ok(0.into());
 				}
 
 				let mut result = 0.to_bigint().unwrap();
@@ -131,7 +132,7 @@ impl Number {
 				if sign {
 					result = -result;
 				}
-				Some(result)
+				Ok(result)
 			}
 		}
 	}

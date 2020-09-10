@@ -1,3 +1,4 @@
+use crate::error::{Error, Result};
 use crate::font::{SANS_13, SANS_16, SANS_24};
 use crate::functions::{FunctionKeyState, FunctionMenu};
 use crate::input::{AlphaMode, InputEvent, InputMode};
@@ -57,6 +58,7 @@ pub struct State {
 	memory: BTreeMap<Location, Value>,
 	input_state: InputState,
 	location_entry: LocationEntryState,
+	error: Option<Error>,
 	cached_status_bar_state: CachedStatusBarState,
 	force_refresh: bool,
 }
@@ -109,9 +111,21 @@ impl State {
 			memory: BTreeMap::new(),
 			input_state: InputState::Normal,
 			location_entry: LocationEntryState::new("".to_string()),
+			error: None,
 			cached_status_bar_state,
 			force_refresh: true,
 		}
+	}
+
+	pub fn show_error(&mut self, error: Error) {
+		self.error = Some(error);
+		self.input_state = InputState::Normal;
+		self.input_mode.alpha = AlphaMode::Normal;
+		self.stack.end_edit();
+	}
+
+	pub fn hide_error(&mut self) {
+		self.error = None;
 	}
 
 	fn time_string() -> String {
@@ -122,13 +136,17 @@ impl State {
 		Stack::value_for_integer_mode(&self.format.integer_mode, self.stack.top())
 	}
 
-	pub fn entry(&self, idx: usize) -> Value {
-		Stack::value_for_integer_mode(&self.format.integer_mode, self.stack.entry(idx))
+	pub fn entry(&self, idx: usize) -> Result<Value> {
+		Ok(Stack::value_for_integer_mode(
+			&self.format.integer_mode,
+			self.stack.entry(idx)?,
+		))
 	}
 
-	pub fn replace_entries(&mut self, count: usize, value: Value) {
+	pub fn replace_entries(&mut self, count: usize, value: Value) -> Result<()> {
 		let value = Stack::value_for_integer_mode(&self.format.integer_mode, &value);
-		self.stack.replace_entries(count, value);
+		self.stack.replace_entries(count, value)?;
+		Ok(())
 	}
 
 	pub fn set_top(&mut self, value: Value) {
@@ -136,55 +154,51 @@ impl State {
 		self.stack.set_top(value);
 	}
 
-	pub fn set_entry(&mut self, offset: usize, value: Value) {
+	pub fn set_entry(&mut self, offset: usize, value: Value) -> Result<()> {
 		let value = Stack::value_for_integer_mode(&self.format.integer_mode, &value);
-		*self.stack.entry_mut(offset) = value;
+		*self.stack.entry_mut(offset)? = value;
+		Ok(())
 	}
 
-	pub fn read(&self, location: &Location) -> Option<Value> {
+	pub fn read(&self, location: &Location) -> Result<Value> {
 		match location {
-			Location::StackOffset(offset) => {
-				if *offset < self.stack.len() {
-					Some(self.entry(*offset))
-				} else {
-					None
-				}
-			}
+			Location::StackOffset(offset) => self.entry(*offset),
 			location => {
 				if let Some(value) = self.memory.get(location) {
-					Some(value.clone())
+					Ok(value.clone())
 				} else {
-					None
+					Err(Error::ValueNotDefined)
 				}
 			}
 		}
 	}
 
-	pub fn write(&mut self, location: Location, value: Value) -> bool {
+	pub fn write(&mut self, location: Location, value: Value) -> Result<()> {
 		match location {
-			Location::StackOffset(offset) => {
-				if offset < self.stack.len() {
-					self.set_entry(offset, value);
-					true
-				} else {
-					false
-				}
-			}
+			Location::StackOffset(offset) => self.set_entry(offset, value)?,
 			location => {
 				self.memory.insert(location, value);
-				true
 			}
 		}
+		Ok(())
 	}
 
-	pub fn handle_input(&mut self, input: InputEvent) -> InputResult {
+	pub fn handle_input(&mut self, input: InputEvent) -> Result<InputResult> {
+		if self.error.is_some() {
+			self.error = None;
+			return match input {
+				InputEvent::Off => Ok(InputResult::Suspend),
+				_ => Ok(InputResult::Normal),
+			};
+		}
+
 		match self.input_state {
 			InputState::Normal => {
 				match input {
 					InputEvent::Character(ch) => match ch {
 						'0'..='9' | 'A'..='Z' | 'a'..='z' | '.' => {
 							if ch != '.' || self.format.integer_mode == IntegerMode::Float {
-								self.stack.push_char(ch, &self.format);
+								self.stack.push_char(ch, &self.format)?;
 							}
 						}
 						_ => (),
@@ -204,104 +218,63 @@ impl State {
 					}
 					InputEvent::Neg => {
 						if self.stack.editing() {
-							self.stack.neg();
+							self.stack.neg()?;
 						} else {
-							if let Some(value) = -self.top() {
-								self.set_top(value);
-							}
+							self.set_top((-self.top())?);
 						}
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Add => {
-						if self.stack.len() >= 2 {
-							if let Some(value) = self.entry(1) + self.entry(0) {
-								self.replace_entries(2, value);
-							}
-						}
+						self.replace_entries(2, (self.entry(1)? + self.entry(0)?)?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Sub => {
-						if self.stack.len() >= 2 {
-							if let Some(value) = self.entry(1) - self.entry(0) {
-								self.replace_entries(2, value);
-							}
-						}
+						self.replace_entries(2, (self.entry(1)? - self.entry(0)?)?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Mul => {
-						if self.stack.len() >= 2 {
-							if let Some(value) = self.entry(1) * self.entry(0) {
-								self.replace_entries(2, value);
-							}
-						}
+						self.replace_entries(2, (self.entry(1)? * self.entry(0)?)?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Div => {
-						if self.stack.len() >= 2 {
-							if let Some(value) = self.entry(1) / self.entry(0) {
-								self.replace_entries(2, value);
-							}
-						}
+						self.replace_entries(2, (self.entry(1)? / self.entry(0)?)?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Recip => {
-						if let Some(value) = Value::Number(1.into()) / self.top() {
-							self.set_top(value);
-						}
+						self.set_top((Value::Number(1.into()) / self.top())?);
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Pow => {
-						if self.stack.len() >= 2 {
-							if let Some(value) = self.entry(1).pow(&self.entry(0)) {
-								self.replace_entries(2, value);
-							}
-						}
+						self.replace_entries(2, self.entry(1)?.pow(&self.entry(0)?)?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Sqrt => {
-						if let Some(value) = self.top().sqrt() {
-							self.set_top(value);
-						}
+						self.set_top(self.top().sqrt()?);
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Square => {
-						if let Some(value) = self.top() * self.top() {
-							self.set_top(value);
-						}
+						self.set_top((self.top() * self.top())?);
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Log => {
-						if let Some(value) = self.top().log() {
-							self.set_top(value);
-						}
+						self.set_top(self.top().log()?);
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::TenX => {
-						if let Some(value) = self.top().exp10() {
-							self.set_top(value);
-						}
+						self.set_top(self.top().exp10()?);
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Ln => {
-						if let Some(value) = self.top().log() {
-							self.set_top(value);
-						}
+						self.set_top(self.top().ln()?);
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::EX => {
-						if let Some(value) = self.top().exp() {
-							self.set_top(value);
-						}
+						self.set_top(self.top().exp()?);
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Percent => {
-						if self.stack.len() >= 2 {
-							if let Some(factor) = self.entry(0) / Value::Number(100.into()) {
-								if let Some(value) = self.entry(1) * factor {
-									self.set_top(value);
-								}
-							}
-						}
+						let factor = (self.entry(0)? / Value::Number(100.into()))?;
+						self.set_top((self.entry(1)? * factor)?);
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Pi => {
@@ -310,51 +283,35 @@ impl State {
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Sin => {
-						if let Some(value) = self.top().sin() {
-							self.set_top(value);
-						}
+						self.set_top(self.top().sin()?);
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Cos => {
-						if let Some(value) = self.top().cos() {
-							self.set_top(value);
-						}
+						self.set_top(self.top().cos()?);
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Tan => {
-						if let Some(value) = self.top().tan() {
-							self.set_top(value);
-						}
+						self.set_top(self.top().tan()?);
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Asin => {
-						if let Some(value) = self.top().asin() {
-							self.set_top(value);
-						}
+						self.set_top(self.top().asin()?);
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Acos => {
-						if let Some(value) = self.top().acos() {
-							self.set_top(value);
-						}
+						self.set_top(self.top().acos()?);
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Atan => {
-						if let Some(value) = self.top().atan() {
-							self.set_top(value);
-						}
+						self.set_top(self.top().atan()?);
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::RotateDown => {
-						if self.stack.len() >= 2 {
-							self.stack.rotate_down();
-						}
+						self.stack.rotate_down();
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Swap => {
-						if self.stack.len() >= 2 {
-							self.stack.swap(0, 1);
-						}
+						self.stack.swap(0, 1)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Rcl => {
@@ -384,7 +341,7 @@ impl State {
 					}
 					InputEvent::FunctionKey(func, _) => {
 						if let Some(func) = self.function_keys.function(func) {
-							func.execute(self);
+							func.execute(self)?;
 							self.input_mode.alpha = AlphaMode::Normal;
 						}
 					}
@@ -410,48 +367,46 @@ impl State {
 					}
 					InputEvent::Off => {
 						self.input_mode.alpha = AlphaMode::Normal;
-						return InputResult::Suspend;
+						return Ok(InputResult::Suspend);
 					}
 					_ => (),
 				}
-				InputResult::Normal
+				Ok(InputResult::Normal)
 			}
 			InputState::Recall => match self.handle_location_input(input) {
-				LocationInputResult::Intermediate(result) => result,
+				LocationInputResult::Intermediate(result) => Ok(result),
 				LocationInputResult::Finished(location) => {
-					if let Some(value) = self.read(&location) {
-						self.stack.input_value(value);
-					}
 					self.input_state = InputState::Normal;
 					self.input_mode.alpha = AlphaMode::Normal;
-					InputResult::Normal
+					self.stack.input_value(self.read(&location)?);
+					Ok(InputResult::Normal)
 				}
 				LocationInputResult::Exit => {
 					self.input_state = InputState::Normal;
-					InputResult::Normal
+					Ok(InputResult::Normal)
 				}
 				LocationInputResult::Invalid => {
 					self.input_state = InputState::Normal;
-					InputResult::Normal
+					Err(Error::InvalidEntry)
 				}
 			},
 			InputState::Store => match self.handle_location_input(input) {
-				LocationInputResult::Intermediate(result) => result,
+				LocationInputResult::Intermediate(result) => Ok(result),
 				LocationInputResult::Finished(location) => {
-					self.write(location, self.top());
 					self.input_state = InputState::Normal;
 					self.input_mode.alpha = AlphaMode::Normal;
-					InputResult::Normal
+					self.write(location, self.top())?;
+					Ok(InputResult::Normal)
 				}
 				LocationInputResult::Exit => {
 					self.input_state = InputState::Normal;
 					self.input_mode.alpha = AlphaMode::Normal;
-					InputResult::Normal
+					Ok(InputResult::Normal)
 				}
 				LocationInputResult::Invalid => {
 					self.input_state = InputState::Normal;
 					self.input_mode.alpha = AlphaMode::Normal;
-					InputResult::Normal
+					Err(Error::InvalidEntry)
 				}
 			},
 		}
@@ -748,6 +703,41 @@ impl State {
 			w: screen.width(),
 			h: screen.height() - self.status_bar_size() - self.function_keys.height(),
 		};
+
+		// If there is an error, display the message
+		if let Some(error) = self.error {
+			let mut items = Vec::new();
+			items.push(Layout::Text(
+				error.to_str().to_string(),
+				&SANS_24,
+				Color::ContentText,
+			));
+			items.push(Layout::HorizontalSpace(4));
+			let layout = Layout::Horizontal(items);
+
+			let height = layout.height();
+			stack_area.h -= height;
+			let rect = Rect {
+				x: 0,
+				y: stack_area.y + stack_area.h,
+				w: screen.width(),
+				h: height,
+			};
+			let clip_rect = rect.clone();
+			screen.fill(rect.clone(), Color::ContentBackground);
+			layout.render(screen, rect, &clip_rect);
+
+			// Render a line to separate the error from the stack area
+			screen.fill(
+				Rect {
+					x: 0,
+					y: stack_area.y + stack_area.h,
+					w: screen.width(),
+					h: 1,
+				},
+				Color::ContentText,
+			);
+		}
 
 		// If there is an active location editor present, render it
 		if self.input_state == InputState::Recall || self.input_state == InputState::Store {

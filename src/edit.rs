@@ -1,3 +1,4 @@
+use crate::error::{Error, Result};
 use crate::number::{Number, NumberDecimalPointMode, NumberFormat};
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -37,9 +38,9 @@ impl NumberEditor {
 		}
 	}
 
-	fn push_digit(&mut self, digit: u8) -> bool {
+	fn push_digit(&mut self, digit: u8) -> Result<()> {
 		if digit >= self.radix {
-			return false;
+			return Err(Error::InvalidEntry);
 		}
 		match self.state {
 			NumberEditorState::Integer => {
@@ -61,10 +62,10 @@ impl NumberEditor {
 				}
 			}
 		}
-		true
+		Ok(())
 	}
 
-	pub fn push_char(&mut self, ch: char) -> bool {
+	pub fn push_char(&mut self, ch: char) -> Result<()> {
 		match ch {
 			'0'..='9' => self.push_digit(ch as u32 as u8 - '0' as u32 as u8),
 			'A'..='Z' => self.push_digit(ch as u32 as u8 - 'A' as u32 as u8 + 10),
@@ -72,10 +73,12 @@ impl NumberEditor {
 			'.' => {
 				if self.state == NumberEditorState::Integer && self.radix == 10 {
 					self.state = NumberEditorState::Fraction;
+					Ok(())
+				} else {
+					Err(Error::InvalidEntry)
 				}
-				true
 			}
-			_ => false,
+			_ => Err(Error::InvalidEntry),
 		}
 	}
 

@@ -1,4 +1,5 @@
 use crate::edit::NumberEditor;
+use crate::error::{Error, Result};
 use crate::font::{SANS_13, SANS_16, SANS_20, SANS_24};
 use crate::layout::Layout;
 use crate::number::{Number, NumberFormat, NumberFormatMode, ToNumber};
@@ -31,19 +32,19 @@ impl Value {
 		}
 	}
 
-	pub fn number(&self) -> Option<&Number> {
+	pub fn number(&self) -> Result<&Number> {
 		match self {
-			Value::Number(num) => Some(num),
-			Value::NumberWithUnit(num, _) => Some(num),
-			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
+			Value::Number(num) => Ok(num),
+			Value::NumberWithUnit(num, _) => Ok(num),
+			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => Err(Error::NotANumber),
 		}
 	}
 
-	pub fn to_int(&self) -> Option<BigInt> {
+	pub fn to_int(&self) -> Result<BigInt> {
 		match self {
 			Value::Number(num) => num.to_int(),
 			Value::NumberWithUnit(num, _) => num.to_int(),
-			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
+			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => Err(Error::NotANumber),
 		}
 	}
 
@@ -65,105 +66,57 @@ impl Value {
 		}
 	}
 
-	pub fn pow(&self, power: &Value) -> Option<Value> {
-		if let (Some(value), Some(power)) = (self.number(), power.number()) {
-			Some(Value::Number(value.pow(power)))
-		} else {
-			None
-		}
+	pub fn pow(&self, power: &Value) -> Result<Value> {
+		Ok(Value::Number(self.number()?.pow(power.number()?)))
 	}
 
-	pub fn sqrt(&self) -> Option<Value> {
-		if let Some(value) = self.number() {
-			Some(Value::Number(value.sqrt()))
-		} else {
-			None
-		}
+	pub fn sqrt(&self) -> Result<Value> {
+		Ok(Value::Number(self.number()?.sqrt()))
 	}
 
-	pub fn log(&self) -> Option<Value> {
-		if let Some(value) = self.number() {
-			Some(Value::Number(value.log()))
-		} else {
-			None
-		}
+	pub fn log(&self) -> Result<Value> {
+		Ok(Value::Number(self.number()?.log()))
 	}
 
-	pub fn exp10(&self) -> Option<Value> {
-		if let Some(value) = self.number() {
-			Some(Value::Number(value.exp10()))
-		} else {
-			None
-		}
+	pub fn exp10(&self) -> Result<Value> {
+		Ok(Value::Number(self.number()?.exp10()))
 	}
 
-	pub fn ln(&self) -> Option<Value> {
-		if let Some(value) = self.number() {
-			Some(Value::Number(value.ln()))
-		} else {
-			None
-		}
+	pub fn ln(&self) -> Result<Value> {
+		Ok(Value::Number(self.number()?.ln()))
 	}
 
-	pub fn exp(&self) -> Option<Value> {
-		if let Some(value) = self.number() {
-			Some(Value::Number(value.exp()))
-		} else {
-			None
-		}
+	pub fn exp(&self) -> Result<Value> {
+		Ok(Value::Number(self.number()?.exp()))
 	}
 
-	pub fn sin(&self) -> Option<Value> {
-		if let Some(value) = self.number() {
-			Some(Value::Number(value.sin()))
-		} else {
-			None
-		}
+	pub fn sin(&self) -> Result<Value> {
+		Ok(Value::Number(self.number()?.sin()))
 	}
 
-	pub fn cos(&self) -> Option<Value> {
-		if let Some(value) = self.number() {
-			Some(Value::Number(value.cos()))
-		} else {
-			None
-		}
+	pub fn cos(&self) -> Result<Value> {
+		Ok(Value::Number(self.number()?.cos()))
 	}
 
-	pub fn tan(&self) -> Option<Value> {
-		if let Some(value) = self.number() {
-			Some(Value::Number(value.tan()))
-		} else {
-			None
-		}
+	pub fn tan(&self) -> Result<Value> {
+		Ok(Value::Number(self.number()?.tan()))
 	}
 
-	pub fn asin(&self) -> Option<Value> {
-		if let Some(value) = self.number() {
-			Some(Value::Number(value.asin()))
-		} else {
-			None
-		}
+	pub fn asin(&self) -> Result<Value> {
+		Ok(Value::Number(self.number()?.asin()))
 	}
 
-	pub fn acos(&self) -> Option<Value> {
-		if let Some(value) = self.number() {
-			Some(Value::Number(value.acos()))
-		} else {
-			None
-		}
+	pub fn acos(&self) -> Result<Value> {
+		Ok(Value::Number(self.number()?.acos()))
 	}
 
-	pub fn atan(&self) -> Option<Value> {
-		if let Some(value) = self.number() {
-			Some(Value::Number(value.atan()))
-		} else {
-			None
-		}
+	pub fn atan(&self) -> Result<Value> {
+		Ok(Value::Number(self.number()?.atan()))
 	}
 
-	pub fn add_unit(&self, unit: Unit) -> Option<Value> {
+	pub fn add_unit(&self, unit: Unit) -> Result<Value> {
 		match self {
-			Value::Number(num) => Some(Value::NumberWithUnit(
+			Value::Number(num) => Ok(Value::NumberWithUnit(
 				num.clone(),
 				CompositeUnit::single_unit(unit),
 			)),
@@ -171,18 +124,18 @@ impl Value {
 				let mut new_unit = existing_unit.clone();
 				let new_num = new_unit.add_unit(num, unit);
 				if new_unit.unitless() {
-					Some(Value::Number(new_num))
+					Ok(Value::Number(new_num))
 				} else {
-					Some(Value::NumberWithUnit(new_num, new_unit))
+					Ok(Value::NumberWithUnit(new_num, new_unit))
 				}
 			}
-			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
+			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => Err(Error::NotANumber),
 		}
 	}
 
-	pub fn add_unit_inv(&self, unit: Unit) -> Option<Value> {
+	pub fn add_unit_inv(&self, unit: Unit) -> Result<Value> {
 		match self {
-			Value::Number(num) => Some(Value::NumberWithUnit(
+			Value::Number(num) => Ok(Value::NumberWithUnit(
 				num.clone(),
 				CompositeUnit::single_unit_inv(unit),
 			)),
@@ -190,319 +143,263 @@ impl Value {
 				let mut new_unit = existing_unit.clone();
 				let new_num = new_unit.add_unit_inv(num, unit);
 				if new_unit.unitless() {
-					Some(Value::Number(new_num))
+					Ok(Value::Number(new_num))
 				} else {
-					Some(Value::NumberWithUnit(new_num, new_unit))
+					Ok(Value::NumberWithUnit(new_num, new_unit))
 				}
 			}
-			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
+			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => Err(Error::NotANumber),
 		}
 	}
 
-	pub fn convert_single_unit(&self, unit: Unit) -> Option<Value> {
+	pub fn convert_single_unit(&self, unit: Unit) -> Result<Value> {
 		match self {
 			Value::NumberWithUnit(num, existing_unit) => {
 				let mut new_unit = existing_unit.clone();
-				if let Some(new_num) = new_unit.convert_single_unit(num, unit) {
-					if new_unit.unitless() {
-						Some(Value::Number(new_num))
-					} else {
-						Some(Value::NumberWithUnit(new_num, new_unit))
-					}
+				let new_num = new_unit.convert_single_unit(num, unit)?;
+				if new_unit.unitless() {
+					Ok(Value::Number(new_num))
 				} else {
-					None
+					Ok(Value::NumberWithUnit(new_num, new_unit))
 				}
 			}
-			Value::Number(_) | Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
+			Value::Number(_) => Err(Error::IncompatibleUnits),
+			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => Err(Error::NotANumber),
 		}
 	}
 
-	fn datetime_add_secs(&self, dt: &NaiveDateTime, secs: &Number) -> Option<Value> {
-		if let Some(int) = (secs * &1_000_000_000.to_number()).to_int() {
-			if let Ok(nano) = i64::try_from(int) {
-				Some(Value::DateTime(dt.add(Duration::nanoseconds(nano))))
-			} else {
-				None
-			}
-		} else {
-			None
-		}
+	fn datetime_add_secs(&self, dt: &NaiveDateTime, secs: &Number) -> Result<Value> {
+		let nano = i64::try_from((secs * &1_000_000_000.to_number()).to_int()?)?;
+		Ok(Value::DateTime(dt.add(Duration::nanoseconds(nano))))
 	}
 
-	fn date_add_days(&self, date: &NaiveDate, days: &Number) -> Option<Value> {
-		if let Some(int) = days.to_int() {
-			if let Ok(days) = i64::try_from(int) {
-				Some(Value::Date(date.add(Duration::days(days))))
-			} else {
-				None
-			}
-		} else {
-			None
-		}
+	fn date_add_days(&self, date: &NaiveDate, days: &Number) -> Result<Value> {
+		Ok(Value::Date(
+			date.add(Duration::days(i64::try_from(days.to_int()?)?)),
+		))
 	}
 
-	fn time_add_secs(&self, time: &NaiveTime, secs: &Number) -> Option<Value> {
-		if let Some(int) = (secs * &1_000_000_000.to_number()).to_int() {
-			if let Ok(nano) = i64::try_from(int) {
-				Some(Value::Time(time.add(Duration::nanoseconds(nano))))
-			} else {
-				None
-			}
-		} else {
-			None
-		}
+	fn time_add_secs(&self, time: &NaiveTime, secs: &Number) -> Result<Value> {
+		let nano = i64::try_from((secs * &1_000_000_000.to_number()).to_int()?)?;
+		Ok(Value::Time(time.add(Duration::nanoseconds(nano))))
 	}
 
-	fn value_add(&self, rhs: &Value) -> Option<Value> {
+	fn value_add(&self, rhs: &Value) -> Result<Value> {
 		match self {
 			Value::Number(left) => match rhs {
-				Value::Number(right) => Some(Value::Number(left + right)),
+				Value::Number(right) => Ok(Value::Number(left + right)),
 				Value::NumberWithUnit(right, right_unit) => {
-					Some(Value::NumberWithUnit(left + right, right_unit.clone()))
+					Ok(Value::NumberWithUnit(left + right, right_unit.clone()))
 				}
 				Value::DateTime(right) => self.datetime_add_secs(right, left),
 				Value::Date(right) => self.date_add_days(right, left),
 				Value::Time(right) => self.time_add_secs(right, left),
 			},
 			Value::NumberWithUnit(left, left_unit) => match rhs {
-				Value::Number(right) => {
-					Some(Value::NumberWithUnit(left + right, left_unit.clone()))
-				}
-				Value::NumberWithUnit(right, right_unit) => {
-					if let Some(left_coerce) = left_unit.coerce_to_other(left, right_unit) {
-						Some(Value::NumberWithUnit(
-							&left_coerce + right,
-							right_unit.clone(),
-						))
-					} else {
-						None
-					}
-				}
-				Value::DateTime(right) => {
-					if let Some(left_seconds) = left_unit.coerce_to_other(
+				Value::Number(right) => Ok(Value::NumberWithUnit(left + right, left_unit.clone())),
+				Value::NumberWithUnit(right, right_unit) => Ok(Value::NumberWithUnit(
+					&left_unit.coerce_to_other(left, right_unit)? + right,
+					right_unit.clone(),
+				)),
+				Value::DateTime(right) => self.datetime_add_secs(
+					right,
+					&left_unit.coerce_to_other(
 						left,
 						&CompositeUnit::single_unit(TimeUnit::Seconds.into()),
-					) {
-						self.datetime_add_secs(right, &left_seconds)
-					} else {
-						None
-					}
-				}
-				Value::Date(right) => {
-					if let Some(left_seconds) = left_unit
-						.coerce_to_other(left, &CompositeUnit::single_unit(TimeUnit::Days.into()))
-					{
-						self.date_add_days(right, &left_seconds)
-					} else {
-						None
-					}
-				}
-				Value::Time(right) => {
-					if let Some(left_seconds) = left_unit.coerce_to_other(
+					)?,
+				),
+				Value::Date(right) => self.date_add_days(
+					right,
+					&left_unit.coerce_to_other(
+						left,
+						&CompositeUnit::single_unit(TimeUnit::Days.into()),
+					)?,
+				),
+				Value::Time(right) => self.time_add_secs(
+					right,
+					&left_unit.coerce_to_other(
 						left,
 						&CompositeUnit::single_unit(TimeUnit::Seconds.into()),
-					) {
-						self.time_add_secs(right, &left_seconds)
-					} else {
-						None
-					}
-				}
+					)?,
+				),
 			},
 			Value::DateTime(left) => match rhs {
 				Value::Number(right) => self.datetime_add_secs(left, right),
-				Value::NumberWithUnit(right, right_unit) => {
-					if let Some(right_seconds) = right_unit.coerce_to_other(
+				Value::NumberWithUnit(right, right_unit) => self.datetime_add_secs(
+					left,
+					&right_unit.coerce_to_other(
 						right,
 						&CompositeUnit::single_unit(TimeUnit::Seconds.into()),
-					) {
-						self.datetime_add_secs(left, &right_seconds)
-					} else {
-						None
-					}
-				}
-				_ => None,
+					)?,
+				),
+				_ => Err(Error::DataTypeMismatch),
 			},
 			Value::Date(left) => match rhs {
 				Value::Number(right) => self.date_add_days(left, right),
-				Value::NumberWithUnit(right, right_unit) => {
-					if let Some(right_seconds) = right_unit
-						.coerce_to_other(right, &CompositeUnit::single_unit(TimeUnit::Days.into()))
-					{
-						self.date_add_days(left, &right_seconds)
-					} else {
-						None
-					}
-				}
-				Value::Time(right) => Some(Value::DateTime(NaiveDateTime::new(
+				Value::NumberWithUnit(right, right_unit) => self.date_add_days(
+					left,
+					&right_unit.coerce_to_other(
+						right,
+						&CompositeUnit::single_unit(TimeUnit::Days.into()),
+					)?,
+				),
+				Value::Time(right) => Ok(Value::DateTime(NaiveDateTime::new(
 					left.clone(),
 					right.clone(),
 				))),
-				_ => None,
+				_ => Err(Error::DataTypeMismatch),
 			},
 			Value::Time(left) => match rhs {
 				Value::Number(right) => self.time_add_secs(left, right),
-				Value::NumberWithUnit(right, right_unit) => {
-					if let Some(right_seconds) = right_unit.coerce_to_other(
+				Value::NumberWithUnit(right, right_unit) => self.time_add_secs(
+					left,
+					&right_unit.coerce_to_other(
 						right,
 						&CompositeUnit::single_unit(TimeUnit::Seconds.into()),
-					) {
-						self.time_add_secs(left, &right_seconds)
-					} else {
-						None
-					}
-				}
-				Value::Date(right) => Some(Value::DateTime(NaiveDateTime::new(
+					)?,
+				),
+				Value::Date(right) => Ok(Value::DateTime(NaiveDateTime::new(
 					right.clone(),
 					left.clone(),
 				))),
-				_ => None,
+				_ => Err(Error::DataTypeMismatch),
 			},
 		}
 	}
 
-	fn value_sub(&self, rhs: &Value) -> Option<Value> {
+	fn value_sub(&self, rhs: &Value) -> Result<Value> {
 		match self {
 			Value::Number(left) => match rhs {
-				Value::Number(right) => Some(Value::Number(left - right)),
+				Value::Number(right) => Ok(Value::Number(left - right)),
 				Value::NumberWithUnit(right, right_unit) => {
-					Some(Value::NumberWithUnit(left - right, right_unit.clone()))
+					Ok(Value::NumberWithUnit(left - right, right_unit.clone()))
 				}
-				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
+				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
+					Err(Error::DataTypeMismatch)
+				}
 			},
 			Value::NumberWithUnit(left, left_unit) => match rhs {
-				Value::Number(right) => {
-					Some(Value::NumberWithUnit(left - right, left_unit.clone()))
+				Value::Number(right) => Ok(Value::NumberWithUnit(left - right, left_unit.clone())),
+				Value::NumberWithUnit(right, right_unit) => Ok(Value::NumberWithUnit(
+					&left_unit.coerce_to_other(left, right_unit)? - right,
+					right_unit.clone(),
+				)),
+				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
+					Err(Error::DataTypeMismatch)
 				}
-				Value::NumberWithUnit(right, right_unit) => {
-					if let Some(left_coerce) = left_unit.coerce_to_other(left, right_unit) {
-						Some(Value::NumberWithUnit(
-							&left_coerce - right,
-							right_unit.clone(),
-						))
-					} else {
-						None
-					}
-				}
-				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
 			},
 			Value::DateTime(left) => match rhs {
 				Value::Number(right) => self.datetime_add_secs(left, &-right),
-				Value::NumberWithUnit(right, right_unit) => {
-					if let Some(right_seconds) = right_unit.coerce_to_other(
+				Value::NumberWithUnit(right, right_unit) => self.datetime_add_secs(
+					left,
+					&-right_unit.coerce_to_other(
 						right,
 						&CompositeUnit::single_unit(TimeUnit::Seconds.into()),
-					) {
-						self.datetime_add_secs(left, &-right_seconds)
-					} else {
-						None
-					}
-				}
+					)?,
+				),
 				Value::DateTime(right) => {
-					if let Some(nanoseconds) = left.signed_duration_since(*right).num_nanoseconds()
-					{
-						Some(Value::NumberWithUnit(
-							nanoseconds.to_number() / 1_000_000_000.to_number(),
-							CompositeUnit::single_unit(TimeUnit::Seconds.into()),
-						))
-					} else {
-						None
-					}
+					let nanoseconds = left
+						.signed_duration_since(*right)
+						.num_nanoseconds()
+						.ok_or(Error::ValueOutOfRange)?;
+					Ok(Value::NumberWithUnit(
+						nanoseconds.to_number() / 1_000_000_000.to_number(),
+						CompositeUnit::single_unit(TimeUnit::Seconds.into()),
+					))
 				}
-				_ => None,
+				_ => Err(Error::DataTypeMismatch),
 			},
 			Value::Date(left) => match rhs {
 				Value::Number(right) => self.date_add_days(left, &-right),
-				Value::NumberWithUnit(right, right_unit) => {
-					if let Some(right_seconds) = right_unit
-						.coerce_to_other(right, &CompositeUnit::single_unit(TimeUnit::Days.into()))
-					{
-						self.date_add_days(left, &-right_seconds)
-					} else {
-						None
-					}
-				}
+				Value::NumberWithUnit(right, right_unit) => self.date_add_days(
+					left,
+					&-right_unit.coerce_to_other(
+						right,
+						&CompositeUnit::single_unit(TimeUnit::Days.into()),
+					)?,
+				),
 				Value::Date(right) => {
 					let days: Number = left.signed_duration_since(*right).num_days().into();
-					Some(Value::NumberWithUnit(
+					Ok(Value::NumberWithUnit(
 						days,
 						CompositeUnit::single_unit(TimeUnit::Days.into()),
 					))
 				}
-				_ => None,
+				_ => Err(Error::DataTypeMismatch),
 			},
 			Value::Time(left) => match rhs {
 				Value::Number(right) => self.time_add_secs(left, &-right),
-				Value::NumberWithUnit(right, right_unit) => {
-					if let Some(right_seconds) = right_unit.coerce_to_other(
+				Value::NumberWithUnit(right, right_unit) => self.time_add_secs(
+					left,
+					&-right_unit.coerce_to_other(
 						right,
 						&CompositeUnit::single_unit(TimeUnit::Seconds.into()),
-					) {
-						self.time_add_secs(left, &-right_seconds)
-					} else {
-						None
-					}
-				}
+					)?,
+				),
 				Value::Time(right) => {
-					if let Some(nanoseconds) = left.signed_duration_since(*right).num_nanoseconds()
-					{
-						Some(Value::NumberWithUnit(
-							nanoseconds.to_number() / 1_000_000_000.to_number(),
-							CompositeUnit::single_unit(TimeUnit::Seconds.into()),
-						))
-					} else {
-						None
-					}
+					let nanoseconds = left
+						.signed_duration_since(*right)
+						.num_nanoseconds()
+						.ok_or(Error::ValueOutOfRange)?;
+					Ok(Value::NumberWithUnit(
+						nanoseconds.to_number() / 1_000_000_000.to_number(),
+						CompositeUnit::single_unit(TimeUnit::Seconds.into()),
+					))
 				}
-				_ => None,
+				_ => Err(Error::DataTypeMismatch),
 			},
 		}
 	}
 
-	fn value_mul(&self, rhs: &Value) -> Option<Value> {
+	fn value_mul(&self, rhs: &Value) -> Result<Value> {
 		match self {
 			Value::Number(left) => match rhs {
-				Value::Number(right) => Some(Value::Number(left * right)),
+				Value::Number(right) => Ok(Value::Number(left * right)),
 				Value::NumberWithUnit(right, right_unit) => {
-					Some(Value::NumberWithUnit(left * right, right_unit.clone()))
+					Ok(Value::NumberWithUnit(left * right, right_unit.clone()))
 				}
-				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
+				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
+					Err(Error::DataTypeMismatch)
+				}
 			},
 			Value::NumberWithUnit(left, left_unit) => match rhs {
-				Value::Number(right) => {
-					Some(Value::NumberWithUnit(left * right, left_unit.clone()))
-				}
+				Value::Number(right) => Ok(Value::NumberWithUnit(left * right, left_unit.clone())),
 				Value::NumberWithUnit(right, right_unit) => {
 					let mut unit = left_unit.clone();
 					let left = unit.combine(left, right_unit);
-					Some(Value::NumberWithUnit(&left * right, unit))
+					Ok(Value::NumberWithUnit(&left * right, unit))
 				}
-				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
+				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
+					Err(Error::DataTypeMismatch)
+				}
 			},
-			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
+			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => Err(Error::DataTypeMismatch),
 		}
 	}
 
-	fn value_div(&self, rhs: &Value) -> Option<Value> {
+	fn value_div(&self, rhs: &Value) -> Result<Value> {
 		match self {
 			Value::Number(left) => match rhs {
-				Value::Number(right) => Some(Value::Number(left / right)),
+				Value::Number(right) => Ok(Value::Number(left / right)),
 				Value::NumberWithUnit(right, right_unit) => {
-					Some(Value::NumberWithUnit(left / right, right_unit.inverse()))
+					Ok(Value::NumberWithUnit(left / right, right_unit.inverse()))
 				}
-				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
+				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
+					Err(Error::DataTypeMismatch)
+				}
 			},
 			Value::NumberWithUnit(left, left_unit) => match rhs {
-				Value::Number(right) => {
-					Some(Value::NumberWithUnit(left / right, left_unit.clone()))
-				}
+				Value::Number(right) => Ok(Value::NumberWithUnit(left / right, left_unit.clone())),
 				Value::NumberWithUnit(right, right_unit) => {
 					let mut unit = left_unit.clone();
 					let left = unit.combine(left, &right_unit.inverse());
-					Some(Value::NumberWithUnit(&left / right, unit))
+					Ok(Value::NumberWithUnit(&left / right, unit))
 				}
-				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
+				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
+					Err(Error::DataTypeMismatch)
+				}
 			},
-			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => None,
+			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => Err(Error::DataTypeMismatch),
 		}
 	}
 
@@ -659,7 +556,7 @@ impl Value {
 
 		// Check for alternate representation strings
 		let mut alt_string = match self.number() {
-			Some(Number::Integer(int)) => {
+			Ok(Number::Integer(int)) => {
 				// Integer, if number is ten or greater check for the
 				// hexadecimal alternate form
 				if format.show_alt_hex
@@ -680,10 +577,10 @@ impl Value {
 					None
 				}
 			}
-			Some(Number::Rational(_, _)) => {
+			Ok(Number::Rational(_, _)) => {
 				// Rational, show floating point as alternate form if enabled
 				if format.show_alt_float && format.mode == NumberFormatMode::Rational {
-					if let Some(number) = self.number() {
+					if let Ok(number) = self.number() {
 						Some(format.decimal_format().format_decimal(&number.to_decimal()))
 					} else {
 						None
@@ -727,7 +624,7 @@ impl Value {
 		// Check for more complex renderings
 		let mut rational = false;
 		if format.mode == NumberFormatMode::Rational {
-			if let Some(Number::Rational(num, denom)) = self.number() {
+			if let Ok(Number::Rational(num, denom)) = self.number() {
 				// Rational number, display as an integer and fraction. Break rational
 				// into an integer part and fractional part.
 				let int = num / denom.to_bigint().unwrap();
@@ -788,7 +685,7 @@ impl Value {
 
 			if min_layout.width() > max_width * 2 {
 				// String cannot fit onto two lines, render as decimal float
-				if let Some(number) = self.number() {
+				if let Ok(number) = self.number() {
 					let string = format.format_decimal(&number.to_decimal());
 					if let Some(alt) = &alt_string {
 						if alt == &string {
@@ -856,7 +753,7 @@ impl Value {
 				let split_layout = Layout::Vertical(layout_items);
 				if split_layout.width() > max_width {
 					// String cannot fit onto two lines, render as decimal float
-					if let Some(number) = self.number() {
+					if let Ok(number) = self.number() {
 						let string = format.format_decimal(&number.to_decimal());
 						if let Some(alt) = &alt_string {
 							if alt == &string {
@@ -982,7 +879,7 @@ impl From<f64> for Value {
 }
 
 impl core::ops::Add for Value {
-	type Output = Option<Value>;
+	type Output = Result<Value>;
 
 	fn add(self, rhs: Self) -> Self::Output {
 		self.value_add(&rhs)
@@ -990,7 +887,7 @@ impl core::ops::Add for Value {
 }
 
 impl core::ops::Add for &Value {
-	type Output = Option<Value>;
+	type Output = Result<Value>;
 
 	fn add(self, rhs: Self) -> Self::Output {
 		self.value_add(rhs)
@@ -998,7 +895,7 @@ impl core::ops::Add for &Value {
 }
 
 impl core::ops::Sub for Value {
-	type Output = Option<Value>;
+	type Output = Result<Value>;
 
 	fn sub(self, rhs: Self) -> Self::Output {
 		self.value_sub(&rhs)
@@ -1006,7 +903,7 @@ impl core::ops::Sub for Value {
 }
 
 impl core::ops::Sub for &Value {
-	type Output = Option<Value>;
+	type Output = Result<Value>;
 
 	fn sub(self, rhs: Self) -> Self::Output {
 		self.value_sub(rhs)
@@ -1014,7 +911,7 @@ impl core::ops::Sub for &Value {
 }
 
 impl core::ops::Mul for Value {
-	type Output = Option<Value>;
+	type Output = Result<Value>;
 
 	fn mul(self, rhs: Self) -> Self::Output {
 		self.value_mul(&rhs)
@@ -1022,7 +919,7 @@ impl core::ops::Mul for Value {
 }
 
 impl core::ops::Mul for &Value {
-	type Output = Option<Value>;
+	type Output = Result<Value>;
 
 	fn mul(self, rhs: Self) -> Self::Output {
 		self.value_mul(rhs)
@@ -1030,7 +927,7 @@ impl core::ops::Mul for &Value {
 }
 
 impl core::ops::Div for Value {
-	type Output = Option<Value>;
+	type Output = Result<Value>;
 
 	fn div(self, rhs: Self) -> Self::Output {
 		self.value_div(&rhs)
@@ -1038,7 +935,7 @@ impl core::ops::Div for Value {
 }
 
 impl core::ops::Div for &Value {
-	type Output = Option<Value>;
+	type Output = Result<Value>;
 
 	fn div(self, rhs: Self) -> Self::Output {
 		self.value_div(rhs)
@@ -1046,7 +943,7 @@ impl core::ops::Div for &Value {
 }
 
 impl core::ops::Neg for Value {
-	type Output = Option<Value>;
+	type Output = Result<Value>;
 
 	fn neg(self) -> Self::Output {
 		Value::Number(0.into()).value_sub(&self)
@@ -1054,7 +951,7 @@ impl core::ops::Neg for Value {
 }
 
 impl core::ops::Neg for &Value {
-	type Output = Option<Value>;
+	type Output = Result<Value>;
 
 	fn neg(self) -> Self::Output {
 		Value::Number(0.into()).value_sub(self)

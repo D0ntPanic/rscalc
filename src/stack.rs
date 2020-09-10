@@ -1,4 +1,5 @@
 use crate::edit::NumberEditor;
+use crate::error::{Error, Result};
 use crate::font::SANS_16;
 use crate::num_bigint::ToBigInt;
 use crate::number::{IntegerMode, Number, NumberFormat};
@@ -36,14 +37,14 @@ impl Stack {
 		match mode {
 			IntegerMode::Float => value.clone(),
 			IntegerMode::BigInteger => {
-				if let Some(int) = value.to_int() {
+				if let Ok(int) = value.to_int() {
 					Value::Number(Number::Integer(int))
 				} else {
 					value.clone()
 				}
 			}
 			IntegerMode::SizedInteger(size, signed) => {
-				if let Some(int) = value.to_int() {
+				if let Ok(int) = value.to_int() {
 					let mask = 2.to_bigint().unwrap().pow(*size as u32) - 1.to_bigint().unwrap();
 					let mut int = &int & &mask;
 					if *signed {
@@ -66,21 +67,27 @@ impl Stack {
 		self.editor = None;
 	}
 
-	pub fn entry(&self, idx: usize) -> &Value {
-		&self.entries[(self.entries.len() - 1) - idx]
+	pub fn entry(&self, idx: usize) -> Result<&Value> {
+		if idx >= self.entries.len() {
+			return Err(Error::NotEnoughValues);
+		}
+		Ok(&self.entries[(self.entries.len() - 1) - idx])
 	}
 
-	pub fn entry_mut(&mut self, idx: usize) -> &mut Value {
+	pub fn entry_mut(&mut self, idx: usize) -> Result<&mut Value> {
+		if idx >= self.entries.len() {
+			return Err(Error::NotEnoughValues);
+		}
 		let len = self.entries.len();
-		&mut self.entries[(len - 1) - idx]
+		Ok(&mut self.entries[(len - 1) - idx])
 	}
 
 	pub fn top(&self) -> &Value {
-		self.entry(0)
+		self.entry(0).unwrap()
 	}
 
 	pub fn top_mut(&mut self) -> &mut Value {
-		self.entry_mut(0)
+		self.entry_mut(0).unwrap()
 	}
 
 	pub fn set_top(&mut self, value: Value) {
@@ -89,13 +96,17 @@ impl Stack {
 		self.editor = None;
 	}
 
-	pub fn replace_entries(&mut self, count: usize, value: Value) {
+	pub fn replace_entries(&mut self, count: usize, value: Value) -> Result<()> {
+		if count > self.entries.len() {
+			return Err(Error::NotEnoughValues);
+		}
 		for _ in 1..count {
 			self.pop();
 		}
 		self.set_top(value);
 		self.push_new_entry = true;
 		self.editor = None;
+		Ok(())
 	}
 
 	pub fn pop(&mut self) -> Value {
@@ -108,20 +119,23 @@ impl Stack {
 		result
 	}
 
-	pub fn swap(&mut self, a_idx: usize, b_idx: usize) {
-		let a = self.entry(a_idx).clone();
-		let b = self.entry(b_idx).clone();
-		*self.entry_mut(a_idx) = b;
-		*self.entry_mut(b_idx) = a;
+	pub fn swap(&mut self, a_idx: usize, b_idx: usize) -> Result<()> {
+		let a = self.entry(a_idx)?.clone();
+		let b = self.entry(b_idx)?.clone();
+		*self.entry_mut(a_idx)? = b;
+		*self.entry_mut(b_idx)? = a;
 		self.end_edit();
 		self.push_new_entry = true;
 		self.editor = None;
+		Ok(())
 	}
 
 	pub fn rotate_down(&mut self) {
-		let top = self.top().clone();
-		self.pop();
-		self.entries.insert(0, top);
+		if self.entries.len() > 1 {
+			let top = self.top().clone();
+			self.pop();
+			self.entries.insert(0, top);
+		}
 	}
 
 	pub fn enter(&mut self) {
@@ -144,7 +158,7 @@ impl Stack {
 		}
 	}
 
-	pub fn push_char(&mut self, ch: char, format: &NumberFormat) {
+	pub fn push_char(&mut self, ch: char, format: &NumberFormat) -> Result<()> {
 		if self.editor.is_none() {
 			if self.push_new_entry {
 				self.push(0.into());
@@ -155,11 +169,11 @@ impl Stack {
 			self.push_new_entry = false;
 		}
 		if let Some(cur_editor) = &mut self.editor {
-			if cur_editor.push_char(ch) {
-				let value = cur_editor.number();
-				*self.top_mut() = Value::Number(value);
-			}
+			cur_editor.push_char(ch)?;
+			let value = cur_editor.number();
+			*self.top_mut() = Value::Number(value);
 		}
+		Ok(())
 	}
 
 	pub fn exponent(&mut self) {
@@ -182,7 +196,7 @@ impl Stack {
 		} else {
 			let mut new_entry = self.entries.len() > 1;
 			self.pop();
-			if let Some(Number::Integer(int)) = self.top().number() {
+			if let Ok(Number::Integer(int)) = self.top().number() {
 				if int == &0.to_bigint().unwrap() {
 					new_entry = false;
 				}
@@ -191,16 +205,15 @@ impl Stack {
 		}
 	}
 
-	pub fn neg(&mut self) {
+	pub fn neg(&mut self) -> Result<()> {
 		if let Some(cur_editor) = &mut self.editor {
 			cur_editor.neg();
 			let value = cur_editor.number();
 			*self.top_mut() = Value::Number(value);
 		} else {
-			if let Some(value) = -self.top() {
-				self.set_top(value);
-			}
+			self.set_top((-self.top())?);
 		}
+		Ok(())
 	}
 
 	pub fn render<ScreenT: Screen>(&self, screen: &mut ScreenT, format: &NumberFormat, area: Rect) {
@@ -232,7 +245,8 @@ impl Stack {
 			let label_width = 4 + SANS_16.width(&label);
 
 			// Render stack entry to a layout
-			let entry = Self::value_for_integer_mode(&format.integer_mode, self.entry(idx));
+			let entry =
+				Self::value_for_integer_mode(&format.integer_mode, self.entry(idx).unwrap());
 			let width = area.w - label_width - 8;
 			let layout = entry.render(format, if idx == 0 { &self.editor } else { &None }, width);
 

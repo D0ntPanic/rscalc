@@ -319,6 +319,14 @@ fn reset_auto_off() {
 	}
 }
 
+pub fn sys_delay(ms_delay: u32) {
+	unsafe {
+		let func_ptr: usize = LIBRARY_BASE + 516;
+		let func: extern "C" fn(u32) = core::mem::transmute(func_ptr);
+		func(ms_delay);
+	}
+}
+
 fn sys_sleep() {
 	unsafe {
 		let func_ptr: usize = LIBRARY_BASE + 536;
