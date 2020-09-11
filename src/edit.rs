@@ -168,9 +168,9 @@ impl NumberEditor {
 	pub fn number(&self) -> Number {
 		if self.state == NumberEditorState::Integer {
 			if self.sign {
-				return Number::Integer(-self.integer.clone());
+				return Number::check_int_bounds(Number::Integer(-self.integer.clone()));
 			} else {
-				return Number::Integer(self.integer.clone());
+				return Number::check_int_bounds(Number::Integer(self.integer.clone()));
 			}
 		}
 

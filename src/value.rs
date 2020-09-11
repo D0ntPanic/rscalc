@@ -2,7 +2,7 @@ use crate::edit::NumberEditor;
 use crate::error::{Error, Result};
 use crate::font::{SANS_13, SANS_16, SANS_20, SANS_24};
 use crate::layout::Layout;
-use crate::number::{Number, NumberFormat, NumberFormatMode, ToNumber};
+use crate::number::{Number, NumberFormat, NumberFormatMode, ToNumber, MAX_SHORT_DISPLAY_BITS};
 use crate::screen::Color;
 use crate::time::{SimpleDateTimeFormat, SimpleDateTimeToString};
 use crate::unit::{CompositeUnit, TimeUnit, Unit};
@@ -592,6 +592,13 @@ impl Value {
 			_ => None,
 		};
 
+		// If alternate representation is the same as normal representation, don't display it
+		if let Some(alt) = &alt_string {
+			if alt == &string {
+				alt_string = None;
+			}
+		}
+
 		// If alternate representation is too wide, don't display it
 		if let Some(alt) = &alt_string {
 			let width = SANS_16.width(alt) + 4;
@@ -625,48 +632,55 @@ impl Value {
 		let mut rational = false;
 		if format.mode == NumberFormatMode::Rational {
 			if let Ok(Number::Rational(num, denom)) = self.number() {
-				// Rational number, display as an integer and fraction. Break rational
-				// into an integer part and fractional part.
-				let int = num / denom.to_bigint().unwrap();
-				let mut num = if &int < &0.to_bigint().unwrap() {
-					-num - -&int * &denom.to_bigint().unwrap()
-				} else {
-					num - &int * &denom.to_bigint().unwrap()
-				};
-
-				// Get strings for the parts of the rational
-				let int_str = if int == 0.to_bigint().unwrap() {
-					if &num < &0.to_bigint().unwrap() {
-						num = -num;
-						"-".to_string()
+				// Check to see if rational number has too much precision to display here
+				if num.bits() <= MAX_SHORT_DISPLAY_BITS && denom.bits() <= MAX_SHORT_DISPLAY_BITS {
+					// Rational number, display as an integer and fraction. Break rational
+					// into an integer part and fractional part.
+					let int = num / denom.to_bigint().unwrap();
+					let mut num = if &int < &0.to_bigint().unwrap() {
+						-num - -&int * &denom.to_bigint().unwrap()
 					} else {
-						"".to_string()
+						num - &int * &denom.to_bigint().unwrap()
+					};
+
+					// Get strings for the parts of the rational
+					let int_str = if int == 0.to_bigint().unwrap() {
+						if &num < &0.to_bigint().unwrap() {
+							num = -num;
+							"-".to_string()
+						} else {
+							"".to_string()
+						}
+					} else {
+						format.format_bigint(&int)
+					};
+					let num_str = format.format_bigint(&num);
+					let denom_str = format.format_bigint(&denom.to_bigint().unwrap());
+
+					// Construct a layout for the rational
+					let mut rational_horizontal_items = Vec::new();
+					rational_horizontal_items.push(Layout::Text(
+						int_str,
+						&SANS_24,
+						Color::ContentText,
+					));
+					rational_horizontal_items.push(Layout::HorizontalSpace(4));
+					rational_horizontal_items.push(Layout::Fraction(
+						Box::new(Layout::Text(num_str, &SANS_20, Color::ContentText)),
+						Box::new(Layout::Text(denom_str, &SANS_20, Color::ContentText)),
+						Color::ContentText,
+					));
+					let rational_layout = Layout::Horizontal(rational_horizontal_items);
+
+					// Check fractional representation width
+					if rational_layout.width() <= max_width {
+						// Fractional representation fits, use it
+						layout = rational_layout;
+						rational = true;
+					} else {
+						// Fractional representation is too wide, represent as float
+						alt_string = None;
 					}
-				} else {
-					format.format_bigint(&int)
-				};
-				let num_str = format.format_bigint(&num);
-				let denom_str = format.format_bigint(&denom.to_bigint().unwrap());
-
-				// Construct a layout for the rational
-				let mut rational_horizontal_items = Vec::new();
-				rational_horizontal_items.push(Layout::Text(int_str, &SANS_24, Color::ContentText));
-				rational_horizontal_items.push(Layout::HorizontalSpace(4));
-				rational_horizontal_items.push(Layout::Fraction(
-					Box::new(Layout::Text(num_str, &SANS_20, Color::ContentText)),
-					Box::new(Layout::Text(denom_str, &SANS_20, Color::ContentText)),
-					Color::ContentText,
-				));
-				let rational_layout = Layout::Horizontal(rational_horizontal_items);
-
-				// Check fractional representation width
-				if rational_layout.width() <= max_width {
-					// Fractional representation fits, use it
-					layout = rational_layout;
-					rational = true;
-				} else {
-					// Fractional representation is too wide, represent as float
-					alt_string = None;
 				}
 			}
 		}

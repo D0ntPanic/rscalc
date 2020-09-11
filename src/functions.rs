@@ -3,6 +3,7 @@ use crate::font::SANS_13;
 use crate::input::InputEvent;
 use crate::number::{
 	IntegerMode, Number, NumberDecimalPointMode, NumberFormat, NumberFormatMode, ToNumber,
+	MAX_INTEGER_BITS,
 };
 use crate::screen::{Color, Rect, Screen};
 use crate::state::State;
@@ -537,6 +538,9 @@ impl Function {
 				}
 				let x = u32::try_from(x)?;
 				let y = state.stack.entry(1)?.to_int()?;
+				if (y.bits() + x as u64) > MAX_INTEGER_BITS {
+					return Err(Error::ValueOutOfRange);
+				}
 				let value = Value::Number(Number::Integer(y << x));
 				state.replace_entries(2, value)?;
 			}
@@ -1337,6 +1341,10 @@ impl FunctionKeyState {
 		} else {
 			self.page = 0;
 		}
+	}
+
+	pub fn multiple_pages(&self) -> bool {
+		self.functions.len() > 6
 	}
 
 	pub fn render<ScreenT: Screen>(&self, screen: &mut ScreenT) {

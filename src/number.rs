@@ -5,6 +5,19 @@ use core::convert::TryInto;
 use intel_dfp::Decimal;
 use num_bigint::{BigInt, BigUint, Sign, ToBigInt, ToBigUint};
 
+// Maximum integer size before it is converted into a floating point number.
+pub const MAX_INTEGER_BITS: u64 = 8192;
+
+// Maximum denominator size. This will keep the maximum possible precision of the
+// 128-bit float available in fractional form.
+pub const MAX_DENOMINATOR_BITS: u64 = 128;
+
+// Maximum numerator size is the maximum integer portion plus the range of the denominator.
+pub const MAX_NUMERATOR_BITS: u64 = MAX_INTEGER_BITS + MAX_DENOMINATOR_BITS;
+
+// Number of integer bits to attempt to render in short form (i.e. stack display)
+pub const MAX_SHORT_DISPLAY_BITS: u64 = 128;
+
 #[derive(Clone)]
 pub enum Number {
 	Integer(BigInt),
@@ -47,6 +60,7 @@ pub struct NumberFormat {
 	pub integer_radix: u8,
 	pub show_alt_hex: bool,
 	pub show_alt_float: bool,
+	pub limit_size: bool,
 }
 
 impl Number {
@@ -170,8 +184,14 @@ impl Number {
 						// Fractional power, use float
 						return Number::Decimal(self.to_decimal().pow(&power.to_decimal()));
 					}
-					if let Ok(power) = right.try_into() {
-						Number::Integer(left.pow(power))
+					if let Ok(int_power) = right.try_into() {
+						let left_bits = left.bits();
+						if left_bits > 0 && ((left_bits - 1) * int_power as u64) > MAX_INTEGER_BITS
+						{
+							Number::Decimal(self.to_decimal().pow(&power.to_decimal()))
+						} else {
+							Self::check_int_bounds(Number::Integer(left.pow(int_power)))
+						}
 					} else {
 						Number::Decimal(self.to_decimal().pow(&power.to_decimal()))
 					}
@@ -249,19 +269,39 @@ impl Number {
 				let num = num / gcd.to_bigint().unwrap();
 				let denom = denom / gcd;
 				if denom == 1.to_biguint().unwrap() {
-					Number::Integer(num)
+					Self::check_int_bounds(Number::Integer(num))
 				} else {
-					Number::Rational(num, denom)
+					Self::check_int_bounds(Number::Rational(num, denom))
 				}
 			}
 			_ => self.clone(),
 		}
 	}
 
+	pub fn check_int_bounds(value: Self) -> Self {
+		match &value {
+			Number::Integer(int) => {
+				if int.bits() > MAX_INTEGER_BITS {
+					Number::Decimal(value.to_decimal())
+				} else {
+					value
+				}
+			}
+			Number::Rational(numer, denom) => {
+				if numer.bits() > MAX_NUMERATOR_BITS || denom.bits() > MAX_DENOMINATOR_BITS {
+					Number::Decimal(value.to_decimal())
+				} else {
+					value
+				}
+			}
+			_ => value,
+		}
+	}
+
 	fn num_add(&self, rhs: &Number) -> Number {
 		match &self {
 			Number::Integer(left) => match rhs {
-				Number::Integer(right) => Number::Integer(left + right),
+				Number::Integer(right) => Self::check_int_bounds(Number::Integer(left + right)),
 				Number::Rational(right_num, right_denom) => {
 					let num = left * right_denom.to_bigint().unwrap() + right_num;
 					Number::Rational(num, right_denom.clone()).simplify()
@@ -288,7 +328,7 @@ impl Number {
 	fn num_sub(&self, rhs: &Number) -> Number {
 		match &self {
 			Number::Integer(left) => match rhs {
-				Number::Integer(right) => Number::Integer(left - right),
+				Number::Integer(right) => Self::check_int_bounds(Number::Integer(left - right)),
 				Number::Rational(right_num, right_denom) => {
 					let num = left * right_denom.to_bigint().unwrap() - right_num;
 					Number::Rational(num, right_denom.clone()).simplify()
@@ -315,7 +355,7 @@ impl Number {
 	fn num_mul(&self, rhs: &Number) -> Number {
 		match &self {
 			Number::Integer(left) => match rhs {
-				Number::Integer(right) => Number::Integer(left * right),
+				Number::Integer(right) => Self::check_int_bounds(Number::Integer(left * right)),
 				Number::Rational(right_num, right_denom) => {
 					Number::Rational(left * right_num, right_denom.clone()).simplify()
 				}
@@ -427,6 +467,7 @@ impl NumberFormat {
 			integer_radix: 10,
 			show_alt_hex: true,
 			show_alt_float: true,
+			limit_size: true,
 		}
 	}
 
@@ -441,6 +482,7 @@ impl NumberFormat {
 			integer_radix: 10,
 			show_alt_hex: false,
 			show_alt_float: false,
+			limit_size: true,
 		}
 	}
 
@@ -458,6 +500,7 @@ impl NumberFormat {
 			integer_radix: 16,
 			show_alt_hex: self.show_alt_hex,
 			show_alt_float: self.show_alt_float,
+			limit_size: true,
 		}
 	}
 
@@ -472,15 +515,24 @@ impl NumberFormat {
 			integer_radix: 10,
 			show_alt_hex: self.show_alt_hex,
 			show_alt_float: self.show_alt_float,
+			limit_size: true,
 		}
 	}
 
 	pub fn format_number(&self, num: &Number) -> String {
 		match num {
 			Number::Integer(int) => match self.mode {
-				NumberFormatMode::Normal | NumberFormatMode::Rational => self.format_bigint(int),
+				NumberFormatMode::Normal | NumberFormatMode::Rational => {
+					if self.limit_size && int.bits() > MAX_SHORT_DISPLAY_BITS {
+						self.format_decimal(&num.to_decimal())
+					} else {
+						self.format_bigint(int)
+					}
+				}
 				NumberFormatMode::Scientific | NumberFormatMode::Engineering => {
-					if self.integer_radix == 10 {
+					if self.integer_radix == 10
+						|| (self.limit_size && int.bits() > MAX_SHORT_DISPLAY_BITS)
+					{
 						self.format_decimal(&num.to_decimal())
 					} else {
 						self.format_bigint(int)
