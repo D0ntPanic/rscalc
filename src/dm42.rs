@@ -402,6 +402,10 @@ impl Screen for DM42Screen {
 
 	fn fill(&mut self, rect: Rect, color: Color) {
 		let rect = rect.clipped_to_screen(self);
+		if rect.w == 0 || rect.h == 0 {
+			return;
+		}
+
 		let color = color.to_bw();
 
 		if rect.x == 0 && rect.w == WIDTH {
