@@ -9,6 +9,9 @@ use crate::value::{Value, ValueRef};
 use alloc::string::ToString;
 use alloc::vec::Vec;
 
+pub const MAX_STACK_ENTRIES: usize = 1000;
+pub const MAX_STACK_INDEX_DIGITS: usize = 3;
+
 pub struct Stack {
 	zero: ValueRef,
 	entries: Vec<ValueRef>,
@@ -66,6 +69,9 @@ impl Stack {
 	}
 
 	pub fn push(&mut self, value: Value) -> Result<()> {
+		if self.entries.len() >= MAX_STACK_ENTRIES {
+			return Err(Error::StackOverflow);
+		}
 		self.entries.push(store(value)?);
 		self.push_new_entry = true;
 		self.editor = None;

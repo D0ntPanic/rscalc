@@ -18,6 +18,7 @@ pub enum Error {
 	InvalidDate,
 	InvalidTime,
 	CorruptData,
+	StackOverflow,
 }
 
 impl Error {
@@ -38,6 +39,7 @@ impl Error {
 			Error::InvalidDate => "Invalid date",
 			Error::InvalidTime => "Invalid time",
 			Error::CorruptData => "Corrupt data",
+			Error::StackOverflow => "Stack overflow",
 		}
 	}
 }

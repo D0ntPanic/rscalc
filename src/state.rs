@@ -5,10 +5,10 @@ use crate::input::{AlphaMode, InputEvent, InputMode};
 use crate::layout::Layout;
 use crate::number::{IntegerMode, Number, NumberFormat, ToNumber};
 use crate::screen::{Color, Font, Rect, Screen};
-use crate::stack::Stack;
-use crate::storage::free_bytes;
+use crate::stack::{Stack, MAX_STACK_INDEX_DIGITS};
+use crate::storage::{free_bytes, store};
 use crate::time::{Now, SimpleDateTimeFormat, SimpleDateTimeToString};
-use crate::value::Value;
+use crate::value::{Value, ValueRef};
 use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -17,7 +17,9 @@ use core::convert::TryFrom;
 use intel_dfp::Decimal;
 
 #[cfg(feature = "dm42")]
-use crate::dm42::{read_power_voltage, show_system_setup_menu, sys_free_mem, usb_powered};
+use crate::dm42::{read_power_voltage, show_system_setup_menu, usb_powered};
+
+const MAX_MEMORY_INDEX_DIGITS: usize = 2;
 
 /// Cached state for rendering the status bar. This is used to optimize the rendering
 /// of the status bar such that it is only drawn when it is updated.
@@ -41,7 +43,7 @@ pub enum Location {
 struct LocationEntryState {
 	name: String,
 	stack: bool,
-	value: Option<usize>,
+	value: Vec<u8>,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -65,7 +67,7 @@ pub struct State {
 	pub default_integer_format: IntegerMode,
 	pub prev_decimal_integer_mode: IntegerMode,
 	pub status_bar_left_display: StatusBarLeftDisplayType,
-	memory: BTreeMap<Location, Value>,
+	memory: BTreeMap<Location, ValueRef>,
 	input_state: InputState,
 	location_entry: LocationEntryState,
 	error: Option<Error>,
@@ -90,8 +92,17 @@ impl LocationEntryState {
 		LocationEntryState {
 			name,
 			stack: false,
-			value: None,
+			value: Vec::new(),
 		}
+	}
+
+	fn int_value(&self) -> usize {
+		let mut result = 0;
+		for digit in &self.value {
+			result *= 10;
+			result += *digit as usize;
+		}
+		result
 	}
 }
 
@@ -177,7 +188,7 @@ impl State {
 			Location::StackOffset(offset) => self.entry(*offset),
 			location => {
 				if let Some(value) = self.memory.get(location) {
-					Ok(value.clone())
+					Ok(value.get()?)
 				} else {
 					Err(Error::ValueNotDefined)
 				}
@@ -189,7 +200,7 @@ impl State {
 		match location {
 			Location::StackOffset(offset) => self.set_entry(offset, value)?,
 			location => {
-				self.memory.insert(location, value);
+				self.memory.insert(location, store(value)?);
 			}
 		}
 		Ok(())
@@ -371,13 +382,6 @@ impl State {
 						show_system_setup_menu();
 						self.force_refresh = true;
 					}
-					InputEvent::Assign => {
-						// For testing memory constraints
-						let size = usize::try_from(&*self.top().to_int()?)?;
-						let mut vec: Vec<u8> = Vec::new();
-						vec.resize(size, 0);
-						core::mem::forget(vec);
-					}
 					InputEvent::Custom => {
 						// Until there is a menu option, add a temporary toggle for memory usage display
 						self.status_bar_left_display = match self.status_bar_left_display {
@@ -448,10 +452,21 @@ impl State {
 		match input {
 			InputEvent::Character(ch) => match ch {
 				'0'..='9' => {
-					self.location_entry.value = if let Some(value) = self.location_entry.value {
-						Some(value * 10 + (ch as u32 - '0' as u32) as usize)
+					self.location_entry
+						.value
+						.push(ch as u32 as u8 - '0' as u32 as u8);
+					if self.location_entry.stack {
+						if self.location_entry.value.len() >= MAX_STACK_INDEX_DIGITS {
+							return LocationInputResult::Finished(Location::StackOffset(
+								self.location_entry.int_value(),
+							));
+						}
 					} else {
-						Some((ch as u32 - '0' as u32) as usize)
+						if self.location_entry.value.len() >= MAX_MEMORY_INDEX_DIGITS {
+							return LocationInputResult::Finished(Location::Integer(
+								self.location_entry.int_value(),
+							));
+						}
 					};
 					LocationInputResult::Intermediate(InputResult::Normal)
 				}
@@ -467,7 +482,7 @@ impl State {
 							'z' | 'Z' => LocationInputResult::Finished(Location::StackOffset(2)),
 							_ => LocationInputResult::Invalid,
 						}
-					} else if self.location_entry.value.is_some() {
+					} else if self.location_entry.value.len() > 0 {
 						LocationInputResult::Invalid
 					} else {
 						LocationInputResult::Finished(Location::Variable(ch))
@@ -476,24 +491,23 @@ impl State {
 				_ => LocationInputResult::Invalid,
 			},
 			InputEvent::Enter => {
-				if let Some(value) = self.location_entry.value {
+				if self.location_entry.value.len() > 0 {
 					if self.location_entry.stack {
-						LocationInputResult::Finished(Location::StackOffset(value))
+						LocationInputResult::Finished(Location::StackOffset(
+							self.location_entry.int_value(),
+						))
 					} else {
-						LocationInputResult::Finished(Location::Integer(value))
+						LocationInputResult::Finished(Location::Integer(
+							self.location_entry.int_value(),
+						))
 					}
 				} else {
 					LocationInputResult::Invalid
 				}
 			}
 			InputEvent::Backspace => {
-				if let Some(value) = self.location_entry.value {
-					let new_value = value / 10;
-					self.location_entry.value = if new_value == 0 {
-						None
-					} else {
-						Some(new_value)
-					};
+				if self.location_entry.value.len() > 0 {
+					self.location_entry.value.pop();
 					LocationInputResult::Intermediate(InputResult::Normal)
 				} else if self.location_entry.stack {
 					self.location_entry.stack = false;
@@ -813,15 +827,11 @@ impl State {
 			}
 
 			// Show currently edited number
-			items.push(Layout::EditText(
-				if let Some(value) = self.location_entry.value {
-					value.to_number().to_str()
-				} else {
-					"".to_string()
-				},
-				&SANS_24,
-				Color::ContentText,
-			));
+			let mut value_str = String::new();
+			for digit in &self.location_entry.value {
+				value_str.push(char::from_u32('0' as u32 + *digit as u32).unwrap());
+			}
+			items.push(Layout::EditText(value_str, &SANS_24, Color::ContentText));
 
 			items.push(Layout::HorizontalSpace(4));
 
