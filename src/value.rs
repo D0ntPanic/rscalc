@@ -613,13 +613,6 @@ impl Value {
 			_ => None,
 		};
 
-		// If alternate representation is the same as normal representation, don't display it
-		if let Some(alt) = &alt_string {
-			if alt == &string {
-				alt_string = None;
-			}
-		}
-
 		// If alternate representation is too wide, don't display it
 		if let Some(alt) = &alt_string {
 			let width = SANS_16.width(alt) + 4;
@@ -707,6 +700,13 @@ impl Value {
 		}
 
 		if !rational {
+			// If alternate representation is the same as normal representation, don't display it
+			if let Some(alt) = &alt_string {
+				if alt == &string {
+					alt_string = None;
+				}
+			}
+
 			// Integer or decimal float, first create a layout of the default
 			// representation with a smaller font. If the default layout is too
 			// wide, we will first reduce font size before splitting to multiple
