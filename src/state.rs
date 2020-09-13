@@ -6,9 +6,9 @@ use crate::layout::Layout;
 use crate::number::{IntegerMode, Number, NumberFormat, ToNumber};
 use crate::screen::{Color, Font, Rect, Screen};
 use crate::stack::Stack;
+use crate::storage::free_bytes;
 use crate::time::{Now, SimpleDateTimeFormat, SimpleDateTimeToString};
 use crate::value::Value;
-use alloc::borrow::Cow;
 use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -144,11 +144,11 @@ impl State {
 		NaiveDateTime::now().to_str(&SimpleDateTimeFormat::status_bar())
 	}
 
-	pub fn top<'a>(&'a self) -> Cow<'a, Value> {
+	pub fn top<'a>(&'a self) -> Value {
 		Stack::value_for_integer_mode(&self.format.integer_mode, self.stack.top())
 	}
 
-	pub fn entry<'a>(&'a self, idx: usize) -> Result<Cow<'a, Value>> {
+	pub fn entry<'a>(&'a self, idx: usize) -> Result<Value> {
 		Ok(Stack::value_for_integer_mode(
 			&self.format.integer_mode,
 			self.stack.entry(idx)?,
@@ -156,28 +156,28 @@ impl State {
 	}
 
 	pub fn replace_entries(&mut self, count: usize, value: Value) -> Result<()> {
-		let value = Stack::value_for_integer_mode(&self.format.integer_mode, &value);
-		self.stack.replace_entries(count, value.into_owned())?;
+		let value = Stack::value_for_integer_mode(&self.format.integer_mode, value);
+		self.stack.replace_entries(count, value)?;
 		Ok(())
 	}
 
-	pub fn set_top(&mut self, value: Value) {
-		let value = Stack::value_for_integer_mode(&self.format.integer_mode, &value);
-		self.stack.set_top(value.into_owned());
+	pub fn set_top(&mut self, value: Value) -> Result<()> {
+		let value = Stack::value_for_integer_mode(&self.format.integer_mode, value);
+		self.stack.set_top(value)
 	}
 
 	pub fn set_entry(&mut self, offset: usize, value: Value) -> Result<()> {
-		let value = Stack::value_for_integer_mode(&self.format.integer_mode, &value);
-		*self.stack.entry_mut(offset)? = value.into_owned();
+		let value = Stack::value_for_integer_mode(&self.format.integer_mode, value);
+		self.stack.set_entry(offset, value)?;
 		Ok(())
 	}
 
-	pub fn read<'a>(&'a self, location: &Location) -> Result<Cow<'a, Value>> {
+	pub fn read<'a>(&'a self, location: &Location) -> Result<Value> {
 		match location {
 			Location::StackOffset(offset) => self.entry(*offset),
 			location => {
 				if let Some(value) = self.memory.get(location) {
-					Ok(Cow::Borrowed(value))
+					Ok(value.clone())
 				} else {
 					Err(Error::ValueNotDefined)
 				}
@@ -217,107 +217,107 @@ impl State {
 					},
 					InputEvent::E => {
 						if self.format.integer_mode == IntegerMode::Float {
-							self.stack.exponent();
+							self.stack.exponent()?;
 						}
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Enter => {
-						self.stack.enter();
+						self.stack.enter()?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Backspace => {
-						self.stack.backspace();
+						self.stack.backspace()?;
 					}
 					InputEvent::Neg => {
 						if self.stack.editing() {
 							self.stack.neg()?;
 						} else {
-							self.set_top((-&*self.top())?);
+							self.set_top((-self.top())?)?;
 						}
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Add => {
-						self.replace_entries(2, (&*self.entry(1)? + &*self.entry(0)?)?)?;
+						self.replace_entries(2, (self.entry(1)? + self.entry(0)?)?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Sub => {
-						self.replace_entries(2, (&*self.entry(1)? - &*self.entry(0)?)?)?;
+						self.replace_entries(2, (self.entry(1)? - self.entry(0)?)?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Mul => {
-						self.replace_entries(2, (&*self.entry(1)? * &*self.entry(0)?)?)?;
+						self.replace_entries(2, (self.entry(1)? * self.entry(0)?)?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Div => {
-						self.replace_entries(2, (&*self.entry(1)? / &*self.entry(0)?)?)?;
+						self.replace_entries(2, (self.entry(1)? / self.entry(0)?)?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Recip => {
-						self.set_top((&Value::Number(1.into()) / &*self.top())?);
+						self.set_top((Value::Number(1.into()) / self.top())?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Pow => {
-						self.replace_entries(2, (&*self.entry(1)?).pow(&*self.entry(0)?)?)?;
+						self.replace_entries(2, (self.entry(1)?).pow(&self.entry(0)?)?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Sqrt => {
-						self.set_top(self.top().sqrt()?);
+						self.set_top(self.top().sqrt()?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Square => {
-						let top = &*self.top();
-						let square = (top * top)?;
-						self.set_top(square);
+						let top = self.top();
+						let square = (&top * &top)?;
+						self.set_top(square)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Log => {
-						self.set_top(self.top().log()?);
+						self.set_top(self.top().log()?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::TenX => {
-						self.set_top(self.top().exp10()?);
+						self.set_top(self.top().exp10()?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Ln => {
-						self.set_top(self.top().ln()?);
+						self.set_top(self.top().ln()?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::EX => {
-						self.set_top(self.top().exp()?);
+						self.set_top(self.top().exp()?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Percent => {
-						let factor = (&*self.entry(0)? / &Value::Number(100.into()))?;
-						self.set_top((&*self.entry(1)? * &factor)?);
+						let factor = (self.entry(0)? / Value::Number(100.into()))?;
+						self.set_top((self.entry(1)? * factor)?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Pi => {
 						self.stack
-							.input_value(Value::Number(Number::Decimal(Decimal::pi())));
+							.input_value(Value::Number(Number::Decimal(Decimal::pi())))?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Sin => {
-						self.set_top(self.top().sin()?);
+						self.set_top(self.top().sin()?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Cos => {
-						self.set_top(self.top().cos()?);
+						self.set_top(self.top().cos()?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Tan => {
-						self.set_top(self.top().tan()?);
+						self.set_top(self.top().tan()?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Asin => {
-						self.set_top(self.top().asin()?);
+						self.set_top(self.top().asin()?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Acos => {
-						self.set_top(self.top().acos()?);
+						self.set_top(self.top().acos()?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Atan => {
-						self.set_top(self.top().atan()?);
+						self.set_top(self.top().atan()?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::RotateDown => {
@@ -410,7 +410,7 @@ impl State {
 				LocationInputResult::Finished(location) => {
 					self.input_state = InputState::Normal;
 					self.input_mode.alpha = AlphaMode::Normal;
-					self.stack.input_value(self.read(&location)?.into_owned());
+					self.stack.input_value(self.read(&location)?)?;
 					Ok(InputResult::Normal)
 				}
 				LocationInputResult::Exit => {
@@ -427,7 +427,7 @@ impl State {
 				LocationInputResult::Finished(location) => {
 					self.input_state = InputState::Normal;
 					self.input_mode.alpha = AlphaMode::Normal;
-					self.write(location, self.top().into_owned())?;
+					self.write(location, self.top())?;
 					Ok(InputResult::Normal)
 				}
 				LocationInputResult::Exit => {
@@ -571,10 +571,7 @@ impl State {
 				}
 			}
 			StatusBarLeftDisplayType::FreeMemory => {
-				#[cfg(feature = "dm42")]
-				let free_memory = sys_free_mem().to_number().to_str() + " bytes free";
-				#[cfg(not(feature = "dm42"))]
-				let free_memory = "".to_string();
+				let free_memory = free_bytes().to_number().to_str() + " bytes free";
 				if free_memory != self.cached_status_bar_state.left_string {
 					self.cached_status_bar_state.left_string = free_memory;
 					changed = true;

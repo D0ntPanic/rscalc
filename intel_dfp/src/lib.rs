@@ -447,6 +447,14 @@ impl Decimal {
 			result.assume_init()
 		}
 	}
+
+	pub fn from_raw(value: [u64; 2]) -> Self {
+		Decimal { parts: value }
+	}
+
+	pub fn to_raw(&self) -> &[u64; 2] {
+		&self.parts
+	}
 }
 
 impl From<i32> for Decimal {

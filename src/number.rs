@@ -1,10 +1,12 @@
 use crate::error::{Error, Result};
+use crate::storage::{DeserializeInput, SerializeOutput, StorageObject, StorageRefSerializer};
 use alloc::borrow::Cow;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::convert::TryInto;
 use intel_dfp::Decimal;
 use num_bigint::{BigInt, BigUint, Sign, ToBigInt, ToBigUint};
+use num_integer::Integer;
 
 // Maximum integer size before it is converted into a floating point number.
 pub const MAX_INTEGER_BITS: u64 = 8192;
@@ -253,17 +255,6 @@ impl Number {
 		Number::Decimal(self.to_decimal().exp())
 	}
 
-	fn gcd(x: &BigUint, y: &BigUint) -> BigUint {
-		let mut x = x.clone();
-		let mut y = y.clone();
-		while y != 0.to_biguint().unwrap() {
-			let t = y.clone();
-			y = x % y;
-			x = t;
-		}
-		x
-	}
-
 	fn simplify(self) -> Self {
 		match self {
 			Number::Rational(num, denom) => {
@@ -272,7 +263,7 @@ impl Number {
 				} else {
 					(&num).to_biguint().unwrap()
 				};
-				let gcd = Self::gcd(&num_abs, &denom);
+				let gcd = num_abs.gcd(&denom);
 				let num = num / gcd.to_bigint().unwrap();
 				let denom = denom / gcd;
 				if denom == 1.to_biguint().unwrap() {
@@ -1143,5 +1134,155 @@ impl core::ops::Neg for &Number {
 
 	fn neg(self) -> Self::Output {
 		0.to_number().num_sub(self)
+	}
+}
+
+const NUM_SERIALIZE_TYPE_INTEGER: u8 = 0;
+const NUM_SERIALIZE_TYPE_RATIONAL: u8 = 1;
+const NUM_SERIALIZE_TYPE_DECIMAL: u8 = 2;
+const NUM_SERIALIZE_SIGN_NONE: u8 = 0;
+const NUM_SERIALIZE_SIGN_POSITIVE: u8 = 1;
+const NUM_SERIALIZE_SIGN_NEGATIVE: u8 = 2;
+
+impl StorageObject for Number {
+	fn serialize<Ref: StorageRefSerializer, Out: SerializeOutput>(
+		&self,
+		output: &mut Out,
+		_: &Ref,
+	) -> Result<()> {
+		match self {
+			Number::Integer(int) => {
+				output.write_u8(NUM_SERIALIZE_TYPE_INTEGER)?; // Type marker
+
+				let (sign, digits) = int.to_u32_digits();
+				// Output sign
+				output.write_u8(match sign {
+					Sign::NoSign => NUM_SERIALIZE_SIGN_NONE,
+					Sign::Plus => NUM_SERIALIZE_SIGN_POSITIVE,
+					Sign::Minus => NUM_SERIALIZE_SIGN_NEGATIVE,
+				})?;
+
+				// Output size
+				output.write_u32(digits.len() as u32)?;
+
+				// Output digits
+				for digit in digits {
+					output.write_u32(digit)?;
+				}
+			}
+			Number::Rational(num, denom) => {
+				output.write_u8(NUM_SERIALIZE_TYPE_RATIONAL)?; // Type marker
+
+				// Output sign
+				let (sign, digits) = num.to_u32_digits();
+				output.write_u8(match sign {
+					Sign::NoSign => NUM_SERIALIZE_SIGN_NONE,
+					Sign::Plus => NUM_SERIALIZE_SIGN_POSITIVE,
+					Sign::Minus => NUM_SERIALIZE_SIGN_NEGATIVE,
+				})?;
+
+				// Output numerator size
+				output.write_u32(digits.len() as u32)?;
+
+				// Output numerator digits
+				for digit in digits {
+					output.write_u32(digit)?;
+				}
+
+				// Output denominator size
+				let digits = denom.to_u32_digits();
+				output.write_u32(digits.len() as u32)?;
+
+				// Output denominator digits
+				for digit in digits {
+					output.write_u32(digit)?;
+				}
+			}
+			Number::Decimal(value) => {
+				output.write_u8(NUM_SERIALIZE_TYPE_DECIMAL)?; // Type marker
+
+				// Decimal numbers are two u64 parts, encoding is defined by the floating
+				// point library (treat as a black box).
+				let parts = value.to_raw();
+				output.write_u64(parts[0])?;
+				output.write_u64(parts[1])?;
+			}
+		}
+		Ok(())
+	}
+
+	unsafe fn deserialize<T: StorageRefSerializer>(
+		input: &mut DeserializeInput,
+		_: &T,
+	) -> Result<Self> {
+		match input.read_u8()? {
+			NUM_SERIALIZE_TYPE_INTEGER => {
+				// Decode sign
+				let sign = match input.read_u8()? {
+					NUM_SERIALIZE_SIGN_NONE => Sign::NoSign,
+					NUM_SERIALIZE_SIGN_POSITIVE => Sign::Plus,
+					NUM_SERIALIZE_SIGN_NEGATIVE => Sign::Minus,
+					_ => return Err(Error::CorruptData),
+				};
+
+				// Decode size
+				let size = input.read_u32()? as usize;
+
+				// Decode digits
+				let mut digits = Vec::new();
+				digits.reserve(size);
+				for _ in 0..size {
+					digits.push(input.read_u32()?);
+				}
+
+				// Create integer from parts
+				Ok(Number::Integer(BigInt::from_slice(sign, &digits)))
+			}
+			NUM_SERIALIZE_TYPE_RATIONAL => {
+				// Decode sign
+				let sign = match input.read_u8()? {
+					NUM_SERIALIZE_SIGN_NONE => Sign::NoSign,
+					NUM_SERIALIZE_SIGN_POSITIVE => Sign::Plus,
+					NUM_SERIALIZE_SIGN_NEGATIVE => Sign::Minus,
+					_ => return Err(Error::CorruptData),
+				};
+
+				// Decode numerator size
+				let size = input.read_u32()? as usize;
+
+				// Decode numerator digits
+				let mut digits = Vec::new();
+				digits.reserve(size);
+				for _ in 0..size {
+					digits.push(input.read_u32()?);
+				}
+
+				// Build numerator from parts
+				let numerator = BigInt::from_slice(sign, &digits);
+
+				// Decode denominator size
+				let size = input.read_u32()? as usize;
+
+				// Decode denominator digits
+				digits.clear();
+				digits.reserve(size);
+				for _ in 0..size {
+					digits.push(input.read_u32()?);
+				}
+
+				// Build denominator from parts
+				let denominator = BigUint::from_slice(&digits);
+
+				// Return rational from numerator and denominator
+				Ok(Number::Rational(numerator, denominator))
+			}
+			NUM_SERIALIZE_TYPE_DECIMAL => {
+				// Decode parts of decimal and pass to floating point library
+				let first = input.read_u64()?;
+				let second = input.read_u64()?;
+				Ok(Number::Decimal(Decimal::from_raw([first, second])))
+			}
+			_ => Err(Error::CorruptData),
+		}
 	}
 }

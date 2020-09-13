@@ -5,7 +5,13 @@
 
 extern crate alloc;
 extern crate intel_dfp;
+extern crate linked_list_allocator;
 extern crate num_bigint;
+extern crate num_integer;
+extern crate spin;
+
+#[macro_use]
+extern crate lazy_static;
 
 #[cfg(not(feature = "dm42"))]
 extern crate chrono;
@@ -13,12 +19,6 @@ extern crate chrono;
 extern crate glib;
 #[cfg(not(feature = "dm42"))]
 extern crate gtk;
-
-#[cfg(feature = "dm42")]
-#[macro_use]
-extern crate lazy_static;
-#[cfg(feature = "dm42")]
-extern crate spin;
 
 #[cfg(feature = "dm42")]
 mod dm42;
@@ -36,6 +36,7 @@ mod number;
 mod screen;
 mod stack;
 mod state;
+mod storage;
 mod time;
 mod unit;
 mod value;

@@ -528,17 +528,19 @@ impl Function {
 			}
 			Function::Not => {
 				let value = Number::Integer(!&*state.stack.top().to_int()?);
-				state.set_top(Value::Number(value));
+				state.set_top(Value::Number(value))?;
 			}
 			Function::ShiftLeft => {
-				let mut x = state.stack.entry(0)?.to_int()?;
+				let x = state.stack.entry(0)?;
+				let mut x = x.to_int()?;
 				if let IntegerMode::SizedInteger(size, _) = state.format.integer_mode {
 					if size.is_power_of_two() {
 						x = Cow::Owned(&*x & &(size - 1).to_bigint().unwrap());
 					}
 				}
 				let x = u32::try_from(&*x)?;
-				let y = state.stack.entry(1)?.to_int()?;
+				let y = state.stack.entry(1)?;
+				let y = y.to_int()?;
 				if (y.bits() + x as u64) > MAX_INTEGER_BITS {
 					return Err(Error::ValueOutOfRange);
 				}
@@ -546,25 +548,29 @@ impl Function {
 				state.replace_entries(2, value)?;
 			}
 			Function::ShiftRight => {
-				let mut x = state.stack.entry(0)?.to_int()?;
+				let x = state.stack.entry(0)?;
+				let mut x = x.to_int()?;
 				if let IntegerMode::SizedInteger(size, _) = state.format.integer_mode {
 					if size.is_power_of_two() {
 						x = Cow::Owned(&*x & (size - 1).to_bigint().unwrap());
 					}
 				}
 				let x = u32::try_from(&*x)?;
-				let y = state.stack.entry(1)?.to_int()?;
+				let y = state.stack.entry(1)?;
+				let y = y.to_int()?;
 				let value = Value::Number(Number::Integer(&*y >> x));
 				state.replace_entries(2, value)?;
 			}
 			Function::RotateLeft => {
 				if let IntegerMode::SizedInteger(size, _) = state.format.integer_mode {
-					let mut x = state.stack.entry(0)?.to_int()?;
+					let x = state.stack.entry(0)?;
+					let mut x = x.to_int()?;
 					if size.is_power_of_two() {
 						x = Cow::Owned(&*x & (size - 1).to_bigint().unwrap());
 					}
 					if let Ok(x) = u32::try_from(&*x) {
-						let y = state.stack.entry(1)?.to_int()?;
+						let y = state.stack.entry(1)?;
+						let y = y.to_int()?;
 						let value = (&*y << x) | (&*y >> ((size as u32) - x));
 						state.replace_entries(2, Value::Number(Number::Integer(value)))?;
 					}
@@ -574,12 +580,14 @@ impl Function {
 			}
 			Function::RotateRight => {
 				if let IntegerMode::SizedInteger(size, _) = state.format.integer_mode {
-					let mut x = state.stack.entry(0)?.to_int()?;
+					let x = state.stack.entry(0)?;
+					let mut x = x.to_int()?;
 					if size.is_power_of_two() {
 						x = Cow::Owned(&*x & (size - 1).to_bigint().unwrap());
 					}
 					if let Ok(x) = u32::try_from(&*x) {
-						let y = state.stack.entry(1)?.to_int()?;
+						let y = state.stack.entry(1)?;
+						let y = y.to_int()?;
 						let value = (&*y >> x) | (&*y << ((size as u32) - x));
 						state.replace_entries(2, Value::Number(Number::Integer(value)))?;
 					}
@@ -618,18 +626,18 @@ impl Function {
 						DistanceUnit::Meters.into(),
 						TimeUnit::Seconds.into(),
 					),
-				));
+				))?;
 			}
 			Function::TimeCatalog => state.function_keys.show_menu(FunctionMenu::TimeCatalog),
 			Function::Now => {
 				state
 					.stack
-					.input_value(Value::DateTime(NaiveDateTime::now()));
+					.input_value(Value::DateTime(NaiveDateTime::now()))?;
 			}
 			Function::Date => {
 				if let Value::DateTime(dt) = state.stack.top() {
 					let date = dt.date();
-					state.stack.set_top(Value::Date(date));
+					state.stack.set_top(Value::Date(date))?;
 				} else {
 					let year = i32::try_from(&*state.stack.entry(2)?.to_int()?)?;
 					let month = u8::try_from(&*state.stack.entry(1)?.to_int()?)?;
@@ -644,10 +652,10 @@ impl Function {
 			Function::Time => {
 				if let Value::DateTime(dt) = state.stack.top() {
 					let time = dt.time();
-					state.stack.set_top(Value::Time(time));
+					state.stack.set_top(Value::Time(time))?;
 				} else {
 					let nano = (state.stack.entry(0)?
-						* &Value::Number(Number::Integer(1_000_000_000.to_bigint().unwrap())))?;
+						* Value::Number(Number::Integer(1_000_000_000.to_bigint().unwrap())))?;
 					let hr = u8::try_from(&*state.stack.entry(2)?.to_int()?)?;
 					let min = u8::try_from(&*state.stack.entry(1)?.to_int()?)?;
 					let sec = u64::try_from(&*nano.to_int()?)?;
@@ -661,35 +669,35 @@ impl Function {
 			Function::TimeUnits => state.function_keys.show_menu(FunctionMenu::TimeUnit),
 			Function::Nanoseconds => {
 				let value = state.stack.top().add_unit(TimeUnit::Nanoseconds.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::Microseconds => {
 				let value = state.stack.top().add_unit(TimeUnit::Microseconds.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::Milliseconds => {
 				let value = state.stack.top().add_unit(TimeUnit::Milliseconds.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::Seconds => {
 				let value = state.stack.top().add_unit(TimeUnit::Seconds.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::Minutes => {
 				let value = state.stack.top().add_unit(TimeUnit::Minutes.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::Hours => {
 				let value = state.stack.top().add_unit(TimeUnit::Hours.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::Days => {
 				let value = state.stack.top().add_unit(TimeUnit::Days.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::Years => {
 				let value = state.stack.top().add_unit(TimeUnit::Years.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::InverseTimeUnits => {
 				state.function_keys.show_menu(FunctionMenu::InverseTimeUnit)
@@ -699,41 +707,41 @@ impl Function {
 					.stack
 					.top()
 					.add_unit_inv(TimeUnit::Nanoseconds.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::InverseMicroseconds => {
 				let value = state
 					.stack
 					.top()
 					.add_unit_inv(TimeUnit::Microseconds.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::InverseMilliseconds => {
 				let value = state
 					.stack
 					.top()
 					.add_unit_inv(TimeUnit::Milliseconds.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::InverseSeconds => {
 				let value = state.stack.top().add_unit_inv(TimeUnit::Seconds.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::InverseMinutes => {
 				let value = state.stack.top().add_unit_inv(TimeUnit::Minutes.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::InverseHours => {
 				let value = state.stack.top().add_unit_inv(TimeUnit::Hours.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::InverseDays => {
 				let value = state.stack.top().add_unit_inv(TimeUnit::Days.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::InverseYears => {
 				let value = state.stack.top().add_unit_inv(TimeUnit::Years.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::ToTimeUnits => state.function_keys.show_menu(FunctionMenu::ToTimeUnit),
 			Function::ToNanoseconds => {
@@ -741,56 +749,56 @@ impl Function {
 					.stack
 					.top()
 					.convert_single_unit(TimeUnit::Nanoseconds.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::ToMicroseconds => {
 				let value = state
 					.stack
 					.top()
 					.convert_single_unit(TimeUnit::Microseconds.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::ToMilliseconds => {
 				let value = state
 					.stack
 					.top()
 					.convert_single_unit(TimeUnit::Milliseconds.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::ToSeconds => {
 				let value = state
 					.stack
 					.top()
 					.convert_single_unit(TimeUnit::Seconds.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::ToMinutes => {
 				let value = state
 					.stack
 					.top()
 					.convert_single_unit(TimeUnit::Minutes.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::ToHours => {
 				let value = state
 					.stack
 					.top()
 					.convert_single_unit(TimeUnit::Hours.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::ToDays => {
 				let value = state
 					.stack
 					.top()
 					.convert_single_unit(TimeUnit::Days.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::ToYears => {
 				let value = state
 					.stack
 					.top()
 					.convert_single_unit(TimeUnit::Years.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::DistanceUnits => state.function_keys.show_menu(FunctionMenu::DistanceUnit),
 			Function::Nanometers => {
@@ -798,69 +806,69 @@ impl Function {
 					.stack
 					.top()
 					.add_unit(DistanceUnit::Nanometers.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::Micrometers => {
 				let value = state
 					.stack
 					.top()
 					.add_unit(DistanceUnit::Micrometers.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::Millimeters => {
 				let value = state
 					.stack
 					.top()
 					.add_unit(DistanceUnit::Millimeters.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::Centimeters => {
 				let value = state
 					.stack
 					.top()
 					.add_unit(DistanceUnit::Centimeters.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::Meters => {
 				let value = state.stack.top().add_unit(DistanceUnit::Meters.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::Kilometers => {
 				let value = state
 					.stack
 					.top()
 					.add_unit(DistanceUnit::Kilometers.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::Inches => {
 				let value = state.stack.top().add_unit(DistanceUnit::Inches.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::Feet => {
 				let value = state.stack.top().add_unit(DistanceUnit::Feet.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::Yards => {
 				let value = state.stack.top().add_unit(DistanceUnit::Yards.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::Miles => {
 				let value = state.stack.top().add_unit(DistanceUnit::Miles.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::NauticalMiles => {
 				let value = state
 					.stack
 					.top()
 					.add_unit(DistanceUnit::NauticalMiles.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::AstronomicalUnits => {
 				let value = state
 					.stack
 					.top()
 					.add_unit(DistanceUnit::AstronomicalUnits.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::InverseDistanceUnits => state
 				.function_keys
@@ -870,75 +878,75 @@ impl Function {
 					.stack
 					.top()
 					.add_unit_inv(DistanceUnit::Nanometers.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::InverseMicrometers => {
 				let value = state
 					.stack
 					.top()
 					.add_unit_inv(DistanceUnit::Micrometers.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::InverseMillimeters => {
 				let value = state
 					.stack
 					.top()
 					.add_unit_inv(DistanceUnit::Millimeters.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::InverseCentimeters => {
 				let value = state
 					.stack
 					.top()
 					.add_unit_inv(DistanceUnit::Centimeters.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::InverseMeters => {
 				let value = state
 					.stack
 					.top()
 					.add_unit_inv(DistanceUnit::Meters.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::InverseKilometers => {
 				let value = state
 					.stack
 					.top()
 					.add_unit_inv(DistanceUnit::Kilometers.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::InverseInches => {
 				let value = state
 					.stack
 					.top()
 					.add_unit_inv(DistanceUnit::Inches.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::InverseFeet => {
 				let value = state.stack.top().add_unit_inv(DistanceUnit::Feet.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::InverseYards => {
 				let value = state.stack.top().add_unit_inv(DistanceUnit::Yards.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::InverseMiles => {
 				let value = state.stack.top().add_unit_inv(DistanceUnit::Miles.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::InverseNauticalMiles => {
 				let value = state
 					.stack
 					.top()
 					.add_unit_inv(DistanceUnit::NauticalMiles.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::InverseAstronomicalUnits => {
 				let value = state
 					.stack
 					.top()
 					.add_unit_inv(DistanceUnit::AstronomicalUnits.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::ToDistanceUnits => {
 				state.function_keys.show_menu(FunctionMenu::ToDistanceUnit)
@@ -948,84 +956,84 @@ impl Function {
 					.stack
 					.top()
 					.convert_single_unit(DistanceUnit::Nanometers.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::ToMicrometers => {
 				let value = state
 					.stack
 					.top()
 					.convert_single_unit(DistanceUnit::Micrometers.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::ToMillimeters => {
 				let value = state
 					.stack
 					.top()
 					.convert_single_unit(DistanceUnit::Millimeters.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::ToCentimeters => {
 				let value = state
 					.stack
 					.top()
 					.convert_single_unit(DistanceUnit::Centimeters.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::ToMeters => {
 				let value = state
 					.stack
 					.top()
 					.convert_single_unit(DistanceUnit::Meters.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::ToKilometers => {
 				let value = state
 					.stack
 					.top()
 					.convert_single_unit(DistanceUnit::Kilometers.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::ToInches => {
 				let value = state
 					.stack
 					.top()
 					.convert_single_unit(DistanceUnit::Inches.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::ToFeet => {
 				let value = state
 					.stack
 					.top()
 					.convert_single_unit(DistanceUnit::Feet.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::ToYards => {
 				let value = state
 					.stack
 					.top()
 					.convert_single_unit(DistanceUnit::Yards.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::ToMiles => {
 				let value = state
 					.stack
 					.top()
 					.convert_single_unit(DistanceUnit::Miles.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::ToNauticalMiles => {
 				let value = state
 					.stack
 					.top()
 					.convert_single_unit(DistanceUnit::NauticalMiles.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 			Function::ToAstronomicalUnits => {
 				let value = state
 					.stack
 					.top()
 					.convert_single_unit(DistanceUnit::AstronomicalUnits.into())?;
-				state.set_top(value);
+				state.set_top(value)?;
 			}
 		}
 		Ok(())

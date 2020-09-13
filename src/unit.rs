@@ -1,5 +1,6 @@
 use crate::error::{Error, Result};
 use crate::number::{Number, ToNumber};
+use crate::storage::{DeserializeInput, SerializeOutput, StorageObject, StorageRefSerializer};
 use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
 
@@ -76,6 +77,57 @@ impl Unit {
 		match self {
 			Unit::Time(unit) => unit.to_str(),
 			Unit::Distance(unit) => unit.to_str(),
+		}
+	}
+
+	pub fn to_u16(&self) -> u16 {
+		match self {
+			Unit::Time(TimeUnit::Nanoseconds) => 0x0000,
+			Unit::Time(TimeUnit::Microseconds) => 0x0001,
+			Unit::Time(TimeUnit::Milliseconds) => 0x0002,
+			Unit::Time(TimeUnit::Seconds) => 0x0003,
+			Unit::Time(TimeUnit::Minutes) => 0x0004,
+			Unit::Time(TimeUnit::Hours) => 0x0005,
+			Unit::Time(TimeUnit::Days) => 0x0006,
+			Unit::Time(TimeUnit::Years) => 0x0007,
+			Unit::Distance(DistanceUnit::Nanometers) => 0x0100,
+			Unit::Distance(DistanceUnit::Micrometers) => 0x0101,
+			Unit::Distance(DistanceUnit::Millimeters) => 0x0102,
+			Unit::Distance(DistanceUnit::Centimeters) => 0x0103,
+			Unit::Distance(DistanceUnit::Meters) => 0x0104,
+			Unit::Distance(DistanceUnit::Kilometers) => 0x0105,
+			Unit::Distance(DistanceUnit::Inches) => 0x0110,
+			Unit::Distance(DistanceUnit::Feet) => 0x0111,
+			Unit::Distance(DistanceUnit::Yards) => 0x0112,
+			Unit::Distance(DistanceUnit::Miles) => 0x0113,
+			Unit::Distance(DistanceUnit::NauticalMiles) => 0x0114,
+			Unit::Distance(DistanceUnit::AstronomicalUnits) => 0x0120,
+		}
+	}
+
+	pub fn from_u16(value: u16) -> Option<Self> {
+		match value {
+			0x0000 => Some(Unit::Time(TimeUnit::Nanoseconds)),
+			0x0001 => Some(Unit::Time(TimeUnit::Microseconds)),
+			0x0002 => Some(Unit::Time(TimeUnit::Milliseconds)),
+			0x0003 => Some(Unit::Time(TimeUnit::Seconds)),
+			0x0004 => Some(Unit::Time(TimeUnit::Minutes)),
+			0x0005 => Some(Unit::Time(TimeUnit::Hours)),
+			0x0006 => Some(Unit::Time(TimeUnit::Days)),
+			0x0007 => Some(Unit::Time(TimeUnit::Years)),
+			0x0100 => Some(Unit::Distance(DistanceUnit::Nanometers)),
+			0x0101 => Some(Unit::Distance(DistanceUnit::Micrometers)),
+			0x0102 => Some(Unit::Distance(DistanceUnit::Millimeters)),
+			0x0103 => Some(Unit::Distance(DistanceUnit::Centimeters)),
+			0x0104 => Some(Unit::Distance(DistanceUnit::Meters)),
+			0x0105 => Some(Unit::Distance(DistanceUnit::Kilometers)),
+			0x0110 => Some(Unit::Distance(DistanceUnit::Inches)),
+			0x0111 => Some(Unit::Distance(DistanceUnit::Feet)),
+			0x0112 => Some(Unit::Distance(DistanceUnit::Yards)),
+			0x0113 => Some(Unit::Distance(DistanceUnit::Miles)),
+			0x0114 => Some(Unit::Distance(DistanceUnit::NauticalMiles)),
+			0x0120 => Some(Unit::Distance(DistanceUnit::AstronomicalUnits)),
+			_ => None,
 		}
 	}
 }
@@ -344,5 +396,38 @@ impl CompositeUnit {
 			}
 		}
 		result
+	}
+}
+
+impl StorageObject for CompositeUnit {
+	fn serialize<Ref: StorageRefSerializer, Out: SerializeOutput>(
+		&self,
+		output: &mut Out,
+		_: &Ref,
+	) -> Result<()> {
+		output.write_u32(self.units.len() as u32)?;
+		for (_, unit) in &self.units {
+			output.write_u16(unit.0.to_u16())?;
+			output.write_i32(unit.1)?;
+		}
+		Ok(())
+	}
+
+	unsafe fn deserialize<T: StorageRefSerializer>(
+		input: &mut DeserializeInput,
+		_: &T,
+	) -> Result<Self> {
+		let count = input.read_u32()?;
+		let mut result = CompositeUnit::new();
+		for _ in 0..count {
+			let unit = match Unit::from_u16(input.read_u16()?) {
+				Some(unit) => unit,
+				None => return Err(Error::CorruptData),
+			};
+			let power = input.read_i32()?;
+			let unit_type = unit.unit_type();
+			result.units.insert(unit_type, (unit, power));
+		}
+		Ok(result)
 	}
 }

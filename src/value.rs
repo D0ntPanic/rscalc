@@ -4,13 +4,16 @@ use crate::font::{SANS_13, SANS_16, SANS_20, SANS_24};
 use crate::layout::Layout;
 use crate::number::{Number, NumberFormat, NumberFormatMode, ToNumber, MAX_SHORT_DISPLAY_BITS};
 use crate::screen::Color;
+use crate::storage::{
+	DeserializeInput, SerializeOutput, StorageObject, StorageRef, StorageRefSerializer,
+};
 use crate::time::{SimpleDateTimeFormat, SimpleDateTimeToString};
 use crate::unit::{CompositeUnit, TimeUnit, Unit};
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
-use chrono::{Duration, NaiveDate, NaiveDateTime, NaiveTime};
+use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 use core::convert::TryFrom;
 use core::ops::Add;
 use num_bigint::{BigInt, ToBigInt};
@@ -23,6 +26,8 @@ pub enum Value {
 	Date(NaiveDate),
 	Time(NaiveTime),
 }
+
+pub type ValueRef = StorageRef<Value>;
 
 impl Value {
 	pub fn is_numeric(&self) -> bool {
@@ -985,5 +990,101 @@ impl core::ops::Neg for &Value {
 
 	fn neg(self) -> Self::Output {
 		Value::Number(0.into()).value_sub(self)
+	}
+}
+
+const VALUE_SERIALIZE_TYPE_NUMBER: u8 = 0;
+const VALUE_SERIALIZE_TYPE_NUMBER_WITH_UNIT: u8 = 1;
+const VALUE_SERIALIZE_TYPE_DATETIME: u8 = 2;
+const VALUE_SERIALIZE_TYPE_DATE: u8 = 3;
+const VALUE_SERIALIZE_TYPE_TIME: u8 = 4;
+
+impl StorageObject for Value {
+	fn serialize<Ref: StorageRefSerializer, Out: SerializeOutput>(
+		&self,
+		output: &mut Out,
+		storage_refs: &Ref,
+	) -> Result<()> {
+		match self {
+			Value::Number(num) => {
+				output.write_u8(VALUE_SERIALIZE_TYPE_NUMBER)?;
+				num.serialize(output, storage_refs)?;
+			}
+			Value::NumberWithUnit(num, unit) => {
+				output.write_u8(VALUE_SERIALIZE_TYPE_NUMBER_WITH_UNIT)?;
+				num.serialize(output, storage_refs)?;
+				unit.serialize(output, storage_refs)?;
+			}
+			Value::DateTime(dt) => {
+				output.write_u8(VALUE_SERIALIZE_TYPE_DATETIME)?;
+				output.write_i32(dt.year())?;
+				output.write_u8(dt.month() as u8)?;
+				output.write_u8(dt.day() as u8)?;
+				output.write_u8(dt.hour() as u8)?;
+				output.write_u8(dt.minute() as u8)?;
+				output.write_u8(dt.second() as u8)?;
+				output.write_u32(dt.nanosecond())?;
+			}
+			Value::Date(date) => {
+				output.write_u8(VALUE_SERIALIZE_TYPE_DATE)?;
+				output.write_i32(date.year())?;
+				output.write_u8(date.month() as u8)?;
+				output.write_u8(date.day() as u8)?;
+			}
+			Value::Time(time) => {
+				output.write_u8(VALUE_SERIALIZE_TYPE_TIME)?;
+				output.write_u8(time.hour() as u8)?;
+				output.write_u8(time.minute() as u8)?;
+				output.write_u8(time.second() as u8)?;
+				output.write_u32(time.nanosecond())?;
+			}
+		}
+		Ok(())
+	}
+
+	unsafe fn deserialize<T: StorageRefSerializer>(
+		input: &mut DeserializeInput,
+		storage_refs: &T,
+	) -> Result<Self> {
+		match input.read_u8()? {
+			VALUE_SERIALIZE_TYPE_NUMBER => {
+				Ok(Value::Number(Number::deserialize(input, storage_refs)?))
+			}
+			VALUE_SERIALIZE_TYPE_NUMBER_WITH_UNIT => {
+				let number = Number::deserialize(input, storage_refs)?;
+				let unit = CompositeUnit::deserialize(input, storage_refs)?;
+				Ok(Value::NumberWithUnit(number, unit))
+			}
+			VALUE_SERIALIZE_TYPE_DATETIME => {
+				let year = input.read_i32()?;
+				let month = input.read_u8()? as u32;
+				let day = input.read_u8()? as u32;
+				let hour = input.read_u8()? as u32;
+				let minute = input.read_u8()? as u32;
+				let second = input.read_u8()? as u32;
+				let nanosecond = input.read_u32()?;
+				let date = NaiveDate::from_ymd_opt(year, month, day).ok_or(Error::CorruptData)?;
+				let time = NaiveTime::from_hms_nano_opt(hour, minute, second, nanosecond)
+					.ok_or(Error::CorruptData)?;
+				Ok(Value::DateTime(NaiveDateTime::new(date, time)))
+			}
+			VALUE_SERIALIZE_TYPE_DATE => {
+				let year = input.read_i32()?;
+				let month = input.read_u8()? as u32;
+				let day = input.read_u8()? as u32;
+				let date = NaiveDate::from_ymd_opt(year, month, day).ok_or(Error::CorruptData)?;
+				Ok(Value::Date(date))
+			}
+			VALUE_SERIALIZE_TYPE_TIME => {
+				let hour = input.read_u8()? as u32;
+				let minute = input.read_u8()? as u32;
+				let second = input.read_u8()? as u32;
+				let nanosecond = input.read_u32()?;
+				let time = NaiveTime::from_hms_nano_opt(hour, minute, second, nanosecond)
+					.ok_or(Error::CorruptData)?;
+				Ok(Value::Time(time))
+			}
+			_ => Err(Error::CorruptData),
+		}
 	}
 }

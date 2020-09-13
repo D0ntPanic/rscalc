@@ -4,13 +4,14 @@ use crate::font::SANS_16;
 use crate::num_bigint::ToBigInt;
 use crate::number::{IntegerMode, Number, NumberFormat};
 use crate::screen::{Color, Rect, Screen};
-use crate::value::Value;
-use alloc::borrow::Cow;
+use crate::storage::store;
+use crate::value::{Value, ValueRef};
 use alloc::string::ToString;
 use alloc::vec::Vec;
 
 pub struct Stack {
-	entries: Vec<Value>,
+	zero: ValueRef,
+	entries: Vec<ValueRef>,
 	editor: Option<NumberEditor>,
 	push_new_entry: bool,
 }
@@ -18,8 +19,10 @@ pub struct Stack {
 impl Stack {
 	pub fn new() -> Self {
 		let mut entries = Vec::new();
-		entries.push(0.into());
+		let zero = store(0.into()).unwrap();
+		entries.push(zero.clone());
 		Stack {
+			zero,
 			entries,
 			editor: None,
 			push_new_entry: false,
@@ -34,14 +37,14 @@ impl Stack {
 		self.editor.is_some()
 	}
 
-	pub fn value_for_integer_mode<'a>(mode: &IntegerMode, value: &'a Value) -> Cow<'a, Value> {
+	pub fn value_for_integer_mode(mode: &IntegerMode, value: Value) -> Value {
 		match mode {
-			IntegerMode::Float => Cow::Borrowed(value),
+			IntegerMode::Float => value,
 			IntegerMode::BigInteger => {
 				if let Ok(int) = value.to_int_value() {
-					int
+					int.into_owned()
 				} else {
-					Cow::Borrowed(value)
+					value
 				}
 			}
 			IntegerMode::SizedInteger(size, signed) => {
@@ -54,28 +57,34 @@ impl Stack {
 							int = -((int ^ mask) + 1.to_bigint().unwrap());
 						}
 					}
-					Cow::Owned(Value::Number(Number::Integer(int)))
+					Value::Number(Number::Integer(int))
 				} else {
-					Cow::Borrowed(value)
+					value
 				}
 			}
 		}
 	}
 
-	pub fn push(&mut self, value: Value) {
-		self.entries.push(value);
+	pub fn push(&mut self, value: Value) -> Result<()> {
+		self.entries.push(store(value)?);
 		self.push_new_entry = true;
 		self.editor = None;
+		Ok(())
 	}
 
-	pub fn entry(&self, idx: usize) -> Result<&Value> {
+	pub fn entry(&self, idx: usize) -> Result<Value> {
+		let value_ref = self.entry_ref(idx)?;
+		Ok(value_ref.get()?)
+	}
+
+	fn entry_ref(&self, idx: usize) -> Result<&ValueRef> {
 		if idx >= self.entries.len() {
 			return Err(Error::NotEnoughValues);
 		}
 		Ok(&self.entries[(self.entries.len() - 1) - idx])
 	}
 
-	pub fn entry_mut(&mut self, idx: usize) -> Result<&mut Value> {
+	fn entry_mut(&mut self, idx: usize) -> Result<&mut ValueRef> {
 		if idx >= self.entries.len() {
 			return Err(Error::NotEnoughValues);
 		}
@@ -83,16 +92,37 @@ impl Stack {
 		Ok(&mut self.entries[(len - 1) - idx])
 	}
 
-	pub fn top(&self) -> &Value {
+	pub fn set_entry(&mut self, idx: usize, value: Value) -> Result<()> {
+		if idx >= self.entries.len() {
+			return Err(Error::NotEnoughValues);
+		}
+		let len = self.entries.len();
+		let value_ref = store(value)?;
+		self.entries[(len - 1) - idx] = value_ref;
+		Ok(())
+	}
+
+	pub fn top(&self) -> Value {
 		self.entry(0).unwrap()
 	}
 
-	pub fn top_mut(&mut self) -> &mut Value {
-		self.entry_mut(0).unwrap()
+	pub fn top_ref(&self) -> &ValueRef {
+		self.entry_ref(0).unwrap()
 	}
 
-	pub fn set_top(&mut self, value: Value) {
-		*self.top_mut() = value;
+	pub fn set_top(&mut self, value: Value) -> Result<()> {
+		self.set_entry(0, value)?;
+		self.push_new_entry = true;
+		self.editor = None;
+		Ok(())
+	}
+
+	fn set_top_edit(&mut self, value: Value) -> Result<()> {
+		self.set_entry(0, value)
+	}
+
+	fn set_top_ref(&mut self, value: ValueRef) {
+		*self.entry_mut(0).unwrap() = value;
 		self.push_new_entry = true;
 		self.editor = None;
 	}
@@ -101,10 +131,10 @@ impl Stack {
 		if count > self.entries.len() {
 			return Err(Error::NotEnoughValues);
 		}
+		self.set_entry(count - 1, value)?;
 		for _ in 1..count {
 			self.pop();
 		}
-		self.set_top(value);
 		self.push_new_entry = true;
 		self.editor = None;
 		Ok(())
@@ -113,16 +143,16 @@ impl Stack {
 	pub fn pop(&mut self) -> Value {
 		let result = self.entries.pop().unwrap();
 		if self.entries.len() == 0 {
-			self.entries.push(0.into());
+			self.entries.push(self.zero.clone());
 		}
 		self.push_new_entry = true;
 		self.editor = None;
-		result
+		result.get().unwrap()
 	}
 
 	pub fn swap(&mut self, a_idx: usize, b_idx: usize) -> Result<()> {
-		let a = self.entry(a_idx)?.clone();
-		let b = self.entry(b_idx)?.clone();
+		let a = self.entry_ref(a_idx)?.clone();
+		let b = self.entry_ref(b_idx)?.clone();
 		*self.entry_mut(a_idx)? = b;
 		*self.entry_mut(b_idx)? = a;
 		self.end_edit();
@@ -133,22 +163,23 @@ impl Stack {
 
 	pub fn rotate_down(&mut self) {
 		if self.entries.len() > 1 {
-			let top = self.top().clone();
+			let top = self.top_ref().clone();
 			self.pop();
 			self.entries.insert(0, top);
 		}
 	}
 
-	pub fn enter(&mut self) {
-		self.push(self.top().clone());
+	pub fn enter(&mut self) -> Result<()> {
+		self.push(self.top().clone())?;
 		self.push_new_entry = false;
+		Ok(())
 	}
 
-	pub fn input_value(&mut self, value: Value) {
+	pub fn input_value(&mut self, value: Value) -> Result<()> {
 		if self.push_new_entry {
-			self.push(value);
+			self.push(value)
 		} else {
-			self.set_top(value);
+			self.set_top(value)
 		}
 	}
 
@@ -162,9 +193,9 @@ impl Stack {
 	pub fn push_char(&mut self, ch: char, format: &NumberFormat) -> Result<()> {
 		if self.editor.is_none() {
 			if self.push_new_entry {
-				self.push(0.into());
+				self.push(0.into())?;
 			} else {
-				self.set_top(0.into());
+				self.set_top_edit(0.into())?;
 			}
 			self.editor = Some(NumberEditor::new(format));
 			self.push_new_entry = false;
@@ -172,26 +203,27 @@ impl Stack {
 		if let Some(cur_editor) = &mut self.editor {
 			cur_editor.push_char(ch)?;
 			let value = cur_editor.number();
-			*self.top_mut() = Value::Number(value);
+			self.set_top_edit(Value::Number(value))?;
 		}
 		Ok(())
 	}
 
-	pub fn exponent(&mut self) {
+	pub fn exponent(&mut self) -> Result<()> {
 		if let Some(cur_editor) = &mut self.editor {
 			cur_editor.exponent();
 			let value = cur_editor.number();
-			*self.top_mut() = Value::Number(value);
+			self.set_top_edit(Value::Number(value))?;
 		}
+		Ok(())
 	}
 
-	pub fn backspace(&mut self) {
+	pub fn backspace(&mut self) -> Result<()> {
 		if let Some(cur_editor) = &mut self.editor {
 			if cur_editor.backspace() {
 				let value = cur_editor.number();
-				*self.top_mut() = Value::Number(value);
+				self.set_top_edit(Value::Number(value))?;
 			} else {
-				self.set_top(0.into());
+				self.set_top_ref(self.zero.clone());
 				self.push_new_entry = false;
 			}
 		} else {
@@ -204,15 +236,16 @@ impl Stack {
 			}
 			self.push_new_entry = new_entry;
 		}
+		Ok(())
 	}
 
 	pub fn neg(&mut self) -> Result<()> {
 		if let Some(cur_editor) = &mut self.editor {
 			cur_editor.neg();
 			let value = cur_editor.number();
-			*self.top_mut() = Value::Number(value);
+			self.set_top_edit(Value::Number(value))?;
 		} else {
-			self.set_top((-self.top())?);
+			self.set_top((-self.top())?)?;
 		}
 		Ok(())
 	}
@@ -246,8 +279,11 @@ impl Stack {
 			let label_width = 4 + SANS_16.width(&label);
 
 			// Render stack entry to a layout
-			let entry =
-				Self::value_for_integer_mode(&format.integer_mode, self.entry(idx).unwrap());
+			let entry = match self.entry(idx) {
+				Ok(entry) => entry,
+				Err(_) => continue,
+			};
+			let entry = Self::value_for_integer_mode(&format.integer_mode, entry);
 			let width = area.w - label_width - 8;
 			let layout = entry.render(format, if idx == 0 { &self.editor } else { &None }, width);
 
@@ -275,6 +311,9 @@ impl Stack {
 			);
 
 			bottom -= height;
+			if bottom < area.y {
+				break;
+			}
 		}
 	}
 }
