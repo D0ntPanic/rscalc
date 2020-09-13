@@ -181,6 +181,15 @@ pub enum UnitType {
 	Distance,
 }
 
+impl UnitType {
+	pub fn to_str(&self) -> String {
+		match self {
+			UnitType::Time => "Time".to_string(),
+			UnitType::Distance => "Dist".to_string(),
+		}
+	}
+}
+
 #[derive(Clone)]
 pub struct CompositeUnit {
 	pub units: BTreeMap<UnitType, (Unit, i32)>,
