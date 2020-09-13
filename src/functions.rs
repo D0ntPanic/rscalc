@@ -10,6 +10,7 @@ use crate::state::State;
 use crate::time::Now;
 use crate::unit::{CompositeUnit, DistanceUnit, TimeUnit};
 use crate::value::Value;
+use alloc::borrow::Cow;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
@@ -509,62 +510,62 @@ impl Function {
 			}
 			Function::And => {
 				let value = Value::Number(Number::Integer(
-					state.stack.entry(1)?.to_int()? & state.stack.entry(0)?.to_int()?,
+					&*state.stack.entry(1)?.to_int()? & &*state.stack.entry(0)?.to_int()?,
 				));
 				state.replace_entries(2, value)?;
 			}
 			Function::Or => {
 				let value = Value::Number(Number::Integer(
-					state.stack.entry(1)?.to_int()? | state.stack.entry(0)?.to_int()?,
+					&*state.stack.entry(1)?.to_int()? | &*state.stack.entry(0)?.to_int()?,
 				));
 				state.replace_entries(2, value)?;
 			}
 			Function::Xor => {
 				let value = Value::Number(Number::Integer(
-					state.stack.entry(1)?.to_int()? ^ state.stack.entry(0)?.to_int()?,
+					&*state.stack.entry(1)?.to_int()? ^ &*state.stack.entry(0)?.to_int()?,
 				));
 				state.replace_entries(2, value)?;
 			}
 			Function::Not => {
-				let value = Number::Integer(!state.stack.top().to_int()?);
+				let value = Number::Integer(!&*state.stack.top().to_int()?);
 				state.set_top(Value::Number(value));
 			}
 			Function::ShiftLeft => {
 				let mut x = state.stack.entry(0)?.to_int()?;
 				if let IntegerMode::SizedInteger(size, _) = state.format.integer_mode {
 					if size.is_power_of_two() {
-						x &= (size - 1).to_bigint().unwrap();
+						x = Cow::Owned(&*x & &(size - 1).to_bigint().unwrap());
 					}
 				}
-				let x = u32::try_from(x)?;
+				let x = u32::try_from(&*x)?;
 				let y = state.stack.entry(1)?.to_int()?;
 				if (y.bits() + x as u64) > MAX_INTEGER_BITS {
 					return Err(Error::ValueOutOfRange);
 				}
-				let value = Value::Number(Number::Integer(y << x));
+				let value = Value::Number(Number::Integer(&*y << x));
 				state.replace_entries(2, value)?;
 			}
 			Function::ShiftRight => {
 				let mut x = state.stack.entry(0)?.to_int()?;
 				if let IntegerMode::SizedInteger(size, _) = state.format.integer_mode {
 					if size.is_power_of_two() {
-						x &= (size - 1).to_bigint().unwrap();
+						x = Cow::Owned(&*x & (size - 1).to_bigint().unwrap());
 					}
 				}
-				let x = u32::try_from(x)?;
+				let x = u32::try_from(&*x)?;
 				let y = state.stack.entry(1)?.to_int()?;
-				let value = Value::Number(Number::Integer(y >> x));
+				let value = Value::Number(Number::Integer(&*y >> x));
 				state.replace_entries(2, value)?;
 			}
 			Function::RotateLeft => {
 				if let IntegerMode::SizedInteger(size, _) = state.format.integer_mode {
 					let mut x = state.stack.entry(0)?.to_int()?;
 					if size.is_power_of_two() {
-						x &= (size - 1).to_bigint().unwrap();
+						x = Cow::Owned(&*x & (size - 1).to_bigint().unwrap());
 					}
-					if let Ok(x) = u32::try_from(x) {
+					if let Ok(x) = u32::try_from(&*x) {
 						let y = state.stack.entry(1)?.to_int()?;
-						let value = (&y << &x) | (&y >> (&(size as u32) - &x));
+						let value = (&*y << x) | (&*y >> ((size as u32) - x));
 						state.replace_entries(2, Value::Number(Number::Integer(value)))?;
 					}
 				} else {
@@ -575,11 +576,11 @@ impl Function {
 				if let IntegerMode::SizedInteger(size, _) = state.format.integer_mode {
 					let mut x = state.stack.entry(0)?.to_int()?;
 					if size.is_power_of_two() {
-						x &= (size - 1).to_bigint().unwrap();
+						x = Cow::Owned(&*x & (size - 1).to_bigint().unwrap());
 					}
-					if let Ok(x) = u32::try_from(x) {
+					if let Ok(x) = u32::try_from(&*x) {
 						let y = state.stack.entry(1)?.to_int()?;
-						let value = (&y >> &x) | (&y << (&(size as u32) - &x));
+						let value = (&*y >> x) | (&*y << ((size as u32) - x));
 						state.replace_entries(2, Value::Number(Number::Integer(value)))?;
 					}
 				} else {
@@ -630,9 +631,9 @@ impl Function {
 					let date = dt.date();
 					state.stack.set_top(Value::Date(date));
 				} else {
-					let year = i32::try_from(state.stack.entry(2)?.to_int()?)?;
-					let month = u8::try_from(state.stack.entry(1)?.to_int()?)?;
-					let day = u8::try_from(state.stack.entry(0)?.to_int()?)?;
+					let year = i32::try_from(&*state.stack.entry(2)?.to_int()?)?;
+					let month = u8::try_from(&*state.stack.entry(1)?.to_int()?)?;
+					let day = u8::try_from(&*state.stack.entry(0)?.to_int()?)?;
 					let date = NaiveDate::from_ymd_opt(year, month as u32, day as u32)
 						.ok_or(Error::InvalidDate)?;
 					{
@@ -647,9 +648,9 @@ impl Function {
 				} else {
 					let nano = (state.stack.entry(0)?
 						* &Value::Number(Number::Integer(1_000_000_000.to_bigint().unwrap())))?;
-					let hr = u8::try_from(state.stack.entry(2)?.to_int()?)?;
-					let min = u8::try_from(state.stack.entry(1)?.to_int()?)?;
-					let sec = u64::try_from(nano.to_int()?)?;
+					let hr = u8::try_from(&*state.stack.entry(2)?.to_int()?)?;
+					let min = u8::try_from(&*state.stack.entry(1)?.to_int()?)?;
+					let sec = u64::try_from(&*nano.to_int()?)?;
 					let nsec = (sec % 1_000_000_000) as u32;
 					let sec = (sec / 1_000_000_000) as u32;
 					let time = NaiveTime::from_hms_nano_opt(hr as u32, min as u32, sec, nsec)

@@ -6,6 +6,7 @@ use crate::number::{Number, NumberFormat, NumberFormatMode, ToNumber, MAX_SHORT_
 use crate::screen::Color;
 use crate::time::{SimpleDateTimeFormat, SimpleDateTimeToString};
 use crate::unit::{CompositeUnit, TimeUnit, Unit};
+use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -40,10 +41,25 @@ impl Value {
 		}
 	}
 
-	pub fn to_int(&self) -> Result<BigInt> {
+	pub fn to_int<'a>(&'a self) -> Result<Cow<'a, BigInt>> {
 		match self {
 			Value::Number(num) => num.to_int(),
 			Value::NumberWithUnit(num, _) => num.to_int(),
+			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => Err(Error::NotANumber),
+		}
+	}
+
+	pub fn to_int_value<'a>(&'a self) -> Result<Cow<'a, Value>> {
+		match self {
+			Value::Number(Number::Integer(_)) => Ok(Cow::Borrowed(self)),
+			Value::NumberWithUnit(Number::Integer(_), _) => Ok(Cow::Borrowed(self)),
+			Value::Number(num) => Ok(Cow::Owned(Value::Number(Number::Integer(
+				num.to_int()?.into_owned(),
+			)))),
+			Value::NumberWithUnit(num, unit) => Ok(Cow::Owned(Value::NumberWithUnit(
+				Number::Integer(num.to_int()?.into_owned()),
+				unit.clone(),
+			))),
 			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => Err(Error::NotANumber),
 		}
 	}
@@ -169,18 +185,18 @@ impl Value {
 	}
 
 	fn datetime_add_secs(&self, dt: &NaiveDateTime, secs: &Number) -> Result<Value> {
-		let nano = i64::try_from((secs * &1_000_000_000.to_number()).to_int()?)?;
+		let nano = i64::try_from(&*(secs * &1_000_000_000.to_number()).to_int()?)?;
 		Ok(Value::DateTime(dt.add(Duration::nanoseconds(nano))))
 	}
 
 	fn date_add_days(&self, date: &NaiveDate, days: &Number) -> Result<Value> {
 		Ok(Value::Date(
-			date.add(Duration::days(i64::try_from(days.to_int()?)?)),
+			date.add(Duration::days(i64::try_from(&*days.to_int()?)?)),
 		))
 	}
 
 	fn time_add_secs(&self, time: &NaiveTime, secs: &Number) -> Result<Value> {
-		let nano = i64::try_from((secs * &1_000_000_000.to_number()).to_int()?)?;
+		let nano = i64::try_from(&*(secs * &1_000_000_000.to_number()).to_int()?)?;
 		Ok(Value::Time(time.add(Duration::nanoseconds(nano))))
 	}
 

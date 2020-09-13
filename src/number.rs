@@ -1,4 +1,5 @@
 use crate::error::{Error, Result};
+use alloc::borrow::Cow;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::convert::TryInto;
@@ -7,6 +8,9 @@ use num_bigint::{BigInt, BigUint, Sign, ToBigInt, ToBigUint};
 
 // Maximum integer size before it is converted into a floating point number.
 pub const MAX_INTEGER_BITS: u64 = 8192;
+
+// Maximum integer exponent (10^x). This should match the above value in magnitude.
+pub const MAX_INTEGER_EXPONENT: isize = 2466;
 
 // Maximum denominator size. This will keep the maximum possible precision of the
 // 128-bit float available in fractional form.
@@ -90,20 +94,21 @@ impl Number {
 		result
 	}
 
-	pub fn to_decimal(&self) -> Decimal {
+	pub fn to_decimal<'a>(&'a self) -> Cow<'a, Decimal> {
 		match self {
-			Number::Integer(int) => Self::bigint_to_decimal(&int),
-			Number::Rational(num, denom) => {
-				Self::bigint_to_decimal(&num) / Self::bigint_to_decimal(&denom.to_bigint().unwrap())
-			}
-			Number::Decimal(value) => value.clone(),
+			Number::Integer(int) => Cow::Owned(Self::bigint_to_decimal(&int)),
+			Number::Rational(num, denom) => Cow::Owned(
+				Self::bigint_to_decimal(&num)
+					/ Self::bigint_to_decimal(&denom.to_bigint().unwrap()),
+			),
+			Number::Decimal(value) => Cow::Borrowed(value),
 		}
 	}
 
-	pub fn to_int(&self) -> Result<BigInt> {
+	pub fn to_int<'a>(&'a self) -> Result<Cow<'a, BigInt>> {
 		match self {
-			Number::Integer(int) => Ok(int.clone()),
-			Number::Rational(num, denom) => Ok(num / denom.to_bigint().unwrap()),
+			Number::Integer(int) => Ok(Cow::Borrowed(int)),
+			Number::Rational(num, denom) => Ok(Cow::Owned(num / denom.to_bigint().unwrap())),
 			Number::Decimal(num) => {
 				let num = num.trunc();
 
@@ -127,7 +132,9 @@ impl Number {
 				let integer_part_digits = digit_str.len() as isize + exponent;
 				if integer_part_digits <= 0 {
 					// Number is less than one, so the integer is zero.
-					return Ok(0.into());
+					return Ok(Cow::Owned(0.into()));
+				} else if integer_part_digits > MAX_INTEGER_EXPONENT {
+					return Err(Error::ValueOutOfRange);
 				}
 
 				let mut result = 0.to_bigint().unwrap();
@@ -146,7 +153,7 @@ impl Number {
 				if sign {
 					result = -result;
 				}
-				Ok(result)
+				Ok(Cow::Owned(result))
 			}
 		}
 	}
@@ -257,13 +264,13 @@ impl Number {
 		x
 	}
 
-	fn simplify(&self) -> Self {
+	fn simplify(self) -> Self {
 		match self {
 			Number::Rational(num, denom) => {
 				let num_abs = if num.sign() == Sign::Minus {
-					(-num).to_biguint().unwrap()
+					(-&num).to_biguint().unwrap()
 				} else {
-					num.to_biguint().unwrap()
+					(&num).to_biguint().unwrap()
 				};
 				let gcd = Self::gcd(&num_abs, &denom);
 				let num = num / gcd.to_bigint().unwrap();
@@ -274,7 +281,7 @@ impl Number {
 					Self::check_int_bounds(Number::Rational(num, denom))
 				}
 			}
-			_ => self.clone(),
+			_ => self,
 		}
 	}
 
@@ -282,14 +289,14 @@ impl Number {
 		match &value {
 			Number::Integer(int) => {
 				if int.bits() > MAX_INTEGER_BITS {
-					Number::Decimal(value.to_decimal())
+					Number::Decimal(value.to_decimal().into_owned())
 				} else {
 					value
 				}
 			}
 			Number::Rational(numer, denom) => {
 				if numer.bits() > MAX_NUMERATOR_BITS || denom.bits() > MAX_DENOMINATOR_BITS {
-					Number::Decimal(value.to_decimal())
+					Number::Decimal(value.to_decimal().into_owned())
 				} else {
 					value
 				}
@@ -306,7 +313,7 @@ impl Number {
 					let num = left * right_denom.to_bigint().unwrap() + right_num;
 					Number::Rational(num, right_denom.clone()).simplify()
 				}
-				Number::Decimal(right) => Number::Decimal(&self.to_decimal() + right),
+				Number::Decimal(right) => Number::Decimal(&*self.to_decimal() + right),
 			},
 			Number::Rational(left_num, left_denom) => match rhs {
 				Number::Integer(right) => {
@@ -319,7 +326,7 @@ impl Number {
 					let denom = left_denom * right_denom;
 					Number::Rational(num, denom).simplify()
 				}
-				Number::Decimal(right) => Number::Decimal(&self.to_decimal() + right),
+				Number::Decimal(right) => Number::Decimal(&*self.to_decimal() + right),
 			},
 			Number::Decimal(left) => Number::Decimal(left + &rhs.to_decimal()),
 		}
@@ -333,7 +340,7 @@ impl Number {
 					let num = left * right_denom.to_bigint().unwrap() - right_num;
 					Number::Rational(num, right_denom.clone()).simplify()
 				}
-				Number::Decimal(right) => Number::Decimal(&self.to_decimal() - right),
+				Number::Decimal(right) => Number::Decimal(&*self.to_decimal() - right),
 			},
 			Number::Rational(left_num, left_denom) => match rhs {
 				Number::Integer(right) => {
@@ -346,7 +353,7 @@ impl Number {
 					let denom = left_denom * right_denom;
 					Number::Rational(num, denom).simplify()
 				}
-				Number::Decimal(right) => Number::Decimal(&self.to_decimal() - right),
+				Number::Decimal(right) => Number::Decimal(&*self.to_decimal() - right),
 			},
 			Number::Decimal(left) => Number::Decimal(left - &rhs.to_decimal()),
 		}
@@ -359,7 +366,7 @@ impl Number {
 				Number::Rational(right_num, right_denom) => {
 					Number::Rational(left * right_num, right_denom.clone()).simplify()
 				}
-				Number::Decimal(right) => Number::Decimal(&self.to_decimal() * right),
+				Number::Decimal(right) => Number::Decimal(&*self.to_decimal() * right),
 			},
 			Number::Rational(left_num, left_denom) => match rhs {
 				Number::Integer(right) => {
@@ -368,7 +375,7 @@ impl Number {
 				Number::Rational(right_num, right_denom) => {
 					Number::Rational(left_num * right_num, left_denom * right_denom).simplify()
 				}
-				Number::Decimal(right) => Number::Decimal(&self.to_decimal() * right),
+				Number::Decimal(right) => Number::Decimal(&*self.to_decimal() * right),
 			},
 			Number::Decimal(left) => Number::Decimal(left * &rhs.to_decimal()),
 		}
@@ -380,7 +387,7 @@ impl Number {
 				Number::Integer(right) => {
 					if right == &0.to_bigint().unwrap() {
 						// Divide by zero, use float to get the right inf/NaN
-						return Number::Decimal(self.to_decimal() / rhs.to_decimal());
+						return Number::Decimal(&*self.to_decimal() / &*rhs.to_decimal());
 					}
 					if right.sign() == Sign::Minus {
 						Number::Rational(-left.to_bigint().unwrap(), (-right).to_biguint().unwrap())
@@ -405,7 +412,7 @@ impl Number {
 						.simplify()
 					}
 				}
-				Number::Decimal(right) => Number::Decimal(&self.to_decimal() / right),
+				Number::Decimal(right) => Number::Decimal(&*self.to_decimal() / right),
 			},
 			Number::Rational(left_num, left_denom) => match rhs {
 				Number::Integer(right) => {
@@ -448,7 +455,7 @@ impl Number {
 						}
 					}
 				}
-				Number::Decimal(right) => Number::Decimal(&self.to_decimal() / right),
+				Number::Decimal(right) => Number::Decimal(&*self.to_decimal() / right),
 			},
 			Number::Decimal(left) => Number::Decimal(left / &rhs.to_decimal()),
 		}
@@ -817,7 +824,7 @@ impl NumberFormat {
 			let one: Decimal = 1.into();
 			let two: Decimal = 2.into();
 			let adjust = one / two;
-			let mut rounded = ((&num.abs() / &factor) + adjust.clone()).trunc() * factor.clone();
+			let mut rounded = ((&num.abs() / &factor) + adjust).trunc() * factor;
 
 			if num.is_sign_negative() {
 				rounded = -rounded;

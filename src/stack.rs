@@ -5,6 +5,7 @@ use crate::num_bigint::ToBigInt;
 use crate::number::{IntegerMode, Number, NumberFormat};
 use crate::screen::{Color, Rect, Screen};
 use crate::value::Value;
+use alloc::borrow::Cow;
 use alloc::string::ToString;
 use alloc::vec::Vec;
 
@@ -33,29 +34,29 @@ impl Stack {
 		self.editor.is_some()
 	}
 
-	pub fn value_for_integer_mode(mode: &IntegerMode, value: &Value) -> Value {
+	pub fn value_for_integer_mode<'a>(mode: &IntegerMode, value: &'a Value) -> Cow<'a, Value> {
 		match mode {
-			IntegerMode::Float => value.clone(),
+			IntegerMode::Float => Cow::Borrowed(value),
 			IntegerMode::BigInteger => {
-				if let Ok(int) = value.to_int() {
-					Value::Number(Number::Integer(int))
+				if let Ok(int) = value.to_int_value() {
+					int
 				} else {
-					value.clone()
+					Cow::Borrowed(value)
 				}
 			}
 			IntegerMode::SizedInteger(size, signed) => {
 				if let Ok(int) = value.to_int() {
 					let mask = 2.to_bigint().unwrap().pow(*size as u32) - 1.to_bigint().unwrap();
-					let mut int = &int & &mask;
+					let mut int = &*int & &mask;
 					if *signed {
 						let sign_bit = 2.to_bigint().unwrap().pow((*size - 1) as u32);
 						if (&int & &sign_bit) != 0.to_bigint().unwrap() {
 							int = -((int ^ mask) + 1.to_bigint().unwrap());
 						}
 					}
-					Value::Number(Number::Integer(int))
+					Cow::Owned(Value::Number(Number::Integer(int)))
 				} else {
-					value.clone()
+					Cow::Borrowed(value)
 				}
 			}
 		}

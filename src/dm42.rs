@@ -335,6 +335,14 @@ fn sys_sleep() {
 	}
 }
 
+pub fn sys_free_mem() -> usize {
+	unsafe {
+		let func_ptr: usize = LIBRARY_BASE + 540;
+		let func: extern "C" fn() -> u32 = core::mem::transmute(func_ptr);
+		func() as usize
+	}
+}
+
 fn draw_power_off_image(val: i32) {
 	unsafe {
 		let func_ptr: usize = LIBRARY_BASE + 556;

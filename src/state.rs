@@ -8,14 +8,16 @@ use crate::screen::{Color, Font, Rect, Screen};
 use crate::stack::Stack;
 use crate::time::{Now, SimpleDateTimeFormat, SimpleDateTimeToString};
 use crate::value::Value;
+use alloc::borrow::Cow;
 use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use chrono::NaiveDateTime;
+use core::convert::TryFrom;
 use intel_dfp::Decimal;
 
 #[cfg(feature = "dm42")]
-use crate::dm42::{read_power_voltage, show_system_setup_menu, usb_powered};
+use crate::dm42::{read_power_voltage, show_system_setup_menu, sys_free_mem, usb_powered};
 
 /// Cached state for rendering the status bar. This is used to optimize the rendering
 /// of the status bar such that it is only drawn when it is updated.
@@ -24,7 +26,8 @@ struct CachedStatusBarState {
 	shift: bool,
 	integer_radix: u8,
 	integer_mode: IntegerMode,
-	time_string: String,
+	multiple_pages: bool,
+	left_string: String,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
@@ -48,6 +51,12 @@ enum InputState {
 	Store,
 }
 
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum StatusBarLeftDisplayType {
+	CurrentTime,
+	FreeMemory,
+}
+
 pub struct State {
 	pub stack: Stack,
 	pub input_mode: InputMode,
@@ -55,6 +64,7 @@ pub struct State {
 	pub function_keys: FunctionKeyState,
 	pub default_integer_format: IntegerMode,
 	pub prev_decimal_integer_mode: IntegerMode,
+	pub status_bar_left_display: StatusBarLeftDisplayType,
 	memory: BTreeMap<Location, Value>,
 	input_state: InputState,
 	location_entry: LocationEntryState,
@@ -98,7 +108,8 @@ impl State {
 			shift: input_mode.shift,
 			integer_radix: format.integer_radix,
 			integer_mode: format.integer_mode,
-			time_string: State::time_string(),
+			multiple_pages: false,
+			left_string: State::time_string(),
 		};
 
 		State {
@@ -108,6 +119,7 @@ impl State {
 			function_keys: FunctionKeyState::new(),
 			default_integer_format: IntegerMode::BigInteger,
 			prev_decimal_integer_mode: IntegerMode::Float,
+			status_bar_left_display: StatusBarLeftDisplayType::CurrentTime,
 			memory: BTreeMap::new(),
 			input_state: InputState::Normal,
 			location_entry: LocationEntryState::new("".to_string()),
@@ -132,11 +144,11 @@ impl State {
 		NaiveDateTime::now().to_str(&SimpleDateTimeFormat::status_bar())
 	}
 
-	pub fn top(&self) -> Value {
+	pub fn top<'a>(&'a self) -> Cow<'a, Value> {
 		Stack::value_for_integer_mode(&self.format.integer_mode, self.stack.top())
 	}
 
-	pub fn entry(&self, idx: usize) -> Result<Value> {
+	pub fn entry<'a>(&'a self, idx: usize) -> Result<Cow<'a, Value>> {
 		Ok(Stack::value_for_integer_mode(
 			&self.format.integer_mode,
 			self.stack.entry(idx)?,
@@ -145,27 +157,27 @@ impl State {
 
 	pub fn replace_entries(&mut self, count: usize, value: Value) -> Result<()> {
 		let value = Stack::value_for_integer_mode(&self.format.integer_mode, &value);
-		self.stack.replace_entries(count, value)?;
+		self.stack.replace_entries(count, value.into_owned())?;
 		Ok(())
 	}
 
 	pub fn set_top(&mut self, value: Value) {
 		let value = Stack::value_for_integer_mode(&self.format.integer_mode, &value);
-		self.stack.set_top(value);
+		self.stack.set_top(value.into_owned());
 	}
 
 	pub fn set_entry(&mut self, offset: usize, value: Value) -> Result<()> {
 		let value = Stack::value_for_integer_mode(&self.format.integer_mode, &value);
-		*self.stack.entry_mut(offset)? = value;
+		*self.stack.entry_mut(offset)? = value.into_owned();
 		Ok(())
 	}
 
-	pub fn read(&self, location: &Location) -> Result<Value> {
+	pub fn read<'a>(&'a self, location: &Location) -> Result<Cow<'a, Value>> {
 		match location {
 			Location::StackOffset(offset) => self.entry(*offset),
 			location => {
 				if let Some(value) = self.memory.get(location) {
-					Ok(value.clone())
+					Ok(Cow::Borrowed(value))
 				} else {
 					Err(Error::ValueNotDefined)
 				}
@@ -220,32 +232,32 @@ impl State {
 						if self.stack.editing() {
 							self.stack.neg()?;
 						} else {
-							self.set_top((-self.top())?);
+							self.set_top((-&*self.top())?);
 						}
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Add => {
-						self.replace_entries(2, (self.entry(1)? + self.entry(0)?)?)?;
+						self.replace_entries(2, (&*self.entry(1)? + &*self.entry(0)?)?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Sub => {
-						self.replace_entries(2, (self.entry(1)? - self.entry(0)?)?)?;
+						self.replace_entries(2, (&*self.entry(1)? - &*self.entry(0)?)?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Mul => {
-						self.replace_entries(2, (self.entry(1)? * self.entry(0)?)?)?;
+						self.replace_entries(2, (&*self.entry(1)? * &*self.entry(0)?)?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Div => {
-						self.replace_entries(2, (self.entry(1)? / self.entry(0)?)?)?;
+						self.replace_entries(2, (&*self.entry(1)? / &*self.entry(0)?)?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Recip => {
-						self.set_top((Value::Number(1.into()) / self.top())?);
+						self.set_top((&Value::Number(1.into()) / &*self.top())?);
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Pow => {
-						self.replace_entries(2, self.entry(1)?.pow(&self.entry(0)?)?)?;
+						self.replace_entries(2, (&*self.entry(1)?).pow(&*self.entry(0)?)?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Sqrt => {
@@ -253,7 +265,9 @@ impl State {
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Square => {
-						self.set_top((self.top() * self.top())?);
+						let top = &*self.top();
+						let square = (top * top)?;
+						self.set_top(square);
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Log => {
@@ -273,8 +287,8 @@ impl State {
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Percent => {
-						let factor = (self.entry(0)? / Value::Number(100.into()))?;
-						self.set_top((self.entry(1)? * factor)?);
+						let factor = (&*self.entry(0)? / &Value::Number(100.into()))?;
+						self.set_top((&*self.entry(1)? * &factor)?);
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Pi => {
@@ -357,6 +371,24 @@ impl State {
 						show_system_setup_menu();
 						self.force_refresh = true;
 					}
+					InputEvent::Assign => {
+						// For testing memory constraints
+						let size = usize::try_from(&*self.top().to_int()?)?;
+						let mut vec: Vec<u8> = Vec::new();
+						vec.resize(size, 0);
+						core::mem::forget(vec);
+					}
+					InputEvent::Custom => {
+						// Until there is a menu option, add a temporary toggle for memory usage display
+						self.status_bar_left_display = match self.status_bar_left_display {
+							StatusBarLeftDisplayType::CurrentTime => {
+								StatusBarLeftDisplayType::FreeMemory
+							}
+							StatusBarLeftDisplayType::FreeMemory => {
+								StatusBarLeftDisplayType::CurrentTime
+							}
+						};
+					}
 					InputEvent::Exit => {
 						if self.stack.editing() {
 							self.stack.end_edit();
@@ -378,7 +410,7 @@ impl State {
 				LocationInputResult::Finished(location) => {
 					self.input_state = InputState::Normal;
 					self.input_mode.alpha = AlphaMode::Normal;
-					self.stack.input_value(self.read(&location)?);
+					self.stack.input_value(self.read(&location)?.into_owned());
 					Ok(InputResult::Normal)
 				}
 				LocationInputResult::Exit => {
@@ -395,7 +427,7 @@ impl State {
 				LocationInputResult::Finished(location) => {
 					self.input_state = InputState::Normal;
 					self.input_mode.alpha = AlphaMode::Normal;
-					self.write(location, self.top())?;
+					self.write(location, self.top().into_owned())?;
 					Ok(InputResult::Normal)
 				}
 				LocationInputResult::Exit => {
@@ -498,6 +530,7 @@ impl State {
 		let shift = self.input_mode.shift;
 		let integer_radix = self.format.integer_radix;
 		let integer_mode = self.format.integer_mode;
+		let multiple_pages = self.function_keys.multiple_pages();
 
 		// Check for alpha mode updates
 		if alpha != self.cached_status_bar_state.alpha {
@@ -523,11 +556,30 @@ impl State {
 			changed = true;
 		}
 
-		// Check for time updates
-		if NaiveDateTime::clock_minute_updated() {
-			let time_string = State::time_string();
-			self.cached_status_bar_state.time_string = time_string.clone();
+		if multiple_pages != self.cached_status_bar_state.multiple_pages {
+			self.cached_status_bar_state.multiple_pages = multiple_pages;
 			changed = true;
+		}
+
+		match self.status_bar_left_display {
+			StatusBarLeftDisplayType::CurrentTime => {
+				// Check for time updates
+				if NaiveDateTime::clock_minute_updated() {
+					let time_string = State::time_string();
+					self.cached_status_bar_state.left_string = time_string;
+					changed = true;
+				}
+			}
+			StatusBarLeftDisplayType::FreeMemory => {
+				#[cfg(feature = "dm42")]
+				let free_memory = sys_free_mem().to_number().to_str() + " bytes free";
+				#[cfg(not(feature = "dm42"))]
+				let free_memory = "".to_string();
+				if free_memory != self.cached_status_bar_state.left_string {
+					self.cached_status_bar_state.left_string = free_memory;
+					changed = true;
+				}
+			}
 		}
 
 		changed
@@ -671,11 +723,16 @@ impl State {
 			}
 		}
 
-		// Render current time
-		let time_string = &self.cached_status_bar_state.time_string;
-		let time_width = SANS_13.width(time_string) + 8;
-		if 4 + time_width < x {
-			SANS_13.draw(screen, 4, 0, time_string, Color::StatusBarText);
+		// Render menu page indicator
+		if self.cached_status_bar_state.multiple_pages {
+			self.draw_status_bar_indicator(screen, &mut x, "▴▾", &SANS_13);
+		}
+
+		// Render current time or alternate status text
+		let left_string = &self.cached_status_bar_state.left_string;
+		let left_width = SANS_13.width(left_string) + 8;
+		if 4 + left_width < x {
+			SANS_13.draw(screen, 4, 0, left_string, Color::StatusBarText);
 		}
 	}
 
