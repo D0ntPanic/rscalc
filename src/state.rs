@@ -6,14 +6,14 @@ use crate::layout::Layout;
 use crate::number::{IntegerMode, Number, NumberFormat, ToNumber};
 use crate::screen::{Color, Font, Rect, Screen};
 use crate::stack::{Stack, MAX_STACK_INDEX_DIGITS};
-use crate::storage::{free_bytes, store};
+use crate::storage::{available_bytes, store};
 use crate::time::{Now, SimpleDateTimeFormat, SimpleDateTimeToString};
+use crate::undo::{pop_undo_action, UndoAction};
 use crate::value::{Value, ValueRef};
 use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use chrono::NaiveDateTime;
-use core::convert::TryFrom;
 use intel_dfp::Decimal;
 
 #[cfg(feature = "dm42")]
@@ -206,6 +206,19 @@ impl State {
 		Ok(())
 	}
 
+	pub fn undo(&mut self) -> Result<()> {
+		let action = pop_undo_action()?;
+		match action {
+			UndoAction::Push
+			| UndoAction::Pop(_)
+			| UndoAction::Replace(_)
+			| UndoAction::Swap(_, _)
+			| UndoAction::Clear(_)
+			| UndoAction::RotateDown
+			| UndoAction::SetStackEntry(_, _) => self.stack.undo(action),
+		}
+	}
+
 	pub fn handle_input(&mut self, input: InputEvent) -> Result<InputResult> {
 		if self.error.is_some() {
 			self.error = None;
@@ -349,6 +362,10 @@ impl State {
 						self.location_entry = LocationEntryState::new("Sto".to_string());
 						self.stack.end_edit();
 					}
+					InputEvent::Clear => {
+						self.stack.clear();
+						self.input_mode.alpha = AlphaMode::Normal;
+					}
 					InputEvent::Disp => {
 						self.function_keys.show_toplevel_menu(FunctionMenu::Disp);
 					}
@@ -392,6 +409,9 @@ impl State {
 								StatusBarLeftDisplayType::CurrentTime
 							}
 						};
+					}
+					InputEvent::Undo => {
+						self.undo()?;
 					}
 					InputEvent::Exit => {
 						if self.stack.editing() {
@@ -585,7 +605,7 @@ impl State {
 				}
 			}
 			StatusBarLeftDisplayType::FreeMemory => {
-				let free_memory = free_bytes().to_number().to_str() + " bytes free";
+				let free_memory = available_bytes().to_number().to_str() + " bytes free";
 				if free_memory != self.cached_status_bar_state.left_string {
 					self.cached_status_bar_state.left_string = free_memory;
 					changed = true;

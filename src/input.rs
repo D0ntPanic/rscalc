@@ -99,7 +99,7 @@ pub enum InputEvent {
 	Atan,
 	Enter,
 	Swap,
-	LastX,
+	Undo,
 	Neg,
 	Modes,
 	E,
@@ -179,7 +179,7 @@ impl InputEvent {
 			InputEvent::Atan => "atan".to_string(),
 			InputEvent::Enter => "↵".to_string(),
 			InputEvent::Swap => "swap".to_string(),
-			InputEvent::LastX => "Undo".to_string(),
+			InputEvent::Undo => "Undo".to_string(),
 			InputEvent::Neg => "±".to_string(),
 			InputEvent::Modes => "Modes".to_string(),
 			InputEvent::E => "ᴇ".to_string(),
@@ -380,7 +380,7 @@ pub trait InputQueue {
 							AlphaMode::LowerAlpha => return Some(InputEvent::Character('m')),
 							AlphaMode::Normal => {
 								if shift {
-									return Some(InputEvent::LastX);
+									return Some(InputEvent::Undo);
 								} else {
 									return Some(InputEvent::Swap);
 								}

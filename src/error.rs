@@ -19,6 +19,7 @@ pub enum Error {
 	InvalidTime,
 	CorruptData,
 	StackOverflow,
+	UndoBufferEmpty,
 }
 
 impl Error {
@@ -40,6 +41,7 @@ impl Error {
 			Error::InvalidTime => "Invalid time",
 			Error::CorruptData => "Corrupt data",
 			Error::StackOverflow => "Stack overflow",
+			Error::UndoBufferEmpty => "Undo buffer empty",
 		}
 	}
 }

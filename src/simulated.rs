@@ -161,7 +161,7 @@ impl Content {
 		key!(keyboard_top, "tan", "atan", "L", 5, 3, 1, Key::Tan);
 
 		key!(keyboard_top, "ENTER", "ALPHA", "", 0, 5, 3, Key::Enter);
-		key!(keyboard_top, "x⇋y", "LAST x", "M", 2, 5, 1, Key::Swap);
+		key!(keyboard_top, "x⇋y", "UNDO", "M", 2, 5, 1, Key::Swap);
 		key!(keyboard_top, "+/-", "MODES", "N", 3, 5, 1, Key::Neg);
 		key!(keyboard_top, "E", "DISP", "O", 4, 5, 1, Key::E);
 		key!(keyboard_top, "←", "CLEAR", "", 5, 5, 1, Key::Backspace);

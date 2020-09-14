@@ -5,6 +5,7 @@ use crate::num_bigint::ToBigInt;
 use crate::number::{IntegerMode, Number, NumberFormat};
 use crate::screen::{Color, Rect, Screen};
 use crate::storage::store;
+use crate::undo::{push_undo_action, UndoAction};
 use crate::value::{Value, ValueRef};
 use alloc::string::ToString;
 use alloc::vec::Vec;
@@ -17,6 +18,7 @@ pub struct Stack {
 	entries: Vec<ValueRef>,
 	editor: Option<NumberEditor>,
 	push_new_entry: bool,
+	empty: bool,
 }
 
 impl Stack {
@@ -29,6 +31,7 @@ impl Stack {
 			entries,
 			editor: None,
 			push_new_entry: false,
+			empty: true,
 		}
 	}
 
@@ -68,13 +71,20 @@ impl Stack {
 		}
 	}
 
-	pub fn push(&mut self, value: Value) -> Result<()> {
+	fn push_internal(&mut self, value: Value) -> Result<()> {
 		if self.entries.len() >= MAX_STACK_ENTRIES {
 			return Err(Error::StackOverflow);
 		}
 		self.entries.push(store(value)?);
 		self.push_new_entry = true;
+		self.empty = false;
 		self.editor = None;
+		Ok(())
+	}
+
+	pub fn push(&mut self, value: Value) -> Result<()> {
+		self.push_internal(value)?;
+		push_undo_action(UndoAction::Push);
 		Ok(())
 	}
 
@@ -98,13 +108,29 @@ impl Stack {
 		Ok(&mut self.entries[(len - 1) - idx])
 	}
 
-	pub fn set_entry(&mut self, idx: usize, value: Value) -> Result<()> {
+	fn set_entry_internal(&mut self, idx: usize, value: Value) -> Result<()> {
 		if idx >= self.entries.len() {
 			return Err(Error::NotEnoughValues);
 		}
 		let len = self.entries.len();
 		let value_ref = store(value)?;
 		self.entries[(len - 1) - idx] = value_ref;
+		self.empty = false;
+		Ok(())
+	}
+
+	pub fn set_entry(&mut self, idx: usize, value: Value) -> Result<()> {
+		if idx >= self.entries.len() {
+			return Err(Error::NotEnoughValues);
+		}
+		let len = self.entries.len();
+		let value_ref = store(value)?;
+		push_undo_action(UndoAction::SetStackEntry(
+			idx,
+			self.entries[(len - 1) - idx].clone(),
+		));
+		self.entries[(len - 1) - idx] = value_ref;
+		self.empty = false;
 		Ok(())
 	}
 
@@ -112,24 +138,37 @@ impl Stack {
 		self.entry(0).unwrap()
 	}
 
-	pub fn top_ref(&self) -> &ValueRef {
+	fn top_ref(&self) -> &ValueRef {
 		self.entry_ref(0).unwrap()
 	}
 
-	pub fn set_top(&mut self, value: Value) -> Result<()> {
-		self.set_entry(0, value)?;
+	fn set_top_internal(&mut self, value: Value) -> Result<()> {
+		self.set_entry_internal(0, value)?;
 		self.push_new_entry = true;
+		self.empty = false;
 		self.editor = None;
 		Ok(())
 	}
 
+	pub fn set_top(&mut self, value: Value) -> Result<()> {
+		let old_value = self.top_ref().clone();
+		self.set_top_internal(value)?;
+		push_undo_action(UndoAction::Replace([old_value].to_vec()));
+		Ok(())
+	}
+
 	fn set_top_edit(&mut self, value: Value) -> Result<()> {
-		self.set_entry(0, value)
+		let len = self.entries.len();
+		let value_ref = store(value)?;
+		self.entries[len - 1] = value_ref;
+		self.empty = false;
+		Ok(())
 	}
 
 	fn set_top_ref(&mut self, value: ValueRef) {
 		*self.entry_mut(0).unwrap() = value;
 		self.push_new_entry = true;
+		self.empty = false;
 		self.editor = None;
 	}
 
@@ -137,26 +176,29 @@ impl Stack {
 		if count > self.entries.len() {
 			return Err(Error::NotEnoughValues);
 		}
-		self.set_entry(count - 1, value)?;
+		let old_values = self.entries[self.entries.len() - count..].to_vec();
+		self.set_entry_internal(count - 1, value)?;
 		for _ in 1..count {
-			self.pop();
+			self.pop_internal();
 		}
+		push_undo_action(UndoAction::Replace(old_values));
 		self.push_new_entry = true;
 		self.editor = None;
 		Ok(())
 	}
 
-	pub fn pop(&mut self) -> Value {
+	fn pop_internal(&mut self) -> ValueRef {
 		let result = self.entries.pop().unwrap();
 		if self.entries.len() == 0 {
 			self.entries.push(self.zero.clone());
+			self.empty = true;
 		}
 		self.push_new_entry = true;
 		self.editor = None;
-		result.get().unwrap()
+		result
 	}
 
-	pub fn swap(&mut self, a_idx: usize, b_idx: usize) -> Result<()> {
+	fn swap_internal(&mut self, a_idx: usize, b_idx: usize) -> Result<()> {
 		let a = self.entry_ref(a_idx)?.clone();
 		let b = self.entry_ref(b_idx)?.clone();
 		*self.entry_mut(a_idx)? = b;
@@ -167,12 +209,38 @@ impl Stack {
 		Ok(())
 	}
 
+	pub fn swap(&mut self, a_idx: usize, b_idx: usize) -> Result<()> {
+		self.swap_internal(a_idx, b_idx)?;
+		push_undo_action(UndoAction::Swap(a_idx, b_idx));
+		Ok(())
+	}
+
 	pub fn rotate_down(&mut self) {
 		if self.entries.len() > 1 {
+			push_undo_action(UndoAction::RotateDown);
 			let top = self.top_ref().clone();
-			self.pop();
+			self.pop_internal();
 			self.entries.insert(0, top);
 		}
+	}
+
+	fn rotate_up_internal(&mut self) {
+		if self.entries.len() > 1 {
+			let bottom = self.entries[0].clone();
+			self.entries.remove(0);
+			self.entries.push(bottom);
+			self.push_new_entry = true;
+			self.editor = None;
+		}
+	}
+
+	pub fn clear(&mut self) {
+		push_undo_action(UndoAction::Clear(self.entries.clone()));
+		self.entries.clear();
+		self.entries.push(self.zero.clone());
+		self.push_new_entry = false;
+		self.empty = true;
+		self.editor = None;
 	}
 
 	pub fn enter(&mut self) -> Result<()> {
@@ -232,9 +300,10 @@ impl Stack {
 				self.set_top_ref(self.zero.clone());
 				self.push_new_entry = false;
 			}
-		} else {
+		} else if !self.empty {
 			let mut new_entry = self.entries.len() > 1;
-			self.pop();
+			let value = self.pop_internal();
+			push_undo_action(UndoAction::Pop(value));
 			if let Ok(Number::Integer(int)) = self.top().number() {
 				if int == &0.to_bigint().unwrap() {
 					new_entry = false;
@@ -252,6 +321,54 @@ impl Stack {
 			self.set_top_edit(Value::Number(value))?;
 		} else {
 			self.set_top((-self.top())?)?;
+		}
+		Ok(())
+	}
+
+	pub fn undo(&mut self, action: UndoAction) -> Result<()> {
+		match action {
+			UndoAction::Push => {
+				self.pop_internal();
+			}
+			UndoAction::Pop(value) => {
+				if self.empty {
+					self.set_top_internal(value.get()?)?;
+				} else {
+					self.push_internal(value.get()?)?;
+				}
+			}
+			UndoAction::Replace(values) => {
+				if values.len() == 0 {
+					self.pop_internal();
+				} else {
+					self.set_top_internal(values[0].get()?)?;
+					for value in &values[1..] {
+						self.push_internal(value.get()?)?;
+					}
+				}
+			}
+			UndoAction::Swap(a, b) => {
+				self.swap_internal(a, b)?;
+			}
+			UndoAction::Clear(values) => {
+				let mut value_refs = Vec::new();
+				for value in values.iter() {
+					value_refs.push(store(value.get()?)?);
+				}
+				if !self.empty {
+					value_refs.extend_from_slice(&self.entries);
+				}
+				self.entries = value_refs;
+				self.push_new_entry = true;
+				self.editor = None;
+				self.empty = false;
+			}
+			UndoAction::RotateDown => {
+				self.rotate_up_internal();
+			}
+			UndoAction::SetStackEntry(idx, value) => {
+				self.set_entry_internal(idx, value.get()?)?;
+			}
 		}
 		Ok(())
 	}

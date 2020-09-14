@@ -1,16 +1,14 @@
 use crate::error::{Error, Result};
+use crate::undo::prune_undo_buffer;
 use core::alloc::Layout;
 use core::marker::PhantomData;
+use core::ptr::NonNull;
 use linked_list_allocator::Heap;
 use spin::Mutex;
 
 const STORAGE_SIZE: usize = 65536;
 type OffsetType = u16;
 type ReferenceType = u16;
-
-struct Storage {
-	heap: Heap,
-}
 
 pub trait StorageRefSerializer {
 	fn serialize<T: StorageObject, Out: SerializeOutput>(
@@ -95,10 +93,12 @@ pub struct StorageRef<T: StorageObject> {
 struct StorageObjectHeader {
 	size: OffsetType,
 	refs: ReferenceType,
+	reclaimable: bool,
 }
 
 struct NormalStorageRefSerializer;
 struct DropStorageRefSerializer;
+struct ReclaimableStorageRefSerializer;
 
 impl<'a> SerializeBuffer<'a> {
 	fn new(slice: &'a mut [u8]) -> Self {
@@ -217,137 +217,36 @@ impl<'a> DeserializeInput<'a> {
 	}
 }
 
-impl Storage {
-	unsafe fn construct_once() -> Self {
-		let layout = Layout::from_size_align(STORAGE_SIZE, 16).unwrap();
-		let backing_mem = alloc::alloc::alloc(layout);
-		let heap = Heap::new(backing_mem as usize, STORAGE_SIZE);
-		Storage { heap }
+impl<T: StorageObject> StorageRef<T> {
+	pub fn get(&self) -> Result<T> {
+		self.deserialize(&NormalStorageRefSerializer)
 	}
 
-	fn used_bytes(&self) -> usize {
-		self.heap.used()
-	}
-
-	fn free_bytes(&self) -> usize {
-		self.heap.free()
-	}
-
-	/// Stores an object for long term storage. This will return failure when out of memory.
-	fn store<T: StorageObject>(&mut self, value: T) -> Result<StorageRef<T>> {
-		// Determine the size of the serialized value
-		let mut size = SerializeSizer::new();
-		value.serialize(&mut size, &NormalStorageRefSerializer)?;
-		let size = size.size;
-
-		// Allocate a buffer with space for a reference count and the serialized contents
-		let buffer = match self.heap.allocate_first_fit(
-			Layout::from_size_align(
-				size + core::mem::size_of::<StorageObjectHeader>(),
-				core::mem::align_of::<StorageObjectHeader>(),
-			)
-			.unwrap(),
-		) {
-			Ok(ptr) => ptr,
-			Err(_) => return Err(Error::OutOfMemory),
-		};
-
-		// Initialize reference count and allocation length in header
-		unsafe {
-			*(buffer.as_ptr() as usize as *mut StorageObjectHeader) = StorageObjectHeader {
-				size: size as OffsetType,
-				refs: 1,
-			};
-		}
-
-		// Serialize object into buffer
-		let serialize_buffer =
-			(buffer.as_ptr() as usize + core::mem::size_of::<StorageObjectHeader>()) as *mut u8;
-		let serialize_slice = unsafe { core::slice::from_raw_parts_mut(serialize_buffer, size) };
-		if let Err(error) = value.serialize(
-			&mut SerializeBuffer::new(serialize_slice),
-			&NormalStorageRefSerializer,
-		) {
-			// Serialization failed, deallocate and return error
-			unsafe {
-				self.heap.deallocate(
-					buffer,
-					Layout::from_size_align(
-						size + core::mem::size_of::<StorageObjectHeader>(),
-						core::mem::align_of::<StorageObjectHeader>(),
-					)
-					.unwrap(),
-				);
-			}
-			return Err(error);
-		}
-
-		// Return offset into heap buffer as storage reference
-		Ok(StorageRef {
-			offset: (buffer.as_ptr() as usize - self.heap.bottom()) as OffsetType,
-			_type: PhantomData,
-		})
-	}
-
-	fn get<T: StorageObject>(&self, storage_ref: &StorageRef<T>) -> Result<T> {
-		self.deserialize(storage_ref, &NormalStorageRefSerializer)
-	}
-
-	fn deserialize<T: StorageObject, R: StorageRefSerializer>(
-		&self,
-		storage_ref: &StorageRef<T>,
-		storage_ref_deserializer: &R,
-	) -> Result<T> {
-		let header =
-			(self.heap.bottom() + storage_ref.offset as usize) as *const StorageObjectHeader;
-		let data = (self.heap.bottom()
-			+ storage_ref.offset as usize
+	fn deserialize<Ref: StorageRefSerializer>(&self, storage_ref: &Ref) -> Result<T> {
+		let heap_bottom = HEAP.lock().bottom();
+		let header = (heap_bottom + self.offset as usize) as *const StorageObjectHeader;
+		let data = (heap_bottom
+			+ self.offset as usize
 			+ core::mem::size_of::<StorageObjectHeader>()) as *const u8;
 		unsafe {
 			let size = (*header).size as usize;
 			let data_slice = core::slice::from_raw_parts(data, size);
 			let mut input = DeserializeInput::new(data_slice);
-			T::deserialize(&mut input, storage_ref_deserializer)
+			T::deserialize(&mut input, storage_ref)
 		}
 	}
 
-	fn add_ref<T: StorageObject>(&mut self, storage_ref: &StorageRef<T>) {
-		let header_ptr =
-			(self.heap.bottom() + storage_ref.offset as usize) as *mut StorageObjectHeader;
+	fn add_ref(&self) {
+		let header_ptr = (HEAP.lock().bottom() + self.offset as usize) as *mut StorageObjectHeader;
 		unsafe {
 			(*header_ptr).refs += 1;
 		}
-	}
-
-	fn drop_ref<T: StorageObject>(&mut self, storage_ref: &StorageRef<T>) {
-		let header_ptr =
-			(self.heap.bottom() + storage_ref.offset as usize) as *mut StorageObjectHeader;
-		unsafe {
-			(*header_ptr).refs -= 1;
-			if (*header_ptr).refs == 0 {
-				// Last reference dropped, drop object from storage
-				self.heap.deallocate(
-					core::ptr::NonNull::new_unchecked(header_ptr as *mut u8),
-					Layout::from_size_align(
-						(*header_ptr).size as usize + core::mem::size_of::<StorageObjectHeader>(),
-						core::mem::align_of::<StorageObjectHeader>(),
-					)
-					.unwrap(),
-				);
-			}
-		}
-	}
-}
-
-impl<T: StorageObject> StorageRef<T> {
-	pub fn get(&self) -> Result<T> {
-		STORAGE.lock().get(self)
 	}
 }
 
 impl<T: StorageObject> Clone for StorageRef<T> {
 	fn clone(&self) -> Self {
-		STORAGE.lock().add_ref(self);
+		self.add_ref();
 		StorageRef {
 			offset: self.offset,
 			_type: PhantomData,
@@ -357,8 +256,34 @@ impl<T: StorageObject> Clone for StorageRef<T> {
 
 impl<T: StorageObject> Drop for StorageRef<T> {
 	fn drop(&mut self) {
-		let _ = STORAGE.lock().deserialize(self, &DropStorageRefSerializer);
-		STORAGE.lock().drop_ref(self);
+		// Last reference dropped, drop object from storage. First run the deserializer with the
+		// reference dropper to drop all references to other objects.
+		let _ = self.deserialize(&DropStorageRefSerializer);
+
+		// Free the object from storage
+		let header_ptr = (HEAP.lock().bottom() + self.offset as usize) as *mut StorageObjectHeader;
+		unsafe {
+			(*header_ptr).refs -= 1;
+			if (*header_ptr).refs == 0 {
+				let reclaimable = (*header_ptr).reclaimable;
+				let alloc_size =
+					(*header_ptr).size as usize + core::mem::size_of::<StorageObjectHeader>();
+				let prev_used_bytes = used_bytes();
+
+				HEAP.lock().deallocate(
+					core::ptr::NonNull::new_unchecked(header_ptr as *mut u8),
+					Layout::from_size_align(
+						alloc_size,
+						core::mem::align_of::<StorageObjectHeader>(),
+					)
+					.unwrap(),
+				);
+
+				if reclaimable {
+					*RECLAIMABLE.lock() -= prev_used_bytes - used_bytes();
+				}
+			}
+		}
 	}
 }
 
@@ -380,7 +305,7 @@ impl StorageRefSerializer for NormalStorageRefSerializer {
 		// as long as the stored object lives. When the object that contains the reference
 		// is dropped, we will call the deserializer without adding references and let
 		// them drop, which will get rid of the references added here.
-		STORAGE.lock().add_ref(value);
+		value.add_ref();
 
 		Ok(())
 	}
@@ -396,7 +321,7 @@ impl StorageRefSerializer for NormalStorageRefSerializer {
 			offset,
 			_type: PhantomData,
 		};
-		STORAGE.lock().add_ref(&result);
+		result.add_ref();
 		Ok(result)
 	}
 }
@@ -432,18 +357,156 @@ impl StorageRefSerializer for DropStorageRefSerializer {
 	}
 }
 
-lazy_static! {
-	static ref STORAGE: Mutex<Storage> = unsafe { Mutex::new(Storage::construct_once()) };
+impl StorageRefSerializer for ReclaimableStorageRefSerializer {
+	fn serialize<T: StorageObject, Out: SerializeOutput>(
+		&self,
+		value: &StorageRef<T>,
+		output: &mut Out,
+	) -> Result<()> {
+		// Duplicate the object as reclaimable memory. This allows the old reference
+		// to go away and be freed, and this object's dependencies will be counted
+		// correctly as reclaimable.
+		let new_value = store_reclaimable(value.get()?)?;
+
+		// Serialize as the offset
+		output.write(&new_value.offset.to_le_bytes())?;
+
+		if output.size_only() {
+			// If calculating size, don't touch reference counts
+			return Ok(());
+		}
+
+		// Make sure to add a reference to the value so that the reference will stay valid
+		// as long as the stored object lives. When the object that contains the reference
+		// is dropped, we will call the deserializer without adding references and let
+		// them drop, which will get rid of the references added here.
+		new_value.add_ref();
+
+		Ok(())
+	}
+
+	unsafe fn deserialize<T: StorageObject>(
+		&self,
+		input: &mut DeserializeInput,
+	) -> Result<StorageRef<T>> {
+		let mut buffer = [0; core::mem::size_of::<OffsetType>()];
+		input.read(&mut buffer)?;
+		let offset = OffsetType::from_le_bytes(buffer);
+		let result = StorageRef {
+			offset,
+			_type: PhantomData,
+		};
+		result.add_ref();
+		Ok(result)
+	}
 }
 
+lazy_static! {
+	static ref HEAP: Mutex<Heap> = unsafe {
+		let layout = Layout::from_size_align(STORAGE_SIZE, 16).unwrap();
+		let backing_mem = alloc::alloc::alloc(layout);
+		Mutex::new(Heap::new(backing_mem as usize, STORAGE_SIZE))
+	};
+	static ref RECLAIMABLE: Mutex<usize> = Mutex::new(0);
+}
+
+fn alloc_result(layout: Layout) -> Result<(NonNull<u8>, usize)> {
+	loop {
+		// Try allocating
+		let prev_used_bytes = used_bytes();
+		let result = HEAP.lock().allocate_first_fit(layout);
+		match result {
+			Ok(ptr) => return Ok((ptr, used_bytes() - prev_used_bytes)),
+			Err(_) => (),
+		};
+
+		// If allocation fails, try to prune reclaimable memory. If there is no
+		// more memory to reclaim, fail the allocation.
+		if !prune_undo_buffer() {
+			return Err(Error::OutOfMemory);
+		}
+	}
+}
+
+fn store_obj<T: StorageObject>(value: T, reclaimable: bool) -> Result<StorageRef<T>> {
+	// Determine the size of the serialized value
+	let mut size = SerializeSizer::new();
+	value.serialize(&mut size, &NormalStorageRefSerializer)?;
+	let size = size.size;
+	let alloc_size = size + core::mem::size_of::<StorageObjectHeader>();
+
+	// Allocate a buffer with space for a reference count and the serialized contents
+	let (buffer, used_size) = alloc_result(
+		Layout::from_size_align(alloc_size, core::mem::align_of::<StorageObjectHeader>()).unwrap(),
+	)?;
+
+	// Initialize reference count and allocation length in header
+	unsafe {
+		*(buffer.as_ptr() as usize as *mut StorageObjectHeader) = StorageObjectHeader {
+			size: size as OffsetType,
+			refs: 1,
+			reclaimable,
+		};
+	}
+
+	// Serialize object into buffer
+	let serialize_buffer =
+		(buffer.as_ptr() as usize + core::mem::size_of::<StorageObjectHeader>()) as *mut u8;
+	let serialize_slice = unsafe { core::slice::from_raw_parts_mut(serialize_buffer, size) };
+	if let Err(error) = if reclaimable {
+		value.serialize(
+			&mut SerializeBuffer::new(serialize_slice),
+			&ReclaimableStorageRefSerializer,
+		)
+	} else {
+		value.serialize(
+			&mut SerializeBuffer::new(serialize_slice),
+			&NormalStorageRefSerializer,
+		)
+	} {
+		// Serialization failed, deallocate and return error
+		unsafe {
+			HEAP.lock().deallocate(
+				buffer,
+				Layout::from_size_align(alloc_size, core::mem::align_of::<StorageObjectHeader>())
+					.unwrap(),
+			);
+		}
+		return Err(error);
+	}
+
+	if reclaimable {
+		*RECLAIMABLE.lock() += used_size;
+	}
+
+	// Return offset into heap buffer as storage reference
+	Ok(StorageRef {
+		offset: (buffer.as_ptr() as usize - HEAP.lock().bottom()) as OffsetType,
+		_type: PhantomData,
+	})
+}
+
+/// Stores an object for long term storage. This will return failure when out of memory.
 pub fn store<T: StorageObject>(value: T) -> Result<StorageRef<T>> {
-	STORAGE.lock().store(value)
+	store_obj(value, false)
+}
+
+pub fn store_reclaimable<T: StorageObject>(value: T) -> Result<StorageRef<T>> {
+	store_obj(value, true)
 }
 
 pub fn used_bytes() -> usize {
-	STORAGE.lock().used_bytes()
+	HEAP.lock().used()
+}
+
+pub fn reclaimable_bytes() -> usize {
+	*RECLAIMABLE.lock()
 }
 
 pub fn free_bytes() -> usize {
-	STORAGE.lock().free_bytes()
+	HEAP.lock().free()
+}
+
+pub fn available_bytes() -> usize {
+	free_bytes() + reclaimable_bytes()
 }
