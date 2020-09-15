@@ -3,6 +3,7 @@ use crate::font::{SANS_13, SANS_16, SANS_24};
 use crate::functions::{FunctionKeyState, FunctionMenu};
 use crate::input::{AlphaMode, InputEvent, InputMode};
 use crate::layout::Layout;
+use crate::menu::{setup_menu, Menu};
 use crate::number::{IntegerMode, Number, NumberFormat, ToNumber};
 use crate::screen::{Color, Font, Rect, Screen};
 use crate::stack::{Stack, MAX_STACK_INDEX_DIGITS};
@@ -53,6 +54,7 @@ enum InputState {
 	Normal,
 	Recall,
 	Store,
+	Menu,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -74,6 +76,7 @@ pub struct State {
 	input_state: InputState,
 	location_entry: LocationEntryState,
 	error: Option<Error>,
+	menus: Vec<Menu>,
 	cached_status_bar_state: CachedStatusBarState,
 	force_refresh: bool,
 }
@@ -140,6 +143,7 @@ impl State {
 			input_state: InputState::Normal,
 			location_entry: LocationEntryState::new("".to_string()),
 			error: None,
+			menus: Vec::new(),
 			cached_status_bar_state,
 			force_refresh: true,
 		}
@@ -403,9 +407,8 @@ impl State {
 					}
 					InputEvent::Setup => {
 						self.input_mode.alpha = AlphaMode::Normal;
-						#[cfg(feature = "dm42")]
-						show_system_setup_menu();
-						self.force_refresh = true;
+						self.input_state = InputState::Menu;
+						self.menus.push(setup_menu());
 					}
 					InputEvent::Custom => {
 						// Until there is a menu option, add a temporary toggle for memory usage display
@@ -473,6 +476,45 @@ impl State {
 					Err(Error::InvalidEntry)
 				}
 			},
+			InputState::Menu => {
+				let menu = self.menus.last_mut().unwrap();
+				match input {
+					InputEvent::Up => menu.up(),
+					InputEvent::Down => menu.down(),
+					InputEvent::Enter => {
+						let function = menu.selected_function();
+						self.input_state = InputState::Normal;
+						self.force_refresh = true;
+						self.menus.clear();
+						function.execute(self)?;
+					}
+					InputEvent::Character(ch) => match ch {
+						'1'..='9' => {
+							if let Some(function) =
+								menu.specific_function((ch as u32 - '1' as u32) as usize)
+							{
+								self.input_state = InputState::Normal;
+								self.force_refresh = true;
+								self.menus.clear();
+								function.execute(self)?;
+							}
+						}
+						_ => (),
+					},
+					InputEvent::Exit => {
+						self.menus.pop();
+						if let Some(menu) = self.menus.last_mut() {
+							menu.force_refresh();
+						} else {
+							self.input_state = InputState::Normal;
+							self.force_refresh = true;
+						}
+					}
+					InputEvent::Off => return Ok(InputResult::Suspend),
+					_ => (),
+				}
+				Ok(InputResult::Normal)
+			}
 		}
 	}
 
@@ -794,6 +836,13 @@ impl State {
 	}
 
 	pub fn render<ScreenT: Screen>(&mut self, screen: &mut ScreenT) {
+		if self.input_state == InputState::Menu {
+			if let Some(menu) = self.menus.last_mut() {
+				menu.render(screen);
+				return;
+			}
+		}
+
 		// Check for updates to status bar and render if changed
 		if self.update_status_bar_state() || self.force_refresh {
 			self.draw_status_bar(screen);
@@ -835,7 +884,7 @@ impl State {
 			};
 			let clip_rect = rect.clone();
 			screen.fill(rect.clone(), Color::ContentBackground);
-			layout.render(screen, rect, &clip_rect);
+			layout.render(screen, rect, &clip_rect, None);
 
 			// Render a line to separate the error from the stack area
 			screen.fill(
@@ -889,7 +938,7 @@ impl State {
 			};
 			let clip_rect = rect.clone();
 			screen.fill(rect.clone(), Color::ContentBackground);
-			layout.render(screen, rect, &clip_rect);
+			layout.render(screen, rect, &clip_rect, None);
 
 			// Render a line to separate the stack area from the location editor
 			screen.fill(
@@ -912,9 +961,16 @@ impl State {
 	}
 
 	pub fn update_header<ScreenT: Screen>(&mut self, screen: &mut ScreenT) {
-		// When specifically updating the header, always render the header
-		self.update_status_bar_state();
-		self.draw_status_bar(screen);
-		screen.refresh();
+		if self.input_state != InputState::Menu {
+			// When specifically updating the header, always render the header
+			self.update_status_bar_state();
+			self.draw_status_bar(screen);
+			screen.refresh();
+		}
+	}
+
+	pub fn show_system_setup_menu(&mut self) {
+		#[cfg(feature = "dm42")]
+		show_system_setup_menu();
 	}
 }

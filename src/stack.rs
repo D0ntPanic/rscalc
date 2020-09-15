@@ -421,6 +421,7 @@ impl Stack {
 					h: height,
 				},
 				&area,
+				None,
 			);
 
 			// Draw the label

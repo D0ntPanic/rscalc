@@ -71,6 +71,7 @@ pub enum Function {
 	AddUnit(Unit),
 	AddInvUnit(Unit),
 	ConvertToUnit(Unit),
+	SystemMenu,
 }
 
 impl Function {
@@ -301,6 +302,7 @@ impl Function {
 			Function::AddUnit(unit) => unit.to_str(),
 			Function::AddInvUnit(unit) => "/".to_string() + &unit.to_str(),
 			Function::ConvertToUnit(unit) => "▸".to_string() + &unit.to_str(),
+			Function::SystemMenu => "Sys".to_string(),
 		}
 	}
 
@@ -609,6 +611,9 @@ impl Function {
 			Function::ConvertToUnit(unit) => {
 				let value = state.stack.top().convert_single_unit(*unit)?;
 				state.set_top(value)?;
+			}
+			Function::SystemMenu => {
+				state.show_system_setup_menu();
 			}
 		}
 		Ok(())

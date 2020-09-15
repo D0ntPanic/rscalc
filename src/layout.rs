@@ -12,6 +12,11 @@ pub enum Layout {
 	Power(Box<Layout>, Box<Layout>),
 	HorizontalSpace(i32),
 	VerticalSpace(i32),
+	LeftAlign(Box<Layout>),
+	UsageGraph(usize, usize, usize),
+	UsageGraphUsedLegend,
+	UsageGraphReclaimableLegend,
+	UsageGraphFreeLegend,
 }
 
 impl Layout {
@@ -20,6 +25,21 @@ impl Layout {
 			Layout::EditText(string, font, color)
 		} else {
 			Layout::Text(string, font, color)
+		}
+	}
+
+	pub fn full_width(&self) -> bool {
+		match self {
+			Layout::LeftAlign(_) | Layout::UsageGraph(_, _, _) => true,
+			Layout::Vertical(items) => {
+				for item in items {
+					if item.full_width() {
+						return true;
+					}
+				}
+				false
+			}
+			_ => false,
 		}
 	}
 
@@ -35,6 +55,11 @@ impl Layout {
 			Layout::Power(base, power) => base.width() + power.width(),
 			Layout::HorizontalSpace(width) => *width,
 			Layout::VerticalSpace(_) => 0,
+			Layout::LeftAlign(item) => item.width(),
+			Layout::UsageGraph(_, _, _) => 0,
+			Layout::UsageGraphUsedLegend
+			| Layout::UsageGraphReclaimableLegend
+			| Layout::UsageGraphFreeLegend => 11,
 		}
 	}
 
@@ -50,13 +75,35 @@ impl Layout {
 			Layout::Power(base, power) => core::cmp::max(base.height(), power.height()),
 			Layout::HorizontalSpace(_) => 0,
 			Layout::VerticalSpace(height) => *height,
+			Layout::LeftAlign(item) => item.height(),
+			Layout::UsageGraph(_, _, _) => 31,
+			Layout::UsageGraphUsedLegend
+			| Layout::UsageGraphReclaimableLegend
+			| Layout::UsageGraphFreeLegend => 11,
 		}
 	}
 
-	pub fn render<ScreenT: Screen>(&self, screen: &mut ScreenT, rect: Rect, clip_rect: &Rect) {
+	fn overridden_color(color: &Color, color_override: &Option<Color>) -> Color {
+		if let Some(color_override) = color_override {
+			*color_override
+		} else {
+			*color
+		}
+	}
+
+	pub fn render<ScreenT: Screen>(
+		&self,
+		screen: &mut ScreenT,
+		rect: Rect,
+		clip_rect: &Rect,
+		color_override: Option<Color>,
+	) {
 		// Determine the size of the layout and render it right jusitified
 		// and centered vertically.
-		let width = self.width();
+		let mut width = self.width();
+		if self.full_width() {
+			width = rect.w;
+		}
 		let height = self.height();
 		let mut rect = Rect {
 			x: rect.x + rect.w - width,
@@ -75,11 +122,23 @@ impl Layout {
 
 		// Render the layout to the screen
 		match self {
-			Layout::Text(string, font, color) => {
-				font.draw_clipped(screen, clip_rect, rect.x, rect.y, string, *color)
-			}
+			Layout::Text(string, font, color) => font.draw_clipped(
+				screen,
+				clip_rect,
+				rect.x,
+				rect.y,
+				string,
+				Self::overridden_color(color, &color_override),
+			),
 			Layout::EditText(string, font, color) => {
-				font.draw_clipped(screen, clip_rect, rect.x, rect.y, string, *color);
+				font.draw_clipped(
+					screen,
+					clip_rect,
+					rect.x,
+					rect.y,
+					string,
+					Self::overridden_color(color, &color_override),
+				);
 				screen.fill(
 					Rect {
 						x: rect.x + rect.w - 1,
@@ -88,7 +147,7 @@ impl Layout {
 						h: rect.h,
 					}
 					.clipped_to(clip_rect),
-					*color,
+					Self::overridden_color(color, &color_override),
 				);
 			}
 			Layout::Horizontal(items) => {
@@ -105,6 +164,7 @@ impl Layout {
 							h: rect.h,
 						},
 						clip_rect,
+						color_override,
 					);
 					rect.x += item_width;
 					rect.w -= item_width;
@@ -124,6 +184,7 @@ impl Layout {
 							h: item_height,
 						},
 						clip_rect,
+						color_override,
 					);
 					rect.y += item_height;
 					rect.h -= item_height;
@@ -146,6 +207,7 @@ impl Layout {
 						h: numer_height,
 					},
 					clip_rect,
+					color_override,
 				);
 
 				// Render the denominator cenetered at the bottom
@@ -158,6 +220,7 @@ impl Layout {
 						h: denom_height,
 					},
 					clip_rect,
+					color_override,
 				);
 
 				// Render the line separating the numerator and the denominator
@@ -169,7 +232,7 @@ impl Layout {
 						h: 1,
 					}
 					.clipped_to(clip_rect),
-					*color,
+					Self::overridden_color(color, &color_override),
 				);
 			}
 			Layout::Power(base, power) => {
@@ -189,6 +252,7 @@ impl Layout {
 						h: base_height,
 					},
 					clip_rect,
+					color_override,
 				);
 
 				// Render the power
@@ -201,9 +265,120 @@ impl Layout {
 						h: power_height,
 					},
 					clip_rect,
+					color_override,
 				);
 			}
 			Layout::VerticalSpace(_) | Layout::HorizontalSpace(_) => (),
+			Layout::LeftAlign(item) => {
+				item.render(
+					screen,
+					Rect {
+						x: rect.x,
+						y: rect.y,
+						w: item.width(),
+						h: rect.h,
+					},
+					clip_rect,
+					color_override,
+				);
+			}
+			Layout::UsageGraph(used, reclaimable, free) => {
+				// Calculate pixel sizes of the parts of the graph
+				let total = used + reclaimable + free;
+				let used_pixels = ((*used as u64 * (rect.w - 2) as u64) / total as u64) as i32;
+				let reclaimable_pixels =
+					((*reclaimable as u64 * (rect.w - 2) as u64) / total as u64) as i32;
+
+				// Fill graph
+				screen.fill(
+					Rect {
+						x: rect.x,
+						y: rect.y,
+						w: rect.w,
+						h: rect.h,
+					},
+					Color::ContentText,
+				);
+
+				// Empty out available area
+				screen.fill(
+					Rect {
+						x: rect.x + 1 + used_pixels,
+						y: rect.y + 1,
+						w: rect.w - (used_pixels + 2),
+						h: rect.h - 2,
+					},
+					Color::ContentBackground,
+				);
+
+				// Draw reclaimable pattern
+				for y_offset in 1..rect.h - 1 {
+					screen.horizontal_pattern(
+						rect.x + 1 + used_pixels,
+						reclaimable_pixels,
+						rect.y + y_offset,
+						match y_offset & 3 {
+							0 => 0b000100010001000100010001,
+							2 => 0b010001000100010001000100,
+							_ => 0b000000000000000000000000,
+						},
+						24,
+						Color::ContentText,
+					);
+				}
+
+				// Draw line between reclaimable and free
+				screen.fill(
+					Rect {
+						x: rect.x + used_pixels + reclaimable_pixels,
+						y: rect.y,
+						w: 1,
+						h: rect.h,
+					},
+					Color::ContentText,
+				);
+			}
+			Layout::UsageGraphUsedLegend => {
+				screen.fill(rect, Color::ContentText);
+			}
+			Layout::UsageGraphReclaimableLegend => {
+				screen.fill(rect.clone(), Color::ContentText);
+				screen.fill(
+					Rect {
+						x: rect.x + 1,
+						y: rect.y + 1,
+						w: rect.w - 2,
+						h: rect.h - 2,
+					},
+					Color::ContentBackground,
+				);
+				for y_offset in 1..rect.h - 1 {
+					screen.horizontal_pattern(
+						rect.x + 1,
+						rect.w - 2,
+						rect.y + y_offset,
+						match y_offset & 3 {
+							0 => 0b000100010001000100010001,
+							2 => 0b010001000100010001000100,
+							_ => 0b000000000000000000000000,
+						},
+						24,
+						Color::ContentText,
+					);
+				}
+			}
+			Layout::UsageGraphFreeLegend => {
+				screen.fill(rect.clone(), Color::ContentText);
+				screen.fill(
+					Rect {
+						x: rect.x + 1,
+						y: rect.y + 1,
+						w: rect.w - 2,
+						h: rect.h - 2,
+					},
+					Color::ContentBackground,
+				);
+			}
 		}
 	}
 }

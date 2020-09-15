@@ -32,6 +32,7 @@ mod font;
 mod functions;
 mod input;
 mod layout;
+mod menu;
 mod number;
 mod screen;
 mod stack;
