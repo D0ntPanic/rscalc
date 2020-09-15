@@ -9,6 +9,7 @@ use crate::stack::{Stack, MAX_STACK_INDEX_DIGITS};
 use crate::storage::{available_bytes, store};
 use crate::time::{Now, SimpleDateTimeFormat, SimpleDateTimeToString};
 use crate::undo::{pop_undo_action, UndoAction};
+use crate::unit::AngleUnit;
 use crate::value::{Value, ValueRef};
 use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
@@ -28,6 +29,7 @@ struct CachedStatusBarState {
 	shift: bool,
 	integer_radix: u8,
 	integer_mode: IntegerMode,
+	angle_mode: AngleUnit,
 	multiple_pages: bool,
 	left_string: String,
 }
@@ -66,6 +68,7 @@ pub struct State {
 	pub function_keys: FunctionKeyState,
 	pub default_integer_format: IntegerMode,
 	pub prev_decimal_integer_mode: IntegerMode,
+	pub angle_mode: AngleUnit,
 	pub status_bar_left_display: StatusBarLeftDisplayType,
 	memory: BTreeMap<Location, ValueRef>,
 	input_state: InputState,
@@ -119,6 +122,7 @@ impl State {
 			shift: input_mode.shift,
 			integer_radix: format.integer_radix,
 			integer_mode: format.integer_mode,
+			angle_mode: AngleUnit::Degrees,
 			multiple_pages: false,
 			left_string: State::time_string(),
 		};
@@ -130,6 +134,7 @@ impl State {
 			function_keys: FunctionKeyState::new(),
 			default_integer_format: IntegerMode::BigInteger,
 			prev_decimal_integer_mode: IntegerMode::Float,
+			angle_mode: AngleUnit::Degrees,
 			status_bar_left_display: StatusBarLeftDisplayType::CurrentTime,
 			memory: BTreeMap::new(),
 			input_state: InputState::Normal,
@@ -321,27 +326,27 @@ impl State {
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Sin => {
-						self.set_top(self.top().sin()?)?;
+						self.set_top(self.top().sin(self.angle_mode)?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Cos => {
-						self.set_top(self.top().cos()?)?;
+						self.set_top(self.top().cos(self.angle_mode)?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Tan => {
-						self.set_top(self.top().tan()?)?;
+						self.set_top(self.top().tan(self.angle_mode)?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Asin => {
-						self.set_top(self.top().asin()?)?;
+						self.set_top(self.top().asin(self.angle_mode)?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Acos => {
-						self.set_top(self.top().acos()?)?;
+						self.set_top(self.top().acos(self.angle_mode)?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Atan => {
-						self.set_top(self.top().atan()?)?;
+						self.set_top(self.top().atan(self.angle_mode)?)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::RotateDown => {
@@ -368,6 +373,9 @@ impl State {
 					}
 					InputEvent::Disp => {
 						self.function_keys.show_toplevel_menu(FunctionMenu::Disp);
+					}
+					InputEvent::Modes => {
+						self.function_keys.show_toplevel_menu(FunctionMenu::Mode);
 					}
 					InputEvent::Base => {
 						self.function_keys.show_toplevel_menu(FunctionMenu::Base);
@@ -564,6 +572,7 @@ impl State {
 		let shift = self.input_mode.shift;
 		let integer_radix = self.format.integer_radix;
 		let integer_mode = self.format.integer_mode;
+		let angle_mode = self.angle_mode;
 		let multiple_pages = self.function_keys.multiple_pages();
 
 		// Check for alpha mode updates
@@ -587,6 +596,12 @@ impl State {
 		// Check for integer mode updates
 		if integer_mode != self.cached_status_bar_state.integer_mode {
 			self.cached_status_bar_state.integer_mode = integer_mode;
+			changed = true;
+		}
+
+		// Check for angle mode updates
+		if angle_mode != self.cached_status_bar_state.angle_mode {
+			self.cached_status_bar_state.angle_mode = angle_mode;
 			changed = true;
 		}
 
@@ -752,6 +767,13 @@ impl State {
 				let string = string + NumberFormat::new().format_bigint(&size.into()).as_str();
 				self.draw_status_bar_indicator(screen, &mut x, &string, &SANS_13);
 			}
+		}
+
+		// Render angle mode indicator
+		match self.angle_mode {
+			AngleUnit::Degrees => (),
+			AngleUnit::Radians => self.draw_status_bar_indicator(screen, &mut x, "Rad", &SANS_13),
+			AngleUnit::Gradians => self.draw_status_bar_indicator(screen, &mut x, "Grad", &SANS_13),
 		}
 
 		// Render menu page indicator

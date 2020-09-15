@@ -1,5 +1,6 @@
 use crate::error::{Error, Result};
 use crate::storage::{DeserializeInput, SerializeOutput, StorageObject, StorageRefSerializer};
+use crate::unit::{AngleUnit, UnitConversion};
 use alloc::borrow::Cow;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -237,6 +238,26 @@ impl Number {
 
 	pub fn atan(&self) -> Number {
 		Number::Decimal(self.to_decimal().atan())
+	}
+
+	pub fn angle_to_radians<'a>(&'a self, angle_mode: AngleUnit) -> Cow<'a, Number> {
+		match angle_mode {
+			AngleUnit::Radians => Cow::Borrowed(self),
+			_ => Cow::Owned(
+				self * &angle_mode.multiplier_to_standard()
+					/ AngleUnit::Radians.multiplier_to_standard(),
+			),
+		}
+	}
+
+	pub fn angle_from_radians<'a>(&'a self, angle_mode: AngleUnit) -> Cow<'a, Number> {
+		match angle_mode {
+			AngleUnit::Radians => Cow::Borrowed(self),
+			_ => Cow::Owned(
+				self / &angle_mode.multiplier_to_standard()
+					* AngleUnit::Radians.multiplier_to_standard(),
+			),
+		}
 	}
 
 	pub fn log(&self) -> Number {

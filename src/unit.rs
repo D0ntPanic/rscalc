@@ -3,6 +3,7 @@ use crate::number::{Number, ToNumber};
 use crate::storage::{DeserializeInput, SerializeOutput, StorageObject, StorageRefSerializer};
 use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
+use intel_dfp::Decimal;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum TimeUnit {
@@ -33,9 +34,17 @@ pub enum DistanceUnit {
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+pub enum AngleUnit {
+	Degrees,
+	Radians,
+	Gradians,
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum Unit {
 	Time(TimeUnit),
 	Distance(DistanceUnit),
+	Angle(AngleUnit),
 }
 
 impl TimeUnit {
@@ -72,11 +81,22 @@ impl DistanceUnit {
 	}
 }
 
+impl AngleUnit {
+	pub fn to_str(&self) -> String {
+		match self {
+			AngleUnit::Degrees => "°".to_string(),
+			AngleUnit::Radians => "rad".to_string(),
+			AngleUnit::Gradians => "grad".to_string(),
+		}
+	}
+}
+
 impl Unit {
 	pub fn to_str(&self) -> String {
 		match self {
 			Unit::Time(unit) => unit.to_str(),
 			Unit::Distance(unit) => unit.to_str(),
+			Unit::Angle(unit) => unit.to_str(),
 		}
 	}
 
@@ -102,6 +122,9 @@ impl Unit {
 			Unit::Distance(DistanceUnit::Miles) => 0x0113,
 			Unit::Distance(DistanceUnit::NauticalMiles) => 0x0114,
 			Unit::Distance(DistanceUnit::AstronomicalUnits) => 0x0120,
+			Unit::Angle(AngleUnit::Degrees) => 0x0200,
+			Unit::Angle(AngleUnit::Radians) => 0x0201,
+			Unit::Angle(AngleUnit::Gradians) => 0x0202,
 		}
 	}
 
@@ -127,6 +150,9 @@ impl Unit {
 			0x0113 => Some(Unit::Distance(DistanceUnit::Miles)),
 			0x0114 => Some(Unit::Distance(DistanceUnit::NauticalMiles)),
 			0x0120 => Some(Unit::Distance(DistanceUnit::AstronomicalUnits)),
+			0x0200 => Some(Unit::Angle(AngleUnit::Degrees)),
+			0x0201 => Some(Unit::Angle(AngleUnit::Radians)),
+			0x0202 => Some(Unit::Angle(AngleUnit::Gradians)),
 			_ => None,
 		}
 	}
@@ -179,6 +205,7 @@ pub trait UnitConversion: Eq {
 pub enum UnitType {
 	Time,
 	Distance,
+	Angle,
 }
 
 impl UnitType {
@@ -186,6 +213,7 @@ impl UnitType {
 		match self {
 			UnitType::Time => "Time".to_string(),
 			UnitType::Distance => "Dist".to_string(),
+			UnitType::Angle => "Angle".to_string(),
 		}
 	}
 }
@@ -229,11 +257,24 @@ impl UnitConversion for DistanceUnit {
 	}
 }
 
+impl UnitConversion for AngleUnit {
+	fn multiplier_to_standard(&self) -> Number {
+		match self {
+			AngleUnit::Degrees => 1.to_number(),
+			AngleUnit::Radians => {
+				Decimal::from_str("57.29577951308232087679815481410517").to_number()
+			}
+			AngleUnit::Gradians => 9.to_number() / 10.to_number(),
+		}
+	}
+}
+
 impl Unit {
 	pub fn unit_type(&self) -> UnitType {
 		match self {
 			Unit::Time(_) => UnitType::Time,
 			Unit::Distance(_) => UnitType::Distance,
+			Unit::Angle(_) => UnitType::Angle,
 		}
 	}
 }
@@ -247,6 +288,12 @@ impl From<TimeUnit> for Unit {
 impl From<DistanceUnit> for Unit {
 	fn from(unit: DistanceUnit) -> Self {
 		Unit::Distance(unit)
+	}
+}
+
+impl From<AngleUnit> for Unit {
+	fn from(unit: AngleUnit) -> Self {
+		Unit::Angle(unit)
 	}
 }
 
@@ -293,6 +340,10 @@ impl CompositeUnit {
 			},
 			Unit::Distance(from) => match to_unit {
 				Unit::Distance(to) => Ok(from.to_unit_with_power(value, to, power)),
+				_ => Err(Error::IncompatibleUnits),
+			},
+			Unit::Angle(from) => match to_unit {
+				Unit::Angle(to) => Ok(from.to_unit_with_power(value, to, power)),
 				_ => Err(Error::IncompatibleUnits),
 			},
 		}

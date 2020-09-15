@@ -8,7 +8,7 @@ use crate::number::{
 use crate::screen::{Color, Rect, Screen};
 use crate::state::State;
 use crate::time::Now;
-use crate::unit::{CompositeUnit, DistanceUnit, TimeUnit, Unit, UnitType};
+use crate::unit::{AngleUnit, CompositeUnit, DistanceUnit, TimeUnit, Unit, UnitType};
 use crate::value::Value;
 use alloc::borrow::Cow;
 use alloc::string::{String, ToString};
@@ -62,6 +62,9 @@ pub enum Function {
 	Now,
 	Date,
 	Time,
+	Degrees,
+	Radians,
+	Gradians,
 	AddUnitType(UnitType),
 	AddInvUnitType(UnitType),
 	ConvertToUnitType(UnitType),
@@ -271,6 +274,27 @@ impl Function {
 			Function::Now => "Now".to_string(),
 			Function::Date => "Date".to_string(),
 			Function::Time => "Time".to_string(),
+			Function::Degrees => {
+				if state.angle_mode == AngleUnit::Degrees {
+					"▪Deg".to_string()
+				} else {
+					"Deg".to_string()
+				}
+			}
+			Function::Radians => {
+				if state.angle_mode == AngleUnit::Radians {
+					"▪Rad".to_string()
+				} else {
+					"Rad".to_string()
+				}
+			}
+			Function::Gradians => {
+				if state.angle_mode == AngleUnit::Gradians {
+					"▪Grad".to_string()
+				} else {
+					"Grad".to_string()
+				}
+			}
 			Function::AddUnitType(unit_type) => unit_type.to_str(),
 			Function::AddInvUnitType(unit_type) => "/".to_string() + &unit_type.to_str(),
 			Function::ConvertToUnitType(unit_type) => "▸".to_string() + &unit_type.to_str(),
@@ -546,19 +570,33 @@ impl Function {
 					state.stack.replace_entries(3, Value::Time(time))?;
 				}
 			}
+			Function::Degrees => {
+				state.angle_mode = AngleUnit::Degrees;
+			}
+			Function::Radians => {
+				state.angle_mode = AngleUnit::Radians;
+			}
+			Function::Gradians => {
+				state.angle_mode = AngleUnit::Gradians;
+			}
 			Function::AddUnitType(unit_type) => match unit_type {
 				UnitType::Time => state.function_keys.show_menu(FunctionMenu::TimeUnit),
 				UnitType::Distance => state.function_keys.show_menu(FunctionMenu::DistanceUnit),
+				UnitType::Angle => state.function_keys.show_menu(FunctionMenu::AngleUnit),
 			},
 			Function::AddInvUnitType(unit_type) => match unit_type {
 				UnitType::Time => state.function_keys.show_menu(FunctionMenu::InverseTimeUnit),
 				UnitType::Distance => state
 					.function_keys
 					.show_menu(FunctionMenu::InverseDistanceUnit),
+				UnitType::Angle => state
+					.function_keys
+					.show_menu(FunctionMenu::InverseAngleUnit),
 			},
 			Function::ConvertToUnitType(unit_type) => match unit_type {
 				UnitType::Time => state.function_keys.show_menu(FunctionMenu::ToTimeUnit),
 				UnitType::Distance => state.function_keys.show_menu(FunctionMenu::ToDistanceUnit),
+				UnitType::Angle => state.function_keys.show_menu(FunctionMenu::ToAngleUnit),
 			},
 			Function::AddUnit(unit) => {
 				let value = state.stack.top().add_unit(*unit)?;
@@ -580,6 +618,7 @@ impl Function {
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum FunctionMenu {
 	Disp,
+	Mode,
 	Base,
 	SignedInteger,
 	UnsignedInteger,
@@ -594,6 +633,9 @@ pub enum FunctionMenu {
 	DistanceUnit,
 	InverseDistanceUnit,
 	ToDistanceUnit,
+	AngleUnit,
+	InverseAngleUnit,
+	ToAngleUnit,
 }
 
 impl FunctionMenu {
@@ -610,6 +652,12 @@ impl FunctionMenu {
 				Some(Function::ThousandsSeparatorOn),
 				Some(Function::DecimalPointPeriod),
 				Some(Function::DecimalPointComma),
+			]
+			.to_vec(),
+			FunctionMenu::Mode => [
+				Some(Function::Degrees),
+				Some(Function::Radians),
+				Some(Function::Gradians),
 			]
 			.to_vec(),
 			FunctionMenu::Base => [
@@ -663,19 +711,19 @@ impl FunctionMenu {
 			FunctionMenu::Units => [
 				Some(Function::AddUnitType(UnitType::Distance)),
 				Some(Function::AddUnitType(UnitType::Time)),
-				None,
+				Some(Function::AddUnitType(UnitType::Angle)),
 				None,
 				None,
 				None,
 				Some(Function::ConvertToUnitType(UnitType::Distance)),
 				Some(Function::ConvertToUnitType(UnitType::Time)),
-				None,
+				Some(Function::ConvertToUnitType(UnitType::Angle)),
 				None,
 				None,
 				None,
 				Some(Function::AddInvUnitType(UnitType::Distance)),
 				Some(Function::AddInvUnitType(UnitType::Time)),
-				None,
+				Some(Function::AddInvUnitType(UnitType::Angle)),
 				None,
 				None,
 				None,
@@ -762,6 +810,24 @@ impl FunctionMenu {
 				Some(Function::ConvertToUnit(
 					DistanceUnit::AstronomicalUnits.into(),
 				)),
+			]
+			.to_vec(),
+			FunctionMenu::AngleUnit => [
+				Some(Function::AddUnit(AngleUnit::Degrees.into())),
+				Some(Function::AddUnit(AngleUnit::Radians.into())),
+				Some(Function::AddUnit(AngleUnit::Gradians.into())),
+			]
+			.to_vec(),
+			FunctionMenu::InverseAngleUnit => [
+				Some(Function::AddInvUnit(AngleUnit::Degrees.into())),
+				Some(Function::AddInvUnit(AngleUnit::Radians.into())),
+				Some(Function::AddInvUnit(AngleUnit::Gradians.into())),
+			]
+			.to_vec(),
+			FunctionMenu::ToAngleUnit => [
+				Some(Function::ConvertToUnit(AngleUnit::Degrees.into())),
+				Some(Function::ConvertToUnit(AngleUnit::Radians.into())),
+				Some(Function::ConvertToUnit(AngleUnit::Gradians.into())),
 			]
 			.to_vec(),
 		}

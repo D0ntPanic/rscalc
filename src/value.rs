@@ -8,7 +8,7 @@ use crate::storage::{
 	DeserializeInput, SerializeOutput, StorageObject, StorageRef, StorageRefSerializer,
 };
 use crate::time::{SimpleDateTimeFormat, SimpleDateTimeToString};
-use crate::unit::{CompositeUnit, TimeUnit, Unit};
+use crate::unit::{AngleUnit, CompositeUnit, TimeUnit, Unit};
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::string::{String, ToString};
@@ -111,28 +111,85 @@ impl Value {
 		Ok(Value::Number(self.number()?.exp()))
 	}
 
-	pub fn sin(&self) -> Result<Value> {
-		Ok(Value::Number(self.number()?.sin()))
+	pub fn sin(&self, angle_mode: AngleUnit) -> Result<Value> {
+		match self {
+			Value::NumberWithUnit(num, unit) => {
+				match unit
+					.clone()
+					.convert_single_unit(num, AngleUnit::Radians.into())
+				{
+					Ok(value) => Ok(Value::Number(value.sin())),
+					_ => Ok(Value::Number(num.angle_to_radians(angle_mode).sin())),
+				}
+			}
+			_ => Ok(Value::Number(
+				self.number()?.angle_to_radians(angle_mode).sin(),
+			)),
+		}
 	}
 
-	pub fn cos(&self) -> Result<Value> {
-		Ok(Value::Number(self.number()?.cos()))
+	pub fn cos(&self, angle_mode: AngleUnit) -> Result<Value> {
+		match self {
+			Value::NumberWithUnit(num, unit) => {
+				match unit
+					.clone()
+					.convert_single_unit(num, AngleUnit::Radians.into())
+				{
+					Ok(value) => Ok(Value::Number(value.cos())),
+					_ => Ok(Value::Number(num.angle_to_radians(angle_mode).cos())),
+				}
+			}
+			_ => Ok(Value::Number(
+				self.number()?.angle_to_radians(angle_mode).cos(),
+			)),
+		}
 	}
 
-	pub fn tan(&self) -> Result<Value> {
-		Ok(Value::Number(self.number()?.tan()))
+	pub fn tan(&self, angle_mode: AngleUnit) -> Result<Value> {
+		match self {
+			Value::NumberWithUnit(num, unit) => {
+				match unit
+					.clone()
+					.convert_single_unit(num, AngleUnit::Radians.into())
+				{
+					Ok(value) => Ok(Value::Number(value.tan())),
+					_ => Ok(Value::Number(num.angle_to_radians(angle_mode).tan())),
+				}
+			}
+			_ => Ok(Value::Number(
+				self.number()?.angle_to_radians(angle_mode).tan(),
+			)),
+		}
 	}
 
-	pub fn asin(&self) -> Result<Value> {
-		Ok(Value::Number(self.number()?.asin()))
+	pub fn asin(&self, angle_mode: AngleUnit) -> Result<Value> {
+		Ok(Value::NumberWithUnit(
+			self.number()?
+				.asin()
+				.angle_from_radians(angle_mode)
+				.into_owned(),
+			CompositeUnit::single_unit(angle_mode.into()),
+		))
 	}
 
-	pub fn acos(&self) -> Result<Value> {
-		Ok(Value::Number(self.number()?.acos()))
+	pub fn acos(&self, angle_mode: AngleUnit) -> Result<Value> {
+		Ok(Value::NumberWithUnit(
+			self.number()?
+				.acos()
+				.angle_from_radians(angle_mode)
+				.into_owned(),
+			CompositeUnit::single_unit(angle_mode.into()),
+		))
 	}
 
-	pub fn atan(&self) -> Result<Value> {
-		Ok(Value::Number(self.number()?.atan()))
+	pub fn atan(&self, angle_mode: AngleUnit) -> Result<Value> {
+		Ok(Value::NumberWithUnit(
+			self.number()?
+				.atan()
+				.angle_from_radians(angle_mode)
+				.into_owned(),
+			CompositeUnit::single_unit(angle_mode.into()),
+		))
 	}
 
 	pub fn add_unit(&self, unit: Unit) -> Result<Value> {
