@@ -3,14 +3,14 @@ use crate::font::{SANS_13, SANS_16, SANS_24};
 use crate::functions::{FunctionKeyState, FunctionMenu};
 use crate::input::{AlphaMode, InputEvent, InputMode};
 use crate::layout::Layout;
-use crate::menu::{settings_menu, setup_menu, Menu};
+use crate::menu::{setup_menu, Menu, MenuItemFunction};
 use crate::number::{IntegerMode, Number, NumberFormat, ToNumber};
 use crate::screen::{Color, Font, Rect, Screen};
 use crate::stack::{Stack, MAX_STACK_INDEX_DIGITS};
 use crate::storage::{available_bytes, store};
 use crate::time::{Now, SimpleDateTimeFormat, SimpleDateTimeToString};
 use crate::undo::{pop_undo_action, UndoAction};
-use crate::unit::AngleUnit;
+use crate::unit::{unit_menu, AngleUnit};
 use crate::value::{Value, ValueRef};
 use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
@@ -230,7 +230,11 @@ impl State {
 		}
 	}
 
-	pub fn handle_input(&mut self, input: InputEvent) -> Result<InputResult> {
+	pub fn handle_input<ScreenT: Screen>(
+		&mut self,
+		input: InputEvent,
+		screen: &ScreenT,
+	) -> Result<InputResult> {
 		if self.error.is_some() {
 			self.error = None;
 			return match input {
@@ -390,14 +394,15 @@ impl State {
 						self.function_keys.show_toplevel_menu(FunctionMenu::Logic);
 					}
 					InputEvent::Convert => {
-						self.function_keys.show_toplevel_menu(FunctionMenu::Units);
+						let menu = unit_menu(self, screen, &self.top());
+						self.show_menu(menu);
 					}
 					InputEvent::Catalog => {
 						self.function_keys.show_toplevel_menu(FunctionMenu::Catalog);
 					}
 					InputEvent::FunctionKey(func, _) => {
 						if let Some(func) = self.function_keys.function(func) {
-							func.execute(self)?;
+							func.execute(self, screen)?;
 							self.input_mode.alpha = AlphaMode::Normal;
 						}
 					}
@@ -472,32 +477,87 @@ impl State {
 				match input {
 					InputEvent::Up => menu.up(),
 					InputEvent::Down => menu.down(),
-					InputEvent::Enter => {
+					InputEvent::Enter | InputEvent::Add | InputEvent::Mul => {
 						let function = menu.selected_function();
 						self.force_refresh = true;
 						self.exit_from_menu = true;
-						function.execute(self)?;
+						match function {
+							MenuItemFunction::Action(action) => action.execute(self, screen)?,
+							MenuItemFunction::ConversionAction(action, _, _) => {
+								action.execute(self, screen)?
+							}
+						}
 						if self.exit_from_menu {
 							self.input_state = InputState::Normal;
 							self.menus.clear();
 						}
 					}
-					InputEvent::Character(ch) => match ch {
-						'1'..='9' => {
-							if let Some(function) =
-								menu.specific_function((ch as u32 - '1' as u32) as usize)
-							{
+					InputEvent::Sub | InputEvent::Div => {
+						let function = menu.selected_function();
+						match function {
+							MenuItemFunction::Action(_) => (),
+							MenuItemFunction::ConversionAction(_, action, _) => {
 								self.force_refresh = true;
 								self.exit_from_menu = true;
-								function.execute(self)?;
+								action.execute(self, screen)?;
 								if self.exit_from_menu {
 									self.input_state = InputState::Normal;
 									self.menus.clear();
 								}
 							}
 						}
+					}
+					InputEvent::Swap => {
+						let function = menu.selected_function();
+						match function {
+							MenuItemFunction::Action(_) => (),
+							MenuItemFunction::ConversionAction(_, _, action) => {
+								self.force_refresh = true;
+								self.exit_from_menu = true;
+								action.execute(self, screen)?;
+								if self.exit_from_menu {
+									self.input_state = InputState::Normal;
+									self.menus.clear();
+								}
+							}
+						}
+					}
+					InputEvent::Character(ch) => match ch {
+						'1'..='9' => {
+							self.direct_select_menu_item(
+								(ch as u32 - '1' as u32) as usize,
+								screen,
+							)?;
+						}
+						'0' => {
+							self.direct_select_menu_item(9, screen)?;
+						}
+						'A'..='L' => {
+							self.direct_select_menu_item(
+								10 + (ch as u32 - 'A' as u32) as usize,
+								screen,
+							)?;
+						}
+						'a'..='l' => {
+							self.direct_select_menu_item(
+								10 + (ch as u32 - 'a' as u32) as usize,
+								screen,
+							)?;
+						}
 						_ => (),
 					},
+					InputEvent::SigmaPlus => self.direct_select_menu_item(10, screen)?,
+					InputEvent::Recip => self.direct_select_menu_item(11, screen)?,
+					InputEvent::Sqrt => self.direct_select_menu_item(12, screen)?,
+					InputEvent::Log => self.direct_select_menu_item(13, screen)?,
+					InputEvent::Ln => self.direct_select_menu_item(14, screen)?,
+					InputEvent::Xeq => self.direct_select_menu_item(15, screen)?,
+					InputEvent::Sto => self.direct_select_menu_item(16, screen)?,
+					InputEvent::Rcl => self.direct_select_menu_item(17, screen)?,
+					InputEvent::RotateDown => self.direct_select_menu_item(18, screen)?,
+					InputEvent::Sin => self.direct_select_menu_item(19, screen)?,
+					InputEvent::Cos => self.direct_select_menu_item(20, screen)?,
+					InputEvent::Tan => self.direct_select_menu_item(21, screen)?,
 					InputEvent::Exit => {
 						self.menus.pop();
 						if let Some(menu) = self.menus.last_mut() {
@@ -969,23 +1029,57 @@ impl State {
 		}
 	}
 
+	fn direct_select_menu_item<ScreenT: Screen>(
+		&mut self,
+		idx: usize,
+		screen: &ScreenT,
+	) -> Result<()> {
+		let menu = self.menus.last_mut().unwrap();
+		if let Some(function) = menu.specific_function(idx) {
+			if let MenuItemFunction::Action(action) = function {
+				self.force_refresh = true;
+				self.exit_from_menu = true;
+				action.execute(self, screen)?;
+				if self.exit_from_menu {
+					self.input_state = InputState::Normal;
+					self.menus.clear();
+				}
+			} else {
+				menu.set_selection(idx);
+			}
+		}
+		Ok(())
+	}
+
 	pub fn prevent_menu_exit(&mut self) {
 		self.exit_from_menu = false;
 	}
 
-	pub fn show_settings_menu(&mut self) {
-		self.menus.push(settings_menu(self));
+	pub fn show_menu(&mut self, menu: Menu) {
+		self.menus.push(menu);
+		self.input_state = InputState::Menu;
 		self.prevent_menu_exit();
 	}
 
-	pub fn replace_with_settings_menu_refresh(&mut self) {
-		let mut new_menu = settings_menu(self);
+	pub fn refresh_menu(&mut self, mut new_menu: Menu) {
 		if let Some(menu) = self.menus.last_mut() {
 			new_menu.set_selection(menu.selection());
 			*menu = new_menu;
 		} else {
 			self.menus.push(new_menu);
+			self.input_state = InputState::Menu;
 		}
+		self.prevent_menu_exit();
+	}
+
+	pub fn refresh_menu_stack(&mut self, mut new_menus: Vec<Menu>) {
+		if self.menus.len() == new_menus.len() {
+			for i in 0..new_menus.len() {
+				new_menus[i].set_selection(self.menus[i].selection());
+			}
+		}
+		self.menus = new_menus;
+		self.input_state = InputState::Menu;
 		self.prevent_menu_exit();
 	}
 

@@ -1,8 +1,15 @@
 use crate::error::{Error, Result};
+use crate::functions::Function;
+use crate::layout::Layout;
+use crate::menu::{Menu, MenuItem, MenuItemFunction};
 use crate::number::{Number, ToNumber};
+use crate::screen::Screen;
+use crate::state::State;
 use crate::storage::{DeserializeInput, SerializeOutput, StorageObject, StorageRefSerializer};
+use crate::value::Value;
 use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 use intel_dfp::Decimal;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
@@ -490,4 +497,133 @@ impl StorageObject for CompositeUnit {
 		}
 		Ok(result)
 	}
+}
+
+fn value_layout<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Value) -> Layout {
+	let value_layout = value.render(&state.format, &None, screen.width());
+	let mut layout_items = Vec::new();
+	layout_items.push(Layout::HorizontalRule);
+	layout_items.push(value_layout);
+	Layout::Vertical(layout_items)
+}
+
+pub fn unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Value) -> Menu {
+	let mut items = Vec::new();
+	items.push(MenuItem {
+		layout: MenuItem::string_layout("Angle".to_string()),
+		function: MenuItemFunction::Action(Function::UnitMenu(UnitType::Angle)),
+	});
+	items.push(MenuItem {
+		layout: MenuItem::string_layout("Distance".to_string()),
+		function: MenuItemFunction::Action(Function::UnitMenu(UnitType::Distance)),
+	});
+	items.push(MenuItem {
+		layout: MenuItem::string_layout("Time".to_string()),
+		function: MenuItemFunction::Action(Function::UnitMenu(UnitType::Time)),
+	});
+
+	Menu::new_with_bottom(
+		"Units".to_string(),
+		items,
+		value_layout(state, screen, value),
+	)
+}
+
+pub fn unit_menu_of_type<ScreenT: Screen>(
+	state: &State,
+	screen: &ScreenT,
+	value: &Value,
+	unit_type: UnitType,
+) -> Menu {
+	match unit_type {
+		UnitType::Angle => angle_unit_menu(state, screen, value),
+		UnitType::Distance => distance_unit_menu(state, screen, value),
+		UnitType::Time => time_unit_menu(state, screen, value),
+	}
+}
+
+fn angle_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Value) -> Menu {
+	let mut items = Vec::new();
+	for unit in &[AngleUnit::Degrees, AngleUnit::Radians, AngleUnit::Gradians] {
+		items.push(MenuItem {
+			layout: MenuItem::string_layout(unit.to_str()),
+			function: MenuItemFunction::ConversionAction(
+				Function::AddUnit(Unit::Angle(*unit)),
+				Function::AddInvUnit(Unit::Angle(*unit)),
+				Function::ConvertToUnit(Unit::Angle(*unit)),
+			),
+		});
+	}
+
+	Menu::new_with_bottom(
+		"Angle (×,÷ Assign; x≷y Convert)".to_string(),
+		items,
+		value_layout(state, screen, value),
+	)
+}
+
+fn distance_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Value) -> Menu {
+	let mut items = Vec::new();
+	for unit in &[
+		DistanceUnit::Meters,
+		DistanceUnit::Nanometers,
+		DistanceUnit::Micrometers,
+		DistanceUnit::Millimeters,
+		DistanceUnit::Centimeters,
+		DistanceUnit::Kilometers,
+		DistanceUnit::Inches,
+		DistanceUnit::Feet,
+		DistanceUnit::Yards,
+		DistanceUnit::Miles,
+		DistanceUnit::NauticalMiles,
+		DistanceUnit::AstronomicalUnits,
+	] {
+		items.push(MenuItem {
+			layout: MenuItem::string_layout(unit.to_str()),
+			function: MenuItemFunction::ConversionAction(
+				Function::AddUnit(Unit::Distance(*unit)),
+				Function::AddInvUnit(Unit::Distance(*unit)),
+				Function::ConvertToUnit(Unit::Distance(*unit)),
+			),
+		});
+	}
+
+	let mut menu = Menu::new_with_bottom(
+		"Distance (×,÷ Assign; x≷y Convert)".to_string(),
+		items,
+		value_layout(state, screen, value),
+	);
+	menu.set_columns(3);
+	menu
+}
+
+fn time_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Value) -> Menu {
+	let mut items = Vec::new();
+	for unit in &[
+		TimeUnit::Seconds,
+		TimeUnit::Nanoseconds,
+		TimeUnit::Microseconds,
+		TimeUnit::Milliseconds,
+		TimeUnit::Minutes,
+		TimeUnit::Hours,
+		TimeUnit::Days,
+		TimeUnit::Years,
+	] {
+		items.push(MenuItem {
+			layout: MenuItem::string_layout(unit.to_str()),
+			function: MenuItemFunction::ConversionAction(
+				Function::AddUnit(Unit::Time(*unit)),
+				Function::AddInvUnit(Unit::Time(*unit)),
+				Function::ConvertToUnit(Unit::Time(*unit)),
+			),
+		});
+	}
+
+	let mut menu = Menu::new_with_bottom(
+		"Time (×,÷ Assign; x≷y Convert)".to_string(),
+		items,
+		value_layout(state, screen, value),
+	);
+	menu.set_columns(2);
+	menu
 }

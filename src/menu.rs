@@ -14,9 +14,15 @@ use crate::dm42::time_24_hour;
 #[cfg(not(feature = "dm42"))]
 use crate::time::time_24_hour;
 
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum MenuItemFunction {
+	Action(Function),
+	ConversionAction(Function, Function, Function),
+}
+
 pub struct MenuItem {
 	pub layout: Layout,
-	pub function: Function,
+	pub function: MenuItemFunction,
 }
 
 impl MenuItem {
@@ -32,6 +38,7 @@ pub struct Menu {
 	selection: usize,
 	initial_render: bool,
 	rendered_selection: Option<usize>,
+	columns: usize,
 }
 
 impl Menu {
@@ -43,6 +50,7 @@ impl Menu {
 			selection: 0,
 			initial_render: true,
 			rendered_selection: None,
+			columns: 1,
 		}
 	}
 
@@ -54,7 +62,12 @@ impl Menu {
 			selection: 0,
 			initial_render: true,
 			rendered_selection: None,
+			columns: 1,
 		}
+	}
+
+	pub fn set_columns(&mut self, cols: usize) {
+		self.columns = cols;
 	}
 
 	pub fn up(&mut self) {
@@ -73,11 +86,11 @@ impl Menu {
 		};
 	}
 
-	pub fn selected_function(&self) -> Function {
+	pub fn selected_function(&self) -> MenuItemFunction {
 		self.items[self.selection].function
 	}
 
-	pub fn specific_function(&mut self, idx: usize) -> Option<Function> {
+	pub fn specific_function(&mut self, idx: usize) -> Option<MenuItemFunction> {
 		if let Some(item) = self.items.get(idx) {
 			self.selection = idx;
 			Some(item.function)
@@ -129,8 +142,14 @@ impl Menu {
 			}
 		}
 
+		let rows = (self.items.len() + self.columns - 1) / self.columns;
+		let col_width = screen.width() / self.columns as i32;
+
 		let mut i = 0;
-		let mut y = SANS_16.height + 3;
+		let mut row = 0;
+		let top = SANS_16.height + 3;
+		let mut x = 0;
+		let mut y = top;
 
 		for item in &self.items {
 			// Get height of item
@@ -142,14 +161,22 @@ impl Menu {
 				|| Some(i) == self.rendered_selection
 			{
 				// Get label for item
-				let label = Number::Integer((i + 1).into()).to_str() + ". ";
+				let label = match i + 1 {
+					1..=9 => Number::Integer((i + 1).into()).to_str(),
+					10 => "0".to_string(),
+					_ => {
+						let mut string = String::new();
+						string.push(char::from_u32('A' as u32 + i as u32 - 10).unwrap());
+						string
+					}
+				} + ". ";
 
 				// Render item background
 				screen.fill(
 					Rect {
-						x: 0,
+						x: x,
 						y,
-						w: screen.width(),
+						w: col_width,
 						h: height,
 					},
 					if i == self.selection {
@@ -163,7 +190,7 @@ impl Menu {
 				let label_width = SANS_16.width(&label);
 				SANS_16.draw(
 					screen,
-					4,
+					x + 4,
 					y + (height / 2) - (SANS_16.height / 2),
 					&label,
 					if i == self.selection {
@@ -175,9 +202,9 @@ impl Menu {
 
 				// Render item contents
 				let rect = Rect {
-					x: label_width,
+					x: x + label_width,
 					y,
-					w: screen.width() - (label_width + 4),
+					w: col_width - (label_width + 4),
 					h: height,
 				};
 				item.layout.render(
@@ -193,7 +220,14 @@ impl Menu {
 			}
 
 			i += 1;
+			row += 1;
 			y += height;
+
+			if row >= rows {
+				x += col_width;
+				row = 0;
+				y = top;
+			}
 		}
 
 		screen.refresh();
@@ -209,13 +243,13 @@ pub fn setup_menu() -> Menu {
 	// Create setup menu items
 	items.push(MenuItem {
 		layout: MenuItem::string_layout("Display Settings >".to_string()),
-		function: Function::SettingsMenu,
+		function: MenuItemFunction::Action(Function::SettingsMenu),
 	});
 
 	#[cfg(feature = "dm42")]
 	items.push(MenuItem {
 		layout: MenuItem::string_layout("System Settings >".to_string()),
-		function: Function::SystemMenu,
+		function: MenuItemFunction::Action(Function::SystemMenu),
 	});
 
 	// Create memory usage indicator on bottom, start with text with bytes available
@@ -283,14 +317,14 @@ pub fn settings_menu(state: &State) -> Menu {
 					StatusBarLeftDisplayType::FreeMemory => "[Free Memory]",
 				},
 		),
-		function: Function::StatusBarLeftDisplayToggle,
+		function: MenuItemFunction::Action(Function::StatusBarLeftDisplayToggle),
 	});
 
 	items.push(MenuItem {
 		layout: MenuItem::string_layout(
 			"24-hour Clock   ".to_string() + if time_24_hour() { "[On]" } else { "[Off]" },
 		),
-		function: Function::Time24HourToggle,
+		function: MenuItemFunction::Action(Function::Time24HourToggle),
 	});
 
 	// Return the menu object

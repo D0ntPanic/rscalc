@@ -1,6 +1,7 @@
 use crate::error::{Error, Result};
 use crate::font::SANS_13;
 use crate::input::InputEvent;
+use crate::menu::settings_menu;
 use crate::number::{
 	IntegerMode, Number, NumberDecimalPointMode, NumberFormat, NumberFormatMode, ToNumber,
 	MAX_INTEGER_BITS,
@@ -8,7 +9,9 @@ use crate::number::{
 use crate::screen::{Color, Rect, Screen};
 use crate::state::{State, StatusBarLeftDisplayType};
 use crate::time::Now;
-use crate::unit::{AngleUnit, CompositeUnit, DistanceUnit, TimeUnit, Unit, UnitType};
+use crate::unit::{
+	unit_menu, unit_menu_of_type, AngleUnit, CompositeUnit, DistanceUnit, TimeUnit, Unit, UnitType,
+};
 use crate::value::Value;
 use alloc::borrow::Cow;
 use alloc::string::{String, ToString};
@@ -71,9 +74,7 @@ pub enum Function {
 	Degrees,
 	Radians,
 	Gradians,
-	AddUnitType(UnitType),
-	AddInvUnitType(UnitType),
-	ConvertToUnitType(UnitType),
+	UnitMenu(UnitType),
 	AddUnit(Unit),
 	AddInvUnit(Unit),
 	ConvertToUnit(Unit),
@@ -305,9 +306,7 @@ impl Function {
 					"Grad".to_string()
 				}
 			}
-			Function::AddUnitType(unit_type) => unit_type.to_str(),
-			Function::AddInvUnitType(unit_type) => "/".to_string() + &unit_type.to_str(),
-			Function::ConvertToUnitType(unit_type) => "▸".to_string() + &unit_type.to_str(),
+			Function::UnitMenu(unit_type) => unit_type.to_str(),
 			Function::AddUnit(unit) => unit.to_str(),
 			Function::AddInvUnit(unit) => "/".to_string() + &unit.to_str(),
 			Function::ConvertToUnit(unit) => "▸".to_string() + &unit.to_str(),
@@ -318,10 +317,10 @@ impl Function {
 		}
 	}
 
-	pub fn execute(&self, state: &mut State) -> Result<()> {
+	pub fn execute<ScreenT: Screen>(&self, state: &mut State, screen: &ScreenT) -> Result<()> {
 		match self {
 			Function::Input(input) => {
-				state.handle_input(*input)?;
+				state.handle_input(*input, screen)?;
 			}
 			Function::NormalFormat => {
 				state.format.mode = NumberFormatMode::Normal;
@@ -593,53 +592,59 @@ impl Function {
 			Function::Gradians => {
 				state.angle_mode = AngleUnit::Gradians;
 			}
-			Function::AddUnitType(unit_type) => match unit_type {
-				UnitType::Time => state.function_keys.show_menu(FunctionMenu::TimeUnit),
-				UnitType::Distance => state.function_keys.show_menu(FunctionMenu::DistanceUnit),
-				UnitType::Angle => state.function_keys.show_menu(FunctionMenu::AngleUnit),
-			},
-			Function::AddInvUnitType(unit_type) => match unit_type {
-				UnitType::Time => state.function_keys.show_menu(FunctionMenu::InverseTimeUnit),
-				UnitType::Distance => state
-					.function_keys
-					.show_menu(FunctionMenu::InverseDistanceUnit),
-				UnitType::Angle => state
-					.function_keys
-					.show_menu(FunctionMenu::InverseAngleUnit),
-			},
-			Function::ConvertToUnitType(unit_type) => match unit_type {
-				UnitType::Time => state.function_keys.show_menu(FunctionMenu::ToTimeUnit),
-				UnitType::Distance => state.function_keys.show_menu(FunctionMenu::ToDistanceUnit),
-				UnitType::Angle => state.function_keys.show_menu(FunctionMenu::ToAngleUnit),
-			},
+			Function::UnitMenu(unit_type) => {
+				let menu = unit_menu_of_type(state, screen, &state.top(), *unit_type);
+				state.show_menu(menu);
+			}
 			Function::AddUnit(unit) => {
 				let value = state.stack.top().add_unit(*unit)?;
 				state.set_top(value)?;
+				let menu = unit_menu_of_type(state, screen, &state.top(), unit.unit_type());
+				let parent = unit_menu(state, screen, &state.top());
+				let mut menus = Vec::new();
+				menus.push(parent);
+				menus.push(menu);
+				state.refresh_menu_stack(menus);
 			}
 			Function::AddInvUnit(unit) => {
 				let value = state.stack.top().add_unit_inv(*unit)?;
 				state.set_top(value)?;
+				let menu = unit_menu_of_type(state, screen, &state.top(), unit.unit_type());
+				let parent = unit_menu(state, screen, &state.top());
+				let mut menus = Vec::new();
+				menus.push(parent);
+				menus.push(menu);
+				state.refresh_menu_stack(menus);
 			}
 			Function::ConvertToUnit(unit) => {
 				let value = state.stack.top().convert_single_unit(*unit)?;
 				state.set_top(value)?;
+				let menu = unit_menu_of_type(state, screen, &state.top(), unit.unit_type());
+				let parent = unit_menu(state, screen, &state.top());
+				let mut menus = Vec::new();
+				menus.push(parent);
+				menus.push(menu);
+				state.refresh_menu_stack(menus);
 			}
 			Function::SettingsMenu => {
-				state.show_settings_menu();
+				let menu = settings_menu(state);
+				state.show_menu(menu);
 			}
 			Function::SystemMenu => {
 				state.show_system_setup_menu();
 			}
 			Function::Time24HourToggle => {
 				set_time_24_hour(!time_24_hour());
-				state.replace_with_settings_menu_refresh();
+				let menu = settings_menu(state);
+				state.refresh_menu(menu);
 			}
 			Function::StatusBarLeftDisplayToggle => {
 				state.status_bar_left_display = match state.status_bar_left_display {
 					StatusBarLeftDisplayType::CurrentTime => StatusBarLeftDisplayType::FreeMemory,
 					StatusBarLeftDisplayType::FreeMemory => StatusBarLeftDisplayType::CurrentTime,
 				};
-				state.replace_with_settings_menu_refresh();
+				let menu = settings_menu(state);
+				state.refresh_menu(menu);
 			}
 		}
 		Ok(())
@@ -657,16 +662,6 @@ pub enum FunctionMenu {
 	Catalog,
 	ConstCatalog,
 	TimeCatalog,
-	Units,
-	TimeUnit,
-	InverseTimeUnit,
-	ToTimeUnit,
-	DistanceUnit,
-	InverseDistanceUnit,
-	ToDistanceUnit,
-	AngleUnit,
-	InverseAngleUnit,
-	ToAngleUnit,
 }
 
 impl FunctionMenu {
@@ -737,128 +732,6 @@ impl FunctionMenu {
 				Some(Function::Now),
 				Some(Function::Date),
 				Some(Function::Time),
-			]
-			.to_vec(),
-			FunctionMenu::Units => [
-				Some(Function::AddUnitType(UnitType::Distance)),
-				Some(Function::AddUnitType(UnitType::Time)),
-				Some(Function::AddUnitType(UnitType::Angle)),
-				None,
-				None,
-				None,
-				Some(Function::ConvertToUnitType(UnitType::Distance)),
-				Some(Function::ConvertToUnitType(UnitType::Time)),
-				Some(Function::ConvertToUnitType(UnitType::Angle)),
-				None,
-				None,
-				None,
-				Some(Function::AddInvUnitType(UnitType::Distance)),
-				Some(Function::AddInvUnitType(UnitType::Time)),
-				Some(Function::AddInvUnitType(UnitType::Angle)),
-				None,
-				None,
-				None,
-			]
-			.to_vec(),
-			FunctionMenu::TimeUnit => [
-				Some(Function::AddUnit(TimeUnit::Seconds.into())),
-				Some(Function::AddUnit(TimeUnit::Minutes.into())),
-				Some(Function::AddUnit(TimeUnit::Hours.into())),
-				Some(Function::AddUnit(TimeUnit::Days.into())),
-				Some(Function::AddUnit(TimeUnit::Years.into())),
-				None,
-				Some(Function::AddUnit(TimeUnit::Milliseconds.into())),
-				Some(Function::AddUnit(TimeUnit::Microseconds.into())),
-				Some(Function::AddUnit(TimeUnit::Nanoseconds.into())),
-			]
-			.to_vec(),
-			FunctionMenu::InverseTimeUnit => [
-				Some(Function::AddInvUnit(TimeUnit::Seconds.into())),
-				Some(Function::AddInvUnit(TimeUnit::Minutes.into())),
-				Some(Function::AddInvUnit(TimeUnit::Hours.into())),
-				Some(Function::AddInvUnit(TimeUnit::Days.into())),
-				Some(Function::AddInvUnit(TimeUnit::Years.into())),
-				None,
-				Some(Function::AddInvUnit(TimeUnit::Milliseconds.into())),
-				Some(Function::AddInvUnit(TimeUnit::Microseconds.into())),
-				Some(Function::AddInvUnit(TimeUnit::Nanoseconds.into())),
-			]
-			.to_vec(),
-			FunctionMenu::ToTimeUnit => [
-				Some(Function::ConvertToUnit(TimeUnit::Seconds.into())),
-				Some(Function::ConvertToUnit(TimeUnit::Minutes.into())),
-				Some(Function::ConvertToUnit(TimeUnit::Hours.into())),
-				Some(Function::ConvertToUnit(TimeUnit::Days.into())),
-				Some(Function::ConvertToUnit(TimeUnit::Years.into())),
-				None,
-				Some(Function::ConvertToUnit(TimeUnit::Milliseconds.into())),
-				Some(Function::ConvertToUnit(TimeUnit::Microseconds.into())),
-				Some(Function::ConvertToUnit(TimeUnit::Nanoseconds.into())),
-			]
-			.to_vec(),
-			FunctionMenu::DistanceUnit => [
-				Some(Function::AddUnit(DistanceUnit::Meters.into())),
-				Some(Function::AddUnit(DistanceUnit::Kilometers.into())),
-				Some(Function::AddUnit(DistanceUnit::Feet.into())),
-				Some(Function::AddUnit(DistanceUnit::Yards.into())),
-				Some(Function::AddUnit(DistanceUnit::Miles.into())),
-				Some(Function::AddUnit(DistanceUnit::NauticalMiles.into())),
-				Some(Function::AddUnit(DistanceUnit::Nanometers.into())),
-				Some(Function::AddUnit(DistanceUnit::Micrometers.into())),
-				Some(Function::AddUnit(DistanceUnit::Millimeters.into())),
-				Some(Function::AddUnit(DistanceUnit::Centimeters.into())),
-				Some(Function::AddUnit(DistanceUnit::Inches.into())),
-				Some(Function::AddUnit(DistanceUnit::AstronomicalUnits.into())),
-			]
-			.to_vec(),
-			FunctionMenu::InverseDistanceUnit => [
-				Some(Function::AddInvUnit(DistanceUnit::Meters.into())),
-				Some(Function::AddInvUnit(DistanceUnit::Kilometers.into())),
-				Some(Function::AddInvUnit(DistanceUnit::Feet.into())),
-				Some(Function::AddInvUnit(DistanceUnit::Yards.into())),
-				Some(Function::AddInvUnit(DistanceUnit::Miles.into())),
-				Some(Function::AddInvUnit(DistanceUnit::NauticalMiles.into())),
-				Some(Function::AddInvUnit(DistanceUnit::Nanometers.into())),
-				Some(Function::AddInvUnit(DistanceUnit::Micrometers.into())),
-				Some(Function::AddInvUnit(DistanceUnit::Millimeters.into())),
-				Some(Function::AddInvUnit(DistanceUnit::Centimeters.into())),
-				Some(Function::AddInvUnit(DistanceUnit::Inches.into())),
-				Some(Function::AddInvUnit(DistanceUnit::AstronomicalUnits.into())),
-			]
-			.to_vec(),
-			FunctionMenu::ToDistanceUnit => [
-				Some(Function::ConvertToUnit(DistanceUnit::Meters.into())),
-				Some(Function::ConvertToUnit(DistanceUnit::Kilometers.into())),
-				Some(Function::ConvertToUnit(DistanceUnit::Feet.into())),
-				Some(Function::ConvertToUnit(DistanceUnit::Yards.into())),
-				Some(Function::ConvertToUnit(DistanceUnit::Miles.into())),
-				Some(Function::ConvertToUnit(DistanceUnit::NauticalMiles.into())),
-				Some(Function::ConvertToUnit(DistanceUnit::Nanometers.into())),
-				Some(Function::ConvertToUnit(DistanceUnit::Micrometers.into())),
-				Some(Function::ConvertToUnit(DistanceUnit::Millimeters.into())),
-				Some(Function::ConvertToUnit(DistanceUnit::Centimeters.into())),
-				Some(Function::ConvertToUnit(DistanceUnit::Inches.into())),
-				Some(Function::ConvertToUnit(
-					DistanceUnit::AstronomicalUnits.into(),
-				)),
-			]
-			.to_vec(),
-			FunctionMenu::AngleUnit => [
-				Some(Function::AddUnit(AngleUnit::Degrees.into())),
-				Some(Function::AddUnit(AngleUnit::Radians.into())),
-				Some(Function::AddUnit(AngleUnit::Gradians.into())),
-			]
-			.to_vec(),
-			FunctionMenu::InverseAngleUnit => [
-				Some(Function::AddInvUnit(AngleUnit::Degrees.into())),
-				Some(Function::AddInvUnit(AngleUnit::Radians.into())),
-				Some(Function::AddInvUnit(AngleUnit::Gradians.into())),
-			]
-			.to_vec(),
-			FunctionMenu::ToAngleUnit => [
-				Some(Function::ConvertToUnit(AngleUnit::Degrees.into())),
-				Some(Function::ConvertToUnit(AngleUnit::Radians.into())),
-				Some(Function::ConvertToUnit(AngleUnit::Gradians.into())),
 			]
 			.to_vec(),
 		}

@@ -55,7 +55,7 @@ pub fn calc_main<ScreenT: Screen, InputT: InputQueue>(mut screen: ScreenT, mut i
 
     loop {
         if let Some(input_event) = input.wait(&mut state.input_mode) {
-            match state.handle_input(input_event) {
+            match state.handle_input(input_event, &screen) {
                 Ok(InputResult::Normal) => (),
                 Ok(InputResult::Suspend) => input.suspend(),
                 Err(error) => {

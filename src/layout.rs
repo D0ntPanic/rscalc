@@ -12,6 +12,7 @@ pub enum Layout {
 	Power(Box<Layout>, Box<Layout>),
 	HorizontalSpace(i32),
 	VerticalSpace(i32),
+	HorizontalRule,
 	LeftAlign(Box<Layout>),
 	UsageGraph(usize, usize, usize),
 	UsageGraphUsedLegend,
@@ -30,7 +31,7 @@ impl Layout {
 
 	pub fn full_width(&self) -> bool {
 		match self {
-			Layout::LeftAlign(_) | Layout::UsageGraph(_, _, _) => true,
+			Layout::LeftAlign(_) | Layout::HorizontalRule | Layout::UsageGraph(_, _, _) => true,
 			Layout::Vertical(items) => {
 				for item in items {
 					if item.full_width() {
@@ -55,6 +56,7 @@ impl Layout {
 			Layout::Power(base, power) => base.width() + power.width(),
 			Layout::HorizontalSpace(width) => *width,
 			Layout::VerticalSpace(_) => 0,
+			Layout::HorizontalRule => 0,
 			Layout::LeftAlign(item) => item.width(),
 			Layout::UsageGraph(_, _, _) => 0,
 			Layout::UsageGraphUsedLegend
@@ -75,6 +77,7 @@ impl Layout {
 			Layout::Power(base, power) => core::cmp::max(base.height(), power.height()),
 			Layout::HorizontalSpace(_) => 0,
 			Layout::VerticalSpace(height) => *height,
+			Layout::HorizontalRule => 1,
 			Layout::LeftAlign(item) => item.height(),
 			Layout::UsageGraph(_, _, _) => 31,
 			Layout::UsageGraphUsedLegend
@@ -189,6 +192,16 @@ impl Layout {
 					rect.y += item_height;
 					rect.h -= item_height;
 				}
+			}
+			Layout::HorizontalRule => {
+				screen.horizontal_pattern(
+					rect.x,
+					rect.w,
+					rect.y,
+					0b100100100100100100100100,
+					24,
+					Color::StackSeparator,
+				);
 			}
 			Layout::Fraction(numer, denom, color) => {
 				// Determine the sizes of the numerator and denominator
