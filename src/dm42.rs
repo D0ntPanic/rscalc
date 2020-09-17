@@ -25,6 +25,7 @@ const STAT_PGM_END: u32 = 1 << 9;
 const STAT_CLK_WKUP_ENABLE: u32 = 1 << 10;
 const STAT_CLK_WKUP_SECONDS: u32 = 1 << 11;
 const STAT_CLK_WKUP_FLAG: u32 = 1 << 12;
+const STAT_CLK24: u32 = 1 << 14;
 const STAT_POWER_CHANGE: u32 = 1 << 15;
 
 extern "C" {
@@ -378,6 +379,18 @@ pub fn show_system_setup_menu() {
 		system_setup_menu();
 		clear_state(STAT_CLK_WKUP_SECONDS);
 		lcd_clear_buf();
+	}
+}
+
+pub fn time_24_hour() -> bool {
+	state(STAT_CLK24)
+}
+
+pub fn set_time_24_hour(value: bool) {
+	if value {
+		set_state(STAT_CLK24);
+	} else {
+		clear_state(STAT_CLK24);
 	}
 }
 

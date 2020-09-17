@@ -3,7 +3,7 @@ use crate::font::{SANS_13, SANS_16, SANS_24};
 use crate::functions::{FunctionKeyState, FunctionMenu};
 use crate::input::{AlphaMode, InputEvent, InputMode};
 use crate::layout::Layout;
-use crate::menu::{setup_menu, Menu};
+use crate::menu::{settings_menu, setup_menu, Menu};
 use crate::number::{IntegerMode, Number, NumberFormat, ToNumber};
 use crate::screen::{Color, Font, Rect, Screen};
 use crate::stack::{Stack, MAX_STACK_INDEX_DIGITS};
@@ -79,6 +79,7 @@ pub struct State {
 	menus: Vec<Menu>,
 	cached_status_bar_state: CachedStatusBarState,
 	force_refresh: bool,
+	exit_from_menu: bool,
 }
 
 pub enum InputResult {
@@ -146,6 +147,7 @@ impl State {
 			menus: Vec::new(),
 			cached_status_bar_state,
 			force_refresh: true,
+			exit_from_menu: false,
 		}
 	}
 
@@ -410,17 +412,6 @@ impl State {
 						self.input_state = InputState::Menu;
 						self.menus.push(setup_menu());
 					}
-					InputEvent::Custom => {
-						// Until there is a menu option, add a temporary toggle for memory usage display
-						self.status_bar_left_display = match self.status_bar_left_display {
-							StatusBarLeftDisplayType::CurrentTime => {
-								StatusBarLeftDisplayType::FreeMemory
-							}
-							StatusBarLeftDisplayType::FreeMemory => {
-								StatusBarLeftDisplayType::CurrentTime
-							}
-						};
-					}
 					InputEvent::Undo => {
 						self.undo()?;
 					}
@@ -483,20 +474,26 @@ impl State {
 					InputEvent::Down => menu.down(),
 					InputEvent::Enter => {
 						let function = menu.selected_function();
-						self.input_state = InputState::Normal;
 						self.force_refresh = true;
-						self.menus.clear();
+						self.exit_from_menu = true;
 						function.execute(self)?;
+						if self.exit_from_menu {
+							self.input_state = InputState::Normal;
+							self.menus.clear();
+						}
 					}
 					InputEvent::Character(ch) => match ch {
 						'1'..='9' => {
 							if let Some(function) =
 								menu.specific_function((ch as u32 - '1' as u32) as usize)
 							{
-								self.input_state = InputState::Normal;
 								self.force_refresh = true;
-								self.menus.clear();
+								self.exit_from_menu = true;
 								function.execute(self)?;
+								if self.exit_from_menu {
+									self.input_state = InputState::Normal;
+									self.menus.clear();
+								}
 							}
 						}
 						_ => (),
@@ -507,6 +504,7 @@ impl State {
 							menu.force_refresh();
 						} else {
 							self.input_state = InputState::Normal;
+							self.cached_status_bar_state.left_string = String::new();
 							self.force_refresh = true;
 						}
 					}
@@ -655,7 +653,9 @@ impl State {
 		match self.status_bar_left_display {
 			StatusBarLeftDisplayType::CurrentTime => {
 				// Check for time updates
-				if NaiveDateTime::clock_minute_updated() {
+				if NaiveDateTime::clock_minute_updated()
+					|| self.cached_status_bar_state.left_string.len() == 0
+				{
 					let time_string = State::time_string();
 					self.cached_status_bar_state.left_string = time_string;
 					changed = true;
@@ -967,6 +967,26 @@ impl State {
 			self.draw_status_bar(screen);
 			screen.refresh();
 		}
+	}
+
+	pub fn prevent_menu_exit(&mut self) {
+		self.exit_from_menu = false;
+	}
+
+	pub fn show_settings_menu(&mut self) {
+		self.menus.push(settings_menu(self));
+		self.prevent_menu_exit();
+	}
+
+	pub fn replace_with_settings_menu_refresh(&mut self) {
+		let mut new_menu = settings_menu(self);
+		if let Some(menu) = self.menus.last_mut() {
+			new_menu.set_selection(menu.selection());
+			*menu = new_menu;
+		} else {
+			self.menus.push(new_menu);
+		}
+		self.prevent_menu_exit();
 	}
 
 	pub fn show_system_setup_menu(&mut self) {

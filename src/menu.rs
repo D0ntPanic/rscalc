@@ -3,10 +3,16 @@ use crate::functions::Function;
 use crate::layout::Layout;
 use crate::number::Number;
 use crate::screen::{Color, Rect, Screen};
+use crate::state::{State, StatusBarLeftDisplayType};
 use crate::storage::{available_bytes, free_bytes, reclaimable_bytes, used_bytes};
 use alloc::boxed::Box;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+
+#[cfg(feature = "dm42")]
+use crate::dm42::time_24_hour;
+#[cfg(not(feature = "dm42"))]
+use crate::time::time_24_hour;
 
 pub struct MenuItem {
 	pub layout: Layout,
@@ -77,6 +83,16 @@ impl Menu {
 			Some(item.function)
 		} else {
 			None
+		}
+	}
+
+	pub fn selection(&self) -> usize {
+		self.selection
+	}
+
+	pub fn set_selection(&mut self, idx: usize) {
+		if idx < self.items.len() {
+			self.selection = idx;
 		}
 	}
 
@@ -192,6 +208,12 @@ pub fn setup_menu() -> Menu {
 
 	// Create setup menu items
 	items.push(MenuItem {
+		layout: MenuItem::string_layout("Display Settings >".to_string()),
+		function: Function::SettingsMenu,
+	});
+
+	#[cfg(feature = "dm42")]
+	items.push(MenuItem {
 		layout: MenuItem::string_layout("System Settings >".to_string()),
 		function: Function::SystemMenu,
 	});
@@ -247,4 +269,30 @@ pub fn setup_menu() -> Menu {
 
 	// Return the menu object
 	Menu::new_with_bottom("Setup".to_string(), items, Layout::Vertical(bottom_items))
+}
+
+pub fn settings_menu(state: &State) -> Menu {
+	let mut items = Vec::new();
+
+	// Create settings menu items
+	items.push(MenuItem {
+		layout: MenuItem::string_layout(
+			"Status Bar Text   ".to_string()
+				+ match state.status_bar_left_display {
+					StatusBarLeftDisplayType::CurrentTime => "[Current Time]",
+					StatusBarLeftDisplayType::FreeMemory => "[Free Memory]",
+				},
+		),
+		function: Function::StatusBarLeftDisplayToggle,
+	});
+
+	items.push(MenuItem {
+		layout: MenuItem::string_layout(
+			"24-hour Clock   ".to_string() + if time_24_hour() { "[On]" } else { "[Off]" },
+		),
+		function: Function::Time24HourToggle,
+	});
+
+	// Return the menu object
+	Menu::new("Settings".to_string(), items)
 }

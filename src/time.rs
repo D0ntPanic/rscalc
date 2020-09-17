@@ -1,7 +1,9 @@
 #[cfg(feature = "dm42")]
-use crate::dm42::{rtc_read, rtc_updated};
+use crate::dm42::{rtc_read, rtc_updated, time_24_hour};
 #[cfg(not(feature = "dm42"))]
 use chrono::{DateTime, Local};
+#[cfg(not(feature = "dm42"))]
+use spin::Mutex;
 
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -183,6 +185,21 @@ impl SimpleDateTimeToString for NaiveDateTime {
 	}
 }
 
+#[cfg(not(feature = "dm42"))]
+lazy_static! {
+	static ref TIME_24_HOUR: Mutex<bool> = Mutex::new(false);
+}
+
+#[cfg(not(feature = "dm42"))]
+pub fn time_24_hour() -> bool {
+	*TIME_24_HOUR.lock()
+}
+
+#[cfg(not(feature = "dm42"))]
+pub fn set_time_24_hour(value: bool) {
+	*TIME_24_HOUR.lock() = value;
+}
+
 impl SimpleDateTimeFormat {
 	pub fn full() -> Self {
 		SimpleDateTimeFormat {
@@ -191,7 +208,7 @@ impl SimpleDateTimeFormat {
 			time: true,
 			seconds: true,
 			centiseconds: true,
-			am_pm: true,
+			am_pm: !time_24_hour(),
 		}
 	}
 
@@ -202,7 +219,7 @@ impl SimpleDateTimeFormat {
 			time: false,
 			seconds: false,
 			centiseconds: false,
-			am_pm: true,
+			am_pm: !time_24_hour(),
 		}
 	}
 
@@ -213,7 +230,7 @@ impl SimpleDateTimeFormat {
 			time: true,
 			seconds: true,
 			centiseconds: true,
-			am_pm: true,
+			am_pm: !time_24_hour(),
 		}
 	}
 
@@ -224,7 +241,7 @@ impl SimpleDateTimeFormat {
 			time: true,
 			seconds: false,
 			centiseconds: false,
-			am_pm: true,
+			am_pm: !time_24_hour(),
 		}
 	}
 }

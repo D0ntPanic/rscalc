@@ -6,7 +6,7 @@ use crate::number::{
 	MAX_INTEGER_BITS,
 };
 use crate::screen::{Color, Rect, Screen};
-use crate::state::State;
+use crate::state::{State, StatusBarLeftDisplayType};
 use crate::time::Now;
 use crate::unit::{AngleUnit, CompositeUnit, DistanceUnit, TimeUnit, Unit, UnitType};
 use crate::value::Value;
@@ -18,7 +18,13 @@ use core::cell::RefCell;
 use core::convert::TryFrom;
 use num_bigint::ToBigInt;
 
+#[cfg(feature = "dm42")]
+use crate::dm42::{set_time_24_hour, time_24_hour};
+#[cfg(not(feature = "dm42"))]
+use crate::time::{set_time_24_hour, time_24_hour};
+
 #[derive(PartialEq, Eq, Clone, Copy)]
+#[allow(dead_code)]
 pub enum Function {
 	Input(InputEvent),
 	NormalFormat,
@@ -71,7 +77,10 @@ pub enum Function {
 	AddUnit(Unit),
 	AddInvUnit(Unit),
 	ConvertToUnit(Unit),
+	SettingsMenu,
 	SystemMenu,
+	Time24HourToggle,
+	StatusBarLeftDisplayToggle,
 }
 
 impl Function {
@@ -302,7 +311,10 @@ impl Function {
 			Function::AddUnit(unit) => unit.to_str(),
 			Function::AddInvUnit(unit) => "/".to_string() + &unit.to_str(),
 			Function::ConvertToUnit(unit) => "▸".to_string() + &unit.to_str(),
+			Function::SettingsMenu => "Settings".to_string(),
 			Function::SystemMenu => "Sys".to_string(),
+			Function::Time24HourToggle => "24Hr".to_string(),
+			Function::StatusBarLeftDisplayToggle => "StatusBar".to_string(),
 		}
 	}
 
@@ -612,8 +624,22 @@ impl Function {
 				let value = state.stack.top().convert_single_unit(*unit)?;
 				state.set_top(value)?;
 			}
+			Function::SettingsMenu => {
+				state.show_settings_menu();
+			}
 			Function::SystemMenu => {
 				state.show_system_setup_menu();
+			}
+			Function::Time24HourToggle => {
+				set_time_24_hour(!time_24_hour());
+				state.replace_with_settings_menu_refresh();
+			}
+			Function::StatusBarLeftDisplayToggle => {
+				state.status_bar_left_display = match state.status_bar_left_display {
+					StatusBarLeftDisplayType::CurrentTime => StatusBarLeftDisplayType::FreeMemory,
+					StatusBarLeftDisplayType::FreeMemory => StatusBarLeftDisplayType::CurrentTime,
+				};
+				state.replace_with_settings_menu_refresh();
 			}
 		}
 		Ok(())
