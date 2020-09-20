@@ -396,7 +396,7 @@ impl Stack {
 				0 => "x".to_string(),
 				1 => "y".to_string(),
 				2 => "z".to_string(),
-				_ => Number::Integer(idx.into()).to_str(),
+				_ => Number::Integer(idx.into()).to_string(),
 			};
 			let label = label + ": ";
 			let label_width = 4 + SANS_16.width(&label);

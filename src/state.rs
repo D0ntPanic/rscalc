@@ -44,7 +44,7 @@ pub enum Location {
 
 #[derive(Clone)]
 struct LocationEntryState {
-	name: String,
+	name: &'static str,
 	stack: bool,
 	value: Vec<u8>,
 }
@@ -95,7 +95,7 @@ pub enum LocationInputResult {
 }
 
 impl LocationEntryState {
-	fn new(name: String) -> Self {
+	fn new(name: &'static str) -> Self {
 		LocationEntryState {
 			name,
 			stack: false,
@@ -142,7 +142,7 @@ impl State {
 			status_bar_left_display: StatusBarLeftDisplayType::CurrentTime,
 			memory: BTreeMap::new(),
 			input_state: InputState::Normal,
-			location_entry: LocationEntryState::new("".to_string()),
+			location_entry: LocationEntryState::new(""),
 			error: None,
 			menus: Vec::new(),
 			cached_status_bar_state,
@@ -163,7 +163,7 @@ impl State {
 	}
 
 	fn time_string() -> String {
-		NaiveDateTime::now().to_str(&SimpleDateTimeFormat::status_bar())
+		NaiveDateTime::now().simple_format(&SimpleDateTimeFormat::status_bar())
 	}
 
 	pub fn top<'a>(&'a self) -> Value {
@@ -369,12 +369,12 @@ impl State {
 					}
 					InputEvent::Rcl => {
 						self.input_state = InputState::Recall;
-						self.location_entry = LocationEntryState::new("Rcl".to_string());
+						self.location_entry = LocationEntryState::new("Rcl");
 						self.stack.end_edit();
 					}
 					InputEvent::Sto => {
 						self.input_state = InputState::Store;
-						self.location_entry = LocationEntryState::new("Sto".to_string());
+						self.location_entry = LocationEntryState::new("Sto");
 						self.stack.end_edit();
 					}
 					InputEvent::Clear => {
@@ -722,7 +722,7 @@ impl State {
 				}
 			}
 			StatusBarLeftDisplayType::FreeMemory => {
-				let free_memory = available_bytes().to_number().to_str() + " bytes free";
+				let free_memory = available_bytes().to_number().to_string() + " bytes free";
 				if free_memory != self.cached_status_bar_state.left_string {
 					self.cached_status_bar_state.left_string = free_memory;
 					changed = true;
@@ -926,8 +926,8 @@ impl State {
 		// If there is an error, display the message
 		if let Some(error) = self.error {
 			let mut items = Vec::new();
-			items.push(Layout::Text(
-				error.to_str().to_string(),
+			items.push(Layout::StaticText(
+				error.to_str(),
 				&SANS_24,
 				Color::ContentText,
 			));
@@ -963,18 +963,14 @@ impl State {
 			let mut items = Vec::new();
 			// Show use of location
 			items.push(Layout::Text(
-				self.location_entry.name.clone() + " ",
+				self.location_entry.name.to_string() + " ",
 				&SANS_24,
 				Color::ContentText,
 			));
 
 			// If this is a stack access, display "Stack"
 			if self.location_entry.stack {
-				items.push(Layout::Text(
-					"Stack ".to_string(),
-					&SANS_24,
-					Color::ContentText,
-				));
+				items.push(Layout::StaticText("Stack ", &SANS_24, Color::ContentText));
 			}
 
 			// Show currently edited number

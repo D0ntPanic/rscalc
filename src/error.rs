@@ -23,7 +23,7 @@ pub enum Error {
 }
 
 impl Error {
-	pub fn to_str(&self) -> &str {
+	pub fn to_str(&self) -> &'static str {
 		match self {
 			Error::OutOfMemory => "Out of memory",
 			Error::NotEnoughValues => "Not enough values",

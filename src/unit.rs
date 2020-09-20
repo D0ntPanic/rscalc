@@ -9,7 +9,7 @@ use crate::storage::{DeserializeInput, SerializeOutput, StorageObject, StorageRe
 use crate::value::Value;
 use alloc::borrow::Cow;
 use alloc::collections::BTreeMap;
-use alloc::string::{String, ToString};
+use alloc::string::ToString;
 use alloc::vec::Vec;
 use intel_dfp::Decimal;
 
@@ -165,20 +165,20 @@ pub enum Unit {
 }
 
 impl AngleUnit {
-	pub fn to_str(&self) -> String {
+	pub fn to_str(&self) -> &'static str {
 		match self {
-			AngleUnit::Degrees => "°".to_string(),
-			AngleUnit::Radians => "rad".to_string(),
-			AngleUnit::Gradians => "grad".to_string(),
+			AngleUnit::Degrees => "°",
+			AngleUnit::Radians => "rad",
+			AngleUnit::Gradians => "grad",
 		}
 	}
 }
 
 impl AreaUnit {
-	pub fn to_str(&self) -> String {
+	pub fn to_str(&self) -> &'static str {
 		match self {
-			AreaUnit::Hectares => "ha".to_string(),
-			AreaUnit::Acres => "acre".to_string(),
+			AreaUnit::Hectares => "ha",
+			AreaUnit::Acres => "acre",
 		}
 	}
 
@@ -228,114 +228,114 @@ impl AreaUnit {
 }
 
 impl DistanceUnit {
-	pub fn to_str(&self) -> String {
+	pub fn to_str(&self) -> &'static str {
 		match self {
-			DistanceUnit::Nanometers => "nm".to_string(),
-			DistanceUnit::Micrometers => "μm".to_string(),
-			DistanceUnit::Millimeters => "mm".to_string(),
-			DistanceUnit::Centimeters => "cm".to_string(),
-			DistanceUnit::Meters => "m".to_string(),
-			DistanceUnit::Kilometers => "km".to_string(),
-			DistanceUnit::Inches => "in".to_string(),
-			DistanceUnit::Feet => "ft".to_string(),
-			DistanceUnit::Yards => "yd".to_string(),
-			DistanceUnit::Miles => "mi".to_string(),
-			DistanceUnit::NauticalMiles => "nmi".to_string(),
-			DistanceUnit::AstronomicalUnits => "au".to_string(),
+			DistanceUnit::Nanometers => "nm",
+			DistanceUnit::Micrometers => "μm",
+			DistanceUnit::Millimeters => "mm",
+			DistanceUnit::Centimeters => "cm",
+			DistanceUnit::Meters => "m",
+			DistanceUnit::Kilometers => "km",
+			DistanceUnit::Inches => "in",
+			DistanceUnit::Feet => "ft",
+			DistanceUnit::Yards => "yd",
+			DistanceUnit::Miles => "mi",
+			DistanceUnit::NauticalMiles => "nmi",
+			DistanceUnit::AstronomicalUnits => "au",
 		}
 	}
 }
 
 impl EnergyUnit {
-	pub fn to_str(&self) -> String {
+	pub fn to_str(&self) -> &'static str {
 		match self {
-			EnergyUnit::Joules => "J".to_string(),
-			EnergyUnit::Millijoules => "mJ".to_string(),
-			EnergyUnit::Kilojoules => "kJ".to_string(),
-			EnergyUnit::Megajoules => "MJ".to_string(),
-			EnergyUnit::Calories => "cal".to_string(),
-			EnergyUnit::Kilocalories => "kcal".to_string(),
-			EnergyUnit::BTU => "BTU".to_string(),
-			EnergyUnit::FootPounds => "ftlbf".to_string(),
-			EnergyUnit::FootPoundals => "ftpdl".to_string(),
-			EnergyUnit::WattHours => "Wh".to_string(),
-			EnergyUnit::KilowattHours => "kWh".to_string(),
-			EnergyUnit::Erg => "erg".to_string(),
+			EnergyUnit::Joules => "J",
+			EnergyUnit::Millijoules => "mJ",
+			EnergyUnit::Kilojoules => "kJ",
+			EnergyUnit::Megajoules => "MJ",
+			EnergyUnit::Calories => "cal",
+			EnergyUnit::Kilocalories => "kcal",
+			EnergyUnit::BTU => "BTU",
+			EnergyUnit::FootPounds => "ftlbf",
+			EnergyUnit::FootPoundals => "ftpdl",
+			EnergyUnit::WattHours => "Wh",
+			EnergyUnit::KilowattHours => "kWh",
+			EnergyUnit::Erg => "erg",
 		}
 	}
 }
 
 impl ForceUnit {
-	pub fn to_str(&self) -> String {
+	pub fn to_str(&self) -> &'static str {
 		match self {
-			ForceUnit::Newton => "N".to_string(),
-			ForceUnit::Kilonewton => "kN".to_string(),
-			ForceUnit::Dyne => "dyn".to_string(),
-			ForceUnit::KilogramForce => "kgf".to_string(),
-			ForceUnit::PoundForce => "lbf".to_string(),
-			ForceUnit::Poundal => "pdl".to_string(),
-			ForceUnit::Kip => "kip".to_string(),
+			ForceUnit::Newton => "N",
+			ForceUnit::Kilonewton => "kN",
+			ForceUnit::Dyne => "dyn",
+			ForceUnit::KilogramForce => "kgf",
+			ForceUnit::PoundForce => "lbf",
+			ForceUnit::Poundal => "pdl",
+			ForceUnit::Kip => "kip",
 		}
 	}
 }
 
 impl MassUnit {
-	pub fn to_str(&self) -> String {
+	pub fn to_str(&self) -> &'static str {
 		match self {
-			MassUnit::Grams => "g".to_string(),
-			MassUnit::Milligrams => "mg".to_string(),
-			MassUnit::Kilograms => "kg".to_string(),
-			MassUnit::MetricTons => "t".to_string(),
-			MassUnit::Pounds => "lb".to_string(),
-			MassUnit::Ounces => "oz".to_string(),
-			MassUnit::Stones => "st".to_string(),
-			MassUnit::Tons => "ton".to_string(),
-			MassUnit::UKTons => "UK ton".to_string(),
+			MassUnit::Grams => "g",
+			MassUnit::Milligrams => "mg",
+			MassUnit::Kilograms => "kg",
+			MassUnit::MetricTons => "t",
+			MassUnit::Pounds => "lb",
+			MassUnit::Ounces => "oz",
+			MassUnit::Stones => "st",
+			MassUnit::Tons => "ton",
+			MassUnit::UKTons => "UK ton",
 		}
 	}
 }
 
 impl PowerUnit {
-	pub fn to_str(&self) -> String {
+	pub fn to_str(&self) -> &'static str {
 		match self {
-			PowerUnit::Watts => "W".to_string(),
-			PowerUnit::Milliwatts => "mW".to_string(),
-			PowerUnit::Kilowatts => "kW".to_string(),
-			PowerUnit::Megawatts => "MW".to_string(),
-			PowerUnit::Gigawatts => "GW".to_string(),
-			PowerUnit::MechanicalHorsepower => "hp".to_string(),
-			PowerUnit::MetricHorsepower => "hpM".to_string(),
-			PowerUnit::ElectricalHorsepower => "hpE".to_string(),
-			PowerUnit::TonsOfRefrigeration => "RT".to_string(),
+			PowerUnit::Watts => "W",
+			PowerUnit::Milliwatts => "mW",
+			PowerUnit::Kilowatts => "kW",
+			PowerUnit::Megawatts => "MW",
+			PowerUnit::Gigawatts => "GW",
+			PowerUnit::MechanicalHorsepower => "hp",
+			PowerUnit::MetricHorsepower => "hpM",
+			PowerUnit::ElectricalHorsepower => "hpE",
+			PowerUnit::TonsOfRefrigeration => "RT",
 		}
 	}
 }
 
 impl PressureUnit {
-	pub fn to_str(&self) -> String {
+	pub fn to_str(&self) -> &'static str {
 		match self {
-			PressureUnit::Pascals => "Pa".to_string(),
-			PressureUnit::Kilopascals => "kPa".to_string(),
-			PressureUnit::Bars => "bar".to_string(),
-			PressureUnit::Millibars => "mbar".to_string(),
-			PressureUnit::Atmospheres => "atm".to_string(),
-			PressureUnit::InchesOfMercury => "inHg".to_string(),
-			PressureUnit::MillimetersOfMercury => "mmHg".to_string(),
-			PressureUnit::InchesOfWater => "inH₂O".to_string(),
-			PressureUnit::MillimetersOfWater => "mmH₂O".to_string(),
-			PressureUnit::PoundsPerSquareInch => "psi".to_string(),
-			PressureUnit::Torr => "Torr".to_string(),
+			PressureUnit::Pascals => "Pa",
+			PressureUnit::Kilopascals => "kPa",
+			PressureUnit::Bars => "bar",
+			PressureUnit::Millibars => "mbar",
+			PressureUnit::Atmospheres => "atm",
+			PressureUnit::InchesOfMercury => "inHg",
+			PressureUnit::MillimetersOfMercury => "mmHg",
+			PressureUnit::InchesOfWater => "inH₂O",
+			PressureUnit::MillimetersOfWater => "mmH₂O",
+			PressureUnit::PoundsPerSquareInch => "psi",
+			PressureUnit::Torr => "Torr",
 		}
 	}
 }
 
 impl TemperatureUnit {
-	pub fn to_str(&self) -> String {
+	pub fn to_str(&self) -> &'static str {
 		match self {
-			TemperatureUnit::Celsius => "°C".to_string(),
-			TemperatureUnit::Fahrenheit => "°F".to_string(),
-			TemperatureUnit::Kelvin => "K".to_string(),
-			TemperatureUnit::Rankine => "°R".to_string(),
+			TemperatureUnit::Celsius => "°C",
+			TemperatureUnit::Fahrenheit => "°F",
+			TemperatureUnit::Kelvin => "K",
+			TemperatureUnit::Rankine => "°R",
 		}
 	}
 
@@ -367,38 +367,38 @@ impl TemperatureUnit {
 }
 
 impl TimeUnit {
-	pub fn to_str(&self) -> String {
+	pub fn to_str(&self) -> &'static str {
 		match self {
-			TimeUnit::Nanoseconds => "ns".to_string(),
-			TimeUnit::Microseconds => "μs".to_string(),
-			TimeUnit::Milliseconds => "ms".to_string(),
-			TimeUnit::Seconds => "sec".to_string(),
-			TimeUnit::Minutes => "min".to_string(),
-			TimeUnit::Hours => "hr".to_string(),
-			TimeUnit::Days => "day".to_string(),
-			TimeUnit::Years => "yr".to_string(),
+			TimeUnit::Nanoseconds => "ns",
+			TimeUnit::Microseconds => "μs",
+			TimeUnit::Milliseconds => "ms",
+			TimeUnit::Seconds => "sec",
+			TimeUnit::Minutes => "min",
+			TimeUnit::Hours => "hr",
+			TimeUnit::Days => "day",
+			TimeUnit::Years => "yr",
 		}
 	}
 }
 
 impl VolumeUnit {
-	pub fn to_str(&self) -> String {
+	pub fn to_str(&self) -> &'static str {
 		match self {
-			VolumeUnit::Litre => "L".to_string(),
-			VolumeUnit::Millilitre => "mL".to_string(),
-			VolumeUnit::Gallons => "gal".to_string(),
-			VolumeUnit::Quarts => "qt".to_string(),
-			VolumeUnit::Pints => "pt".to_string(),
-			VolumeUnit::Cups => "cup".to_string(),
-			VolumeUnit::FluidOunces => "fl oz".to_string(),
-			VolumeUnit::ImperialGallons => "UK gal".to_string(),
-			VolumeUnit::ImperialQuarts => "UK qt".to_string(),
-			VolumeUnit::ImperialPints => "UK pt".to_string(),
-			VolumeUnit::ImperialOunces => "UK oz".to_string(),
-			VolumeUnit::Tablespoons => "tbsp".to_string(),
-			VolumeUnit::Teaspoons => "tsp".to_string(),
-			VolumeUnit::UKTablespoons => "UK tbsp".to_string(),
-			VolumeUnit::UKTeaspoons => "UK tsp".to_string(),
+			VolumeUnit::Litre => "L",
+			VolumeUnit::Millilitre => "mL",
+			VolumeUnit::Gallons => "gal",
+			VolumeUnit::Quarts => "qt",
+			VolumeUnit::Pints => "pt",
+			VolumeUnit::Cups => "cup",
+			VolumeUnit::FluidOunces => "fl oz",
+			VolumeUnit::ImperialGallons => "UK gal",
+			VolumeUnit::ImperialQuarts => "UK qt",
+			VolumeUnit::ImperialPints => "UK pt",
+			VolumeUnit::ImperialOunces => "UK oz",
+			VolumeUnit::Tablespoons => "tbsp",
+			VolumeUnit::Teaspoons => "tsp",
+			VolumeUnit::UKTablespoons => "UK tbsp",
+			VolumeUnit::UKTeaspoons => "UK tsp",
 		}
 	}
 
@@ -448,7 +448,7 @@ impl VolumeUnit {
 }
 
 impl Unit {
-	pub fn to_str(&self) -> String {
+	pub fn to_str(&self) -> &'static str {
 		match self {
 			Unit::Angle(unit) => unit.to_str(),
 			Unit::Area(unit) => unit.to_str(),
@@ -726,19 +726,19 @@ pub enum UnitType {
 }
 
 impl UnitType {
-	pub fn to_str(&self) -> String {
+	pub fn to_str(&self) -> &str {
 		match self {
-			UnitType::Angle => "Angle".to_string(),
-			UnitType::Area => "Area".to_string(),
-			UnitType::Distance => "Dist".to_string(),
-			UnitType::Energy => "Energy".to_string(),
-			UnitType::Force => "Force".to_string(),
-			UnitType::Mass => "Mass".to_string(),
-			UnitType::Power => "Power".to_string(),
-			UnitType::Pressure => "Pressure".to_string(),
-			UnitType::Temperature => "Temp".to_string(),
-			UnitType::Time => "Time".to_string(),
-			UnitType::Volume => "Volume".to_string(),
+			UnitType::Angle => "Angle",
+			UnitType::Area => "Area",
+			UnitType::Distance => "Dist",
+			UnitType::Energy => "Energy",
+			UnitType::Force => "Force",
+			UnitType::Mass => "Mass",
+			UnitType::Power => "Power",
+			UnitType::Pressure => "Pressure",
+			UnitType::Temperature => "Temp",
+			UnitType::Time => "Time",
+			UnitType::Volume => "Volume",
 		}
 	}
 }
@@ -1453,55 +1453,51 @@ fn value_layout<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Value)
 pub fn unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Value) -> Menu {
 	let mut items = Vec::new();
 	items.push(MenuItem {
-		layout: MenuItem::string_layout("Angle".to_string()),
+		layout: MenuItem::static_string_layout("Angle"),
 		function: MenuItemFunction::Action(Function::UnitMenu(UnitType::Angle)),
 	});
 	items.push(MenuItem {
-		layout: MenuItem::string_layout("Area".to_string()),
+		layout: MenuItem::static_string_layout("Area"),
 		function: MenuItemFunction::Action(Function::UnitMenu(UnitType::Area)),
 	});
 	items.push(MenuItem {
-		layout: MenuItem::string_layout("Distance".to_string()),
+		layout: MenuItem::static_string_layout("Distance"),
 		function: MenuItemFunction::Action(Function::UnitMenu(UnitType::Distance)),
 	});
 	items.push(MenuItem {
-		layout: MenuItem::string_layout("Energy".to_string()),
+		layout: MenuItem::static_string_layout("Energy"),
 		function: MenuItemFunction::Action(Function::UnitMenu(UnitType::Energy)),
 	});
 	items.push(MenuItem {
-		layout: MenuItem::string_layout("Force".to_string()),
+		layout: MenuItem::static_string_layout("Force"),
 		function: MenuItemFunction::Action(Function::UnitMenu(UnitType::Force)),
 	});
 	items.push(MenuItem {
-		layout: MenuItem::string_layout("Mass".to_string()),
+		layout: MenuItem::static_string_layout("Mass"),
 		function: MenuItemFunction::Action(Function::UnitMenu(UnitType::Mass)),
 	});
 	items.push(MenuItem {
-		layout: MenuItem::string_layout("Power".to_string()),
+		layout: MenuItem::static_string_layout("Power"),
 		function: MenuItemFunction::Action(Function::UnitMenu(UnitType::Power)),
 	});
 	items.push(MenuItem {
-		layout: MenuItem::string_layout("Pressure".to_string()),
+		layout: MenuItem::static_string_layout("Pressure"),
 		function: MenuItemFunction::Action(Function::UnitMenu(UnitType::Pressure)),
 	});
 	items.push(MenuItem {
-		layout: MenuItem::string_layout("Temp".to_string()),
+		layout: MenuItem::static_string_layout("Temp"),
 		function: MenuItemFunction::Action(Function::UnitMenu(UnitType::Temperature)),
 	});
 	items.push(MenuItem {
-		layout: MenuItem::string_layout("Time".to_string()),
+		layout: MenuItem::static_string_layout("Time"),
 		function: MenuItemFunction::Action(Function::UnitMenu(UnitType::Time)),
 	});
 	items.push(MenuItem {
-		layout: MenuItem::string_layout("Volume".to_string()),
+		layout: MenuItem::static_string_layout("Volume"),
 		function: MenuItemFunction::Action(Function::UnitMenu(UnitType::Volume)),
 	});
 
-	let mut menu = Menu::new_with_bottom(
-		"Units".to_string(),
-		items,
-		value_layout(state, screen, value),
-	);
+	let mut menu = Menu::new_with_bottom("Units", items, value_layout(state, screen, value));
 	menu.set_columns(3);
 	menu
 }
@@ -1531,7 +1527,7 @@ fn angle_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Val
 	let mut items = Vec::new();
 	for unit in &[AngleUnit::Degrees, AngleUnit::Radians, AngleUnit::Gradians] {
 		items.push(MenuItem {
-			layout: MenuItem::string_layout(unit.to_str()),
+			layout: MenuItem::static_string_layout(unit.to_str()),
 			function: MenuItemFunction::ConversionAction(
 				Function::AddUnit(Unit::Angle(*unit), UnitType::Angle),
 				Function::AddInvUnit(Unit::Angle(*unit), UnitType::Angle),
@@ -1541,7 +1537,7 @@ fn angle_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Val
 	}
 
 	Menu::new_with_bottom(
-		"Angle (×,÷ Assign; x≷y Convert)".to_string(),
+		"Angle (×,÷ Assign; x≷y Convert)",
 		items,
 		value_layout(state, screen, value),
 	)
@@ -1551,7 +1547,7 @@ fn area_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Valu
 	let mut items = Vec::new();
 	for unit in &[AreaUnit::Acres, AreaUnit::Hectares] {
 		items.push(MenuItem {
-			layout: MenuItem::string_layout(unit.to_str()),
+			layout: MenuItem::static_string_layout(unit.to_str()),
 			function: MenuItemFunction::ConversionAction(
 				Function::AddUnit(Unit::Area(*unit), UnitType::Area),
 				Function::AddInvUnit(Unit::Area(*unit), UnitType::Area),
@@ -1571,7 +1567,7 @@ fn area_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Valu
 		DistanceUnit::Miles,
 	] {
 		items.push(MenuItem {
-			layout: MenuItem::string_layout(unit.to_str() + "²"),
+			layout: MenuItem::string_layout(unit.to_str().to_string() + "²"),
 			function: MenuItemFunction::ConversionAction(
 				Function::AddUnitSquared(Unit::Distance(*unit), UnitType::Area),
 				Function::AddInvUnitSquared(Unit::Distance(*unit), UnitType::Area),
@@ -1581,7 +1577,7 @@ fn area_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Valu
 	}
 
 	let mut menu = Menu::new_with_bottom(
-		"Area (×,÷ Assign; x≷y Convert)".to_string(),
+		"Area (×,÷ Assign; x≷y Convert)",
 		items,
 		value_layout(state, screen, value),
 	);
@@ -1606,7 +1602,7 @@ fn distance_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &
 		DistanceUnit::AstronomicalUnits,
 	] {
 		items.push(MenuItem {
-			layout: MenuItem::string_layout(unit.to_str()),
+			layout: MenuItem::static_string_layout(unit.to_str()),
 			function: MenuItemFunction::ConversionAction(
 				Function::AddUnit(Unit::Distance(*unit), UnitType::Distance),
 				Function::AddInvUnit(Unit::Distance(*unit), UnitType::Distance),
@@ -1616,7 +1612,7 @@ fn distance_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &
 	}
 
 	let mut menu = Menu::new_with_bottom(
-		"Distance (×,÷ Assign; x≷y Convert)".to_string(),
+		"Distance (×,÷ Assign; x≷y Convert)",
 		items,
 		value_layout(state, screen, value),
 	);
@@ -1641,7 +1637,7 @@ fn energy_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Va
 		EnergyUnit::Erg,
 	] {
 		items.push(MenuItem {
-			layout: MenuItem::string_layout(unit.to_str()),
+			layout: MenuItem::static_string_layout(unit.to_str()),
 			function: MenuItemFunction::ConversionAction(
 				Function::AddUnit(Unit::Energy(*unit), UnitType::Energy),
 				Function::AddInvUnit(Unit::Energy(*unit), UnitType::Energy),
@@ -1651,7 +1647,7 @@ fn energy_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Va
 	}
 
 	let mut menu = Menu::new_with_bottom(
-		"Energy (×,÷ Assign; x≷y Convert)".to_string(),
+		"Energy (×,÷ Assign; x≷y Convert)",
 		items,
 		value_layout(state, screen, value),
 	);
@@ -1671,7 +1667,7 @@ fn force_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Val
 		ForceUnit::Kip,
 	] {
 		items.push(MenuItem {
-			layout: MenuItem::string_layout(unit.to_str()),
+			layout: MenuItem::static_string_layout(unit.to_str()),
 			function: MenuItemFunction::ConversionAction(
 				Function::AddUnit(Unit::Force(*unit), UnitType::Force),
 				Function::AddInvUnit(Unit::Force(*unit), UnitType::Force),
@@ -1681,7 +1677,7 @@ fn force_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Val
 	}
 
 	let mut menu = Menu::new_with_bottom(
-		"Force (×,÷ Assign; x≷y Convert)".to_string(),
+		"Force (×,÷ Assign; x≷y Convert)",
 		items,
 		value_layout(state, screen, value),
 	);
@@ -1703,7 +1699,7 @@ fn mass_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Valu
 		MassUnit::UKTons,
 	] {
 		items.push(MenuItem {
-			layout: MenuItem::string_layout(unit.to_str()),
+			layout: MenuItem::static_string_layout(unit.to_str()),
 			function: MenuItemFunction::ConversionAction(
 				Function::AddUnit(Unit::Mass(*unit), UnitType::Mass),
 				Function::AddInvUnit(Unit::Mass(*unit), UnitType::Mass),
@@ -1713,7 +1709,7 @@ fn mass_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Valu
 	}
 
 	let mut menu = Menu::new_with_bottom(
-		"Mass (×,÷ Assign; x≷y Convert)".to_string(),
+		"Mass (×,÷ Assign; x≷y Convert)",
 		items,
 		value_layout(state, screen, value),
 	);
@@ -1735,7 +1731,7 @@ fn power_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Val
 		PowerUnit::TonsOfRefrigeration,
 	] {
 		items.push(MenuItem {
-			layout: MenuItem::string_layout(unit.to_str()),
+			layout: MenuItem::static_string_layout(unit.to_str()),
 			function: MenuItemFunction::ConversionAction(
 				Function::AddUnit(Unit::Power(*unit), UnitType::Power),
 				Function::AddInvUnit(Unit::Power(*unit), UnitType::Power),
@@ -1745,7 +1741,7 @@ fn power_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Val
 	}
 
 	let mut menu = Menu::new_with_bottom(
-		"Power (×,÷ Assign; x≷y Convert)".to_string(),
+		"Power (×,÷ Assign; x≷y Convert)",
 		items,
 		value_layout(state, screen, value),
 	);
@@ -1769,7 +1765,7 @@ fn pressure_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &
 		PressureUnit::Torr,
 	] {
 		items.push(MenuItem {
-			layout: MenuItem::string_layout(unit.to_str()),
+			layout: MenuItem::static_string_layout(unit.to_str()),
 			function: MenuItemFunction::ConversionAction(
 				Function::AddUnit(Unit::Pressure(*unit), UnitType::Pressure),
 				Function::AddInvUnit(Unit::Pressure(*unit), UnitType::Pressure),
@@ -1779,7 +1775,7 @@ fn pressure_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &
 	}
 
 	let mut menu = Menu::new_with_bottom(
-		"Pressure (×,÷ Assign; x≷y Convert)".to_string(),
+		"Pressure (×,÷ Assign; x≷y Convert)",
 		items,
 		value_layout(state, screen, value),
 	);
@@ -1796,7 +1792,7 @@ fn temperature_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value
 		TemperatureUnit::Rankine,
 	] {
 		items.push(MenuItem {
-			layout: MenuItem::string_layout(unit.to_str()),
+			layout: MenuItem::static_string_layout(unit.to_str()),
 			function: MenuItemFunction::ConversionAction(
 				Function::AddUnit(Unit::Temperature(*unit), UnitType::Temperature),
 				Function::AddInvUnit(Unit::Temperature(*unit), UnitType::Temperature),
@@ -1806,7 +1802,7 @@ fn temperature_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value
 	}
 
 	Menu::new_with_bottom(
-		"Temp (×,÷ Assign; x≷y Convert)".to_string(),
+		"Temp (×,÷ Assign; x≷y Convert)",
 		items,
 		value_layout(state, screen, value),
 	)
@@ -1825,7 +1821,7 @@ fn time_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Valu
 		TimeUnit::Years,
 	] {
 		items.push(MenuItem {
-			layout: MenuItem::string_layout(unit.to_str()),
+			layout: MenuItem::static_string_layout(unit.to_str()),
 			function: MenuItemFunction::ConversionAction(
 				Function::AddUnit(Unit::Time(*unit), UnitType::Time),
 				Function::AddInvUnit(Unit::Time(*unit), UnitType::Time),
@@ -1835,7 +1831,7 @@ fn time_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Valu
 	}
 
 	let mut menu = Menu::new_with_bottom(
-		"Time (×,÷ Assign; x≷y Convert)".to_string(),
+		"Time (×,÷ Assign; x≷y Convert)",
 		items,
 		value_layout(state, screen, value),
 	);
@@ -1863,7 +1859,7 @@ fn volume_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Va
 		VolumeUnit::UKTeaspoons,
 	] {
 		items.push(MenuItem {
-			layout: MenuItem::string_layout_small(unit.to_str()),
+			layout: MenuItem::static_string_layout_small(unit.to_str()),
 			function: MenuItemFunction::ConversionAction(
 				Function::AddUnit(Unit::Volume(*unit), UnitType::Volume),
 				Function::AddInvUnit(Unit::Volume(*unit), UnitType::Volume),
@@ -1879,7 +1875,7 @@ fn volume_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Va
 		DistanceUnit::Feet,
 	] {
 		items.push(MenuItem {
-			layout: MenuItem::string_layout_small(unit.to_str() + "³"),
+			layout: MenuItem::string_layout_small(unit.to_str().to_string() + "³"),
 			function: MenuItemFunction::ConversionAction(
 				Function::AddUnitCubed(Unit::Distance(*unit), UnitType::Volume),
 				Function::AddInvUnitCubed(Unit::Distance(*unit), UnitType::Volume),
@@ -1889,7 +1885,7 @@ fn volume_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Va
 	}
 
 	let mut menu = Menu::new_with_bottom(
-		"Volume (×,÷ Assign; x≷y Convert)".to_string(),
+		"Volume (×,÷ Assign; x≷y Convert)",
 		items,
 		value_layout(state, screen, value),
 	);

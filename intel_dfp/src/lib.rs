@@ -100,7 +100,7 @@ impl Decimal {
 		Decimal::from_str("3.141592653589793238462643383279503")
 	}
 
-	pub fn to_str(&self) -> String {
+	pub fn to_string(&self) -> String {
 		let mut buf = [0; 64];
 		unsafe {
 			__bid128_to_string(&mut buf[0], &self);

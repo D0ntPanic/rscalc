@@ -115,7 +115,7 @@ impl Number {
 			Number::Decimal(num) => {
 				let num = num.trunc();
 
-				let raw_str = num.to_str();
+				let raw_str = num.to_string();
 
 				// Split string on the 'E' to decode parts of number. For non inf/NaN there
 				// will always be an exponent.
@@ -161,7 +161,7 @@ impl Number {
 		}
 	}
 
-	pub fn to_str(&self) -> String {
+	pub fn to_string(&self) -> String {
 		NumberFormat::new().format_number(self)
 	}
 
@@ -623,7 +623,7 @@ impl NumberFormat {
 	}
 
 	fn format_decimal_post_round(&self, num: &Decimal, mode: NumberFormatMode) -> String {
-		let raw_str = num.to_str();
+		let raw_str = num.to_string();
 
 		// Split string on the 'E' to decode parts of number. For non inf/NaN there
 		// will always be an exponent.
@@ -770,7 +770,7 @@ impl NumberFormat {
 	}
 
 	pub fn format_decimal(&self, num: &Decimal) -> String {
-		let raw_str = num.to_str();
+		let raw_str = num.to_string();
 
 		// Split string on the 'E' to decode parts of number. For non inf/NaN there
 		// will always be an exponent.

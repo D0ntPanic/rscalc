@@ -132,7 +132,7 @@ impl NumberEditor {
 		true
 	}
 
-	pub fn to_str(&self, format: &NumberFormat) -> String {
+	pub fn to_string(&self, format: &NumberFormat) -> String {
 		let mut result = String::new();
 		if self.sign {
 			result += "-";

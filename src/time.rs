@@ -33,7 +33,7 @@ pub struct SimpleDateTimeFormat {
 /// C runtime and in nostd. There is an option for enabling this in the chrono crate
 /// but it is unstable (an in fact not working in nostd when last tested).
 pub trait SimpleDateTimeToString {
-	fn to_str(&self, format: &SimpleDateTimeFormat) -> String;
+	fn simple_format(&self, format: &SimpleDateTimeFormat) -> String;
 }
 
 impl Now for NaiveDateTime {
@@ -58,7 +58,7 @@ impl Now for NaiveDateTime {
 }
 
 impl SimpleDateTimeToString for NaiveDate {
-	fn to_str(&self, format: &SimpleDateTimeFormat) -> String {
+	fn simple_format(&self, format: &SimpleDateTimeFormat) -> String {
 		let mut result = match self.weekday() {
 			Weekday::Mon => "Mon ",
 			Weekday::Tue => "Tue ",
@@ -112,7 +112,7 @@ impl SimpleDateTimeToString for NaiveDate {
 }
 
 impl SimpleDateTimeToString for NaiveTime {
-	fn to_str(&self, format: &SimpleDateTimeFormat) -> String {
+	fn simple_format(&self, format: &SimpleDateTimeFormat) -> String {
 		let mut result = String::new();
 
 		let hour = if format.am_pm {
@@ -166,19 +166,19 @@ impl SimpleDateTimeToString for NaiveTime {
 }
 
 impl SimpleDateTimeToString for NaiveDateTime {
-	fn to_str(&self, format: &SimpleDateTimeFormat) -> String {
+	fn simple_format(&self, format: &SimpleDateTimeFormat) -> String {
 		// Minimal implementation for DM42 embedded version
 		let mut result = String::new();
 
 		if format.date {
-			result += &self.date().to_str(format);
+			result += &self.date().simple_format(format);
 		}
 
 		if format.time {
 			if format.date {
 				result += ", ";
 			}
-			result += &self.time().to_str(format);
+			result += &self.time().simple_format(format);
 		}
 
 		result

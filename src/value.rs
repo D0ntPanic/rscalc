@@ -69,13 +69,13 @@ impl Value {
 		}
 	}
 
-	pub fn to_str(&self) -> String {
+	pub fn to_string(&self) -> String {
 		match self {
-			Value::Number(num) => num.to_str(),
-			Value::NumberWithUnit(num, _) => num.to_str(),
-			Value::DateTime(dt) => dt.to_str(&SimpleDateTimeFormat::full()),
-			Value::Date(date) => date.to_str(&SimpleDateTimeFormat::date()),
-			Value::Time(time) => time.to_str(&SimpleDateTimeFormat::time()),
+			Value::Number(num) => num.to_string(),
+			Value::NumberWithUnit(num, _) => num.to_string(),
+			Value::DateTime(dt) => dt.simple_format(&SimpleDateTimeFormat::full()),
+			Value::Date(date) => date.simple_format(&SimpleDateTimeFormat::date()),
+			Value::Time(time) => time.simple_format(&SimpleDateTimeFormat::time()),
 		}
 	}
 
@@ -83,7 +83,7 @@ impl Value {
 		match self {
 			Value::Number(num) => format.format_number(num),
 			Value::NumberWithUnit(num, _) => format.format_number(num),
-			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => self.to_str(),
+			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => self.to_string(),
 		}
 	}
 
@@ -497,25 +497,26 @@ impl Value {
 						// Power is negative, unit is in denominator
 						if denom_layout.len() != 0 {
 							// Add multiplication symbol to separate unit names
-							denom_layout.push(Layout::Text(
-								"∙".to_string(),
+							denom_layout.push(Layout::StaticText(
+								"∙",
 								&SANS_20,
 								Color::ContentText,
 							));
-							denom_only_layout.push(Layout::Text(
-								"∙".to_string(),
+							denom_only_layout.push(Layout::StaticText(
+								"∙",
 								&SANS_24,
 								Color::ContentText,
 							));
 						}
 
 						// Create layout in denomator of a fraction
-						let unit_text = Layout::Text(unit.0.to_str(), &SANS_20, Color::ContentText);
+						let unit_text =
+							Layout::StaticText(unit.0.to_str(), &SANS_20, Color::ContentText);
 						let layout = if unit.1 < -1 {
 							Layout::Power(
 								Box::new(unit_text),
 								Box::new(Layout::Text(
-									(-unit.1).to_number().to_str(),
+									(-unit.1).to_number().to_string(),
 									&SANS_13,
 									Color::ContentText,
 								)),
@@ -527,9 +528,13 @@ impl Value {
 
 						// Create layout if there is no numerator
 						denom_only_layout.push(Layout::Power(
-							Box::new(Layout::Text(unit.0.to_str(), &SANS_24, Color::ContentText)),
+							Box::new(Layout::StaticText(
+								unit.0.to_str(),
+								&SANS_24,
+								Color::ContentText,
+							)),
 							Box::new(Layout::Text(
-								unit.1.to_number().to_str(),
+								unit.1.to_number().to_string(),
 								&SANS_16,
 								Color::ContentText,
 							)),
@@ -538,25 +543,26 @@ impl Value {
 						// Power is positive, unit is in numerator
 						if numer_layout.len() != 0 {
 							// Add multiplication symbol to separate unit names
-							numer_layout.push(Layout::Text(
-								"∙".to_string(),
+							numer_layout.push(Layout::StaticText(
+								"∙",
 								&SANS_20,
 								Color::ContentText,
 							));
-							numer_only_layout.push(Layout::Text(
-								"∙".to_string(),
+							numer_only_layout.push(Layout::StaticText(
+								"∙",
 								&SANS_24,
 								Color::ContentText,
 							));
 						}
 
 						// Create layout in numerator of a fraction
-						let unit_text = Layout::Text(unit.0.to_str(), &SANS_20, Color::ContentText);
+						let unit_text =
+							Layout::StaticText(unit.0.to_str(), &SANS_20, Color::ContentText);
 						let layout = if unit.1 > 1 {
 							Layout::Power(
 								Box::new(unit_text),
 								Box::new(Layout::Text(
-									unit.1.to_number().to_str(),
+									unit.1.to_number().to_string(),
 									&SANS_13,
 									Color::ContentText,
 								)),
@@ -567,12 +573,13 @@ impl Value {
 						numer_layout.push(layout);
 
 						// Create layout if there is no denominator
-						let unit_text = Layout::Text(unit.0.to_str(), &SANS_24, Color::ContentText);
+						let unit_text =
+							Layout::StaticText(unit.0.to_str(), &SANS_24, Color::ContentText);
 						let layout = if unit.1 > 1 {
 							Layout::Power(
 								Box::new(unit_text),
 								Box::new(Layout::Text(
-									unit.1.to_number().to_str(),
+									unit.1.to_number().to_string(),
 									&SANS_16,
 									Color::ContentText,
 								)),
@@ -590,22 +597,18 @@ impl Value {
 					None
 				} else if denom_layout.len() == 0 {
 					// Numerator only
-					numer_only_layout.insert(
-						0,
-						Layout::Text(" ".to_string(), &SANS_24, Color::ContentText),
-					);
+					numer_only_layout
+						.insert(0, Layout::StaticText(" ", &SANS_24, Color::ContentText));
 					Some(Layout::Horizontal(numer_only_layout))
 				} else if numer_layout.len() == 0 {
 					// Denominator only
-					denom_only_layout.insert(
-						0,
-						Layout::Text(" ".to_string(), &SANS_24, Color::ContentText),
-					);
+					denom_only_layout
+						.insert(0, Layout::StaticText(" ", &SANS_24, Color::ContentText));
 					Some(Layout::Horizontal(denom_only_layout))
 				} else {
 					// Fraction
 					let mut final_layout = Vec::new();
-					final_layout.push(Layout::Text(" ".to_string(), &SANS_24, Color::ContentText));
+					final_layout.push(Layout::StaticText(" ", &SANS_24, Color::ContentText));
 					final_layout.push(Layout::Fraction(
 						Box::new(Layout::Horizontal(numer_layout)),
 						Box::new(Layout::Horizontal(denom_layout)),
@@ -628,7 +631,7 @@ impl Value {
 
 		// Get string for number. If there is an editor, use editor state instead.
 		let string = match editor {
-			Some(editor) => editor.to_str(format),
+			Some(editor) => editor.to_string(format),
 			None => self.format(&format),
 		};
 

@@ -33,6 +33,22 @@ impl MenuItem {
 	pub fn string_layout_small(text: String) -> Layout {
 		Layout::LeftAlign(Box::new(Layout::Text(text, &SANS_13, Color::ContentText)))
 	}
+
+	pub fn static_string_layout(text: &'static str) -> Layout {
+		Layout::LeftAlign(Box::new(Layout::StaticText(
+			text,
+			&SANS_16,
+			Color::ContentText,
+		)))
+	}
+
+	pub fn static_string_layout_small(text: &'static str) -> Layout {
+		Layout::LeftAlign(Box::new(Layout::StaticText(
+			text,
+			&SANS_13,
+			Color::ContentText,
+		)))
+	}
 }
 
 pub struct Menu {
@@ -46,9 +62,9 @@ pub struct Menu {
 }
 
 impl Menu {
-	pub fn new(title: String, items: Vec<MenuItem>) -> Self {
+	pub fn new(title: &str, items: Vec<MenuItem>) -> Self {
 		Menu {
-			title,
+			title: title.to_string(),
 			items,
 			bottom: None,
 			selection: 0,
@@ -58,9 +74,9 @@ impl Menu {
 		}
 	}
 
-	pub fn new_with_bottom(title: String, items: Vec<MenuItem>, bottom: Layout) -> Self {
+	pub fn new_with_bottom(title: &str, items: Vec<MenuItem>, bottom: Layout) -> Self {
 		Menu {
-			title,
+			title: title.to_string(),
 			items,
 			bottom: Some(bottom),
 			selection: 0,
@@ -166,7 +182,7 @@ impl Menu {
 			{
 				// Get label for item
 				let label = match i + 1 {
-					1..=9 => Number::Integer((i + 1).into()).to_str(),
+					1..=9 => Number::Integer((i + 1).into()).to_string(),
 					10 => "0".to_string(),
 					_ => {
 						let mut string = String::new();
@@ -246,13 +262,13 @@ pub fn setup_menu() -> Menu {
 
 	// Create setup menu items
 	items.push(MenuItem {
-		layout: MenuItem::string_layout("Display Settings >".to_string()),
+		layout: MenuItem::static_string_layout("Display Settings >"),
 		function: MenuItemFunction::Action(Function::SettingsMenu),
 	});
 
 	#[cfg(feature = "dm42")]
 	items.push(MenuItem {
-		layout: MenuItem::string_layout("System Settings >".to_string()),
+		layout: MenuItem::static_string_layout("System Settings >"),
 		function: MenuItemFunction::Action(Function::SystemMenu),
 	});
 
@@ -260,7 +276,7 @@ pub fn setup_menu() -> Menu {
 	let mut bottom_items = Vec::new();
 	bottom_items.push(Layout::LeftAlign(Box::new(Layout::Text(
 		"Memory: ".to_string()
-			+ &Number::Integer(available_bytes().into()).to_str()
+			+ &Number::Integer(available_bytes().into()).to_string()
 			+ " bytes available",
 		&SANS_16,
 		Color::ContentText,
@@ -276,23 +292,15 @@ pub fn setup_menu() -> Menu {
 	// Add legend for the graph
 	let mut legend_items = Vec::new();
 	legend_items.push(Layout::UsageGraphUsedLegend);
-	legend_items.push(Layout::Text(
-		" Used   ".to_string(),
-		&SANS_13,
-		Color::ContentText,
-	));
+	legend_items.push(Layout::StaticText(" Used   ", &SANS_13, Color::ContentText));
 	legend_items.push(Layout::UsageGraphReclaimableLegend);
-	legend_items.push(Layout::Text(
-		" Reclaimable   ".to_string(),
+	legend_items.push(Layout::StaticText(
+		" Reclaimable   ",
 		&SANS_13,
 		Color::ContentText,
 	));
 	legend_items.push(Layout::UsageGraphFreeLegend);
-	legend_items.push(Layout::Text(
-		" Free".to_string(),
-		&SANS_13,
-		Color::ContentText,
-	));
+	legend_items.push(Layout::StaticText(" Free", &SANS_13, Color::ContentText));
 	bottom_items.push(Layout::LeftAlign(Box::new(Layout::Horizontal(
 		legend_items,
 	))));
@@ -300,13 +308,13 @@ pub fn setup_menu() -> Menu {
 	// Add temporary memory available
 	#[cfg(feature = "dm42")]
 	bottom_items.push(Layout::LeftAlign(Box::new(Layout::Text(
-		Number::Integer(crate::dm42::sys_free_mem().into()).to_str() + " bytes temporary memory",
+		Number::Integer(crate::dm42::sys_free_mem().into()).to_string() + " bytes temporary memory",
 		&SANS_13,
 		Color::ContentText,
 	))));
 
 	// Return the menu object
-	Menu::new_with_bottom("Setup".to_string(), items, Layout::Vertical(bottom_items))
+	Menu::new_with_bottom("Setup", items, Layout::Vertical(bottom_items))
 }
 
 pub fn settings_menu(state: &State) -> Menu {
@@ -332,5 +340,5 @@ pub fn settings_menu(state: &State) -> Menu {
 	});
 
 	// Return the menu object
-	Menu::new("Settings".to_string(), items)
+	Menu::new("Settings", items)
 }

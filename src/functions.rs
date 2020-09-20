@@ -89,9 +89,9 @@ pub enum Function {
 }
 
 impl Function {
-	pub fn to_str(&self, state: &State) -> String {
+	pub fn to_string(&self, state: &State) -> String {
 		match self {
-			Function::Input(input) => input.to_str(),
+			Function::Input(input) => input.to_string(),
 			Function::NormalFormat => {
 				if state.format.mode == NumberFormatMode::Normal {
 					"▪Norm".to_string()
@@ -310,10 +310,10 @@ impl Function {
 					"Grad".to_string()
 				}
 			}
-			Function::UnitMenu(unit_type) => unit_type.to_str(),
-			Function::AddUnit(unit, _) => unit.to_str(),
-			Function::AddUnitSquared(unit, _) => unit.to_str() + "²",
-			Function::AddUnitCubed(unit, _) => unit.to_str() + "³",
+			Function::UnitMenu(unit_type) => unit_type.to_str().to_string(),
+			Function::AddUnit(unit, _) => unit.to_str().to_string(),
+			Function::AddUnitSquared(unit, _) => unit.to_str().to_string() + "²",
+			Function::AddUnitCubed(unit, _) => unit.to_str().to_string() + "³",
 			Function::AddInvUnit(unit, _) => "/".to_string() + &unit.to_str(),
 			Function::AddInvUnitSquared(unit, _) => "/".to_string() + &unit.to_str() + "²",
 			Function::AddInvUnitCubed(unit, _) => "/".to_string() + &unit.to_str() + "³",
@@ -858,7 +858,7 @@ impl FunctionKeyState {
 		let mut strings = Vec::new();
 		for i in 0..6 {
 			if let Some(function) = self.function((i + 1) as u8) {
-				strings.push(function.to_str(state));
+				strings.push(function.to_string(state));
 			} else {
 				strings.push("".to_string());
 			}

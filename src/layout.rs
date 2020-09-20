@@ -5,6 +5,7 @@ use alloc::vec::Vec;
 
 pub enum Layout {
 	Text(String, &'static Font, Color),
+	StaticText(&'static str, &'static Font, Color),
 	EditText(String, &'static Font, Color),
 	Horizontal(Vec<Layout>),
 	Vertical(Vec<Layout>),
@@ -47,6 +48,7 @@ impl Layout {
 	pub fn width(&self) -> i32 {
 		match self {
 			Layout::Text(string, font, _) => font.width(string),
+			Layout::StaticText(string, font, _) => font.width(string),
 			Layout::EditText(string, font, _) => font.width(string),
 			Layout::Horizontal(items) => items.iter().fold(0, |width, item| width + item.width()),
 			Layout::Vertical(items) => items
@@ -68,6 +70,7 @@ impl Layout {
 	pub fn height(&self) -> i32 {
 		match self {
 			Layout::Text(_, font, _) => font.height,
+			Layout::StaticText(_, font, _) => font.height,
 			Layout::EditText(_, font, _) => font.height,
 			Layout::Horizontal(items) => items
 				.iter()
@@ -126,6 +129,14 @@ impl Layout {
 		// Render the layout to the screen
 		match self {
 			Layout::Text(string, font, color) => font.draw_clipped(
+				screen,
+				clip_rect,
+				rect.x,
+				rect.y,
+				string,
+				Self::overridden_color(color, &color_override),
+			),
+			Layout::StaticText(string, font, color) => font.draw_clipped(
 				screen,
 				clip_rect,
 				rect.x,

@@ -137,7 +137,7 @@ pub enum InputEvent {
 }
 
 impl InputEvent {
-	pub fn to_str(&self) -> String {
+	pub fn to_string(&self) -> String {
 		match self {
 			InputEvent::Character(ch) => {
 				let mut result = String::new();
