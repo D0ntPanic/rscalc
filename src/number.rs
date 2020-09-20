@@ -165,6 +165,22 @@ impl Number {
 		NumberFormat::new().format_number(self)
 	}
 
+	pub fn is_zero(&self) -> bool {
+		match self {
+			Number::Integer(value) => value == &0.to_bigint().unwrap(),
+			Number::Rational(numerator, _) => numerator == &0.to_bigint().unwrap(),
+			Number::Decimal(value) => value == &Decimal::zero(),
+		}
+	}
+
+	pub fn is_negative(&self) -> bool {
+		match self {
+			Number::Integer(value) => value.sign() == Sign::Minus,
+			Number::Rational(numerator, _) => numerator.sign() == Sign::Minus,
+			Number::Decimal(value) => value < &Decimal::zero(),
+		}
+	}
+
 	pub fn sqrt(&self) -> Number {
 		match &self {
 			Number::Integer(value) => {
@@ -302,6 +318,26 @@ impl Number {
 			}
 			Number::Rational(numer, denom) => {
 				if numer.bits() > MAX_NUMERATOR_BITS || denom.bits() > MAX_DENOMINATOR_BITS {
+					Number::Decimal(value.to_decimal().into_owned())
+				} else {
+					value
+				}
+			}
+			_ => value,
+		}
+	}
+
+	pub fn check_int_bounds_with_bit_count(value: Self, int_bits: u64, denom_bits: u64) -> Self {
+		match &value {
+			Number::Integer(int) => {
+				if int.bits() > int_bits {
+					Number::Decimal(value.to_decimal().into_owned())
+				} else {
+					value
+				}
+			}
+			Number::Rational(numer, denom) => {
+				if numer.bits() > int_bits + denom_bits || denom.bits() > denom_bits {
 					Number::Decimal(value.to_decimal().into_owned())
 				} else {
 					value
@@ -529,6 +565,21 @@ impl NumberFormat {
 			show_alt_hex: self.show_alt_hex,
 			show_alt_float: self.show_alt_float,
 			limit_size: true,
+		}
+	}
+
+	pub fn with_max_precision(&self, max_precision: usize) -> Self {
+		NumberFormat {
+			mode: self.mode,
+			integer_mode: self.integer_mode,
+			decimal_point: self.decimal_point,
+			thousands: self.thousands,
+			precision: core::cmp::min(self.precision, max_precision),
+			trailing_zeros: self.trailing_zeros,
+			integer_radix: self.integer_radix,
+			show_alt_hex: self.show_alt_hex,
+			show_alt_float: self.show_alt_float,
+			limit_size: self.limit_size,
 		}
 	}
 

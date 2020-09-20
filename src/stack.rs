@@ -388,8 +388,8 @@ impl Stack {
 			let mut new_entry = self.entries.len() > 1;
 			let value = self.pop_internal();
 			push_undo_action(UndoAction::Pop(value));
-			if let Ok(Number::Integer(int)) = self.top().number() {
-				if int == &0.to_bigint().unwrap() {
+			if let Ok(num) = self.top().real_number() {
+				if num.is_zero() {
 					new_entry = false;
 				}
 			}

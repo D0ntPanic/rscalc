@@ -79,10 +79,17 @@ extern "C" {
 	fn __bid128_isFinite(result: *mut i32, x: &Decimal);
 	fn __bid128_isInf(result: *mut i32, x: &Decimal);
 	fn __bid128_isNaN(result: *mut i32, x: &Decimal);
+	fn __bid128_quiet_equal(result: *mut i32, x: &Decimal, y: &Decimal);
+	fn __bid128_quiet_unordered(result: *mut i32, x: &Decimal, y: &Decimal);
+	fn __bid128_quiet_greater(result: *mut i32, x: &Decimal, y: &Decimal);
 }
 
 impl Decimal {
 	pub fn new() -> Self {
+		0.into()
+	}
+
+	pub fn zero() -> Self {
 		0.into()
 	}
 
@@ -697,6 +704,49 @@ impl core::ops::Neg for &Decimal {
 		unsafe {
 			__bid128_negate(result.as_mut_ptr(), &self);
 			result.assume_init()
+		}
+	}
+}
+
+impl core::cmp::PartialEq for Decimal {
+	fn eq(&self, other: &Self) -> bool {
+		let mut result = core::mem::MaybeUninit::<i32>::uninit();
+		unsafe {
+			__bid128_quiet_equal(result.as_mut_ptr(), &self, other);
+			result.assume_init() != 0
+		}
+	}
+}
+
+impl core::cmp::PartialOrd for Decimal {
+	fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+		let mut result = core::mem::MaybeUninit::<i32>::uninit();
+		let unordered = unsafe {
+			__bid128_quiet_unordered(result.as_mut_ptr(), &self, other);
+			result.assume_init() != 0
+		};
+		if unordered {
+			return None;
+		}
+
+		let mut result = core::mem::MaybeUninit::<i32>::uninit();
+		let equal = unsafe {
+			__bid128_quiet_equal(result.as_mut_ptr(), &self, other);
+			result.assume_init() != 0
+		};
+		if equal {
+			return Some(core::cmp::Ordering::Equal);
+		}
+
+		let mut result = core::mem::MaybeUninit::<i32>::uninit();
+		let greater = unsafe {
+			__bid128_quiet_greater(result.as_mut_ptr(), &self, other);
+			result.assume_init() != 0
+		};
+		if greater {
+			Some(core::cmp::Ordering::Greater)
+		} else {
+			Some(core::cmp::Ordering::Less)
 		}
 	}
 }

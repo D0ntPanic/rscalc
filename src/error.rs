@@ -5,7 +5,7 @@ use num_bigint::TryFromBigIntError;
 pub enum Error {
 	OutOfMemory,
 	NotEnoughValues,
-	NotANumber,
+	NotARealNumber,
 	InvalidInteger,
 	DataTypeMismatch,
 	IncompatibleUnits,
@@ -27,7 +27,7 @@ impl Error {
 		match self {
 			Error::OutOfMemory => "Out of memory",
 			Error::NotEnoughValues => "Not enough values",
-			Error::NotANumber => "Not a number",
+			Error::NotARealNumber => "Not a real number",
 			Error::InvalidInteger => "Invalid integer",
 			Error::DataTypeMismatch => "Data type mismatch",
 			Error::IncompatibleUnits => "Incompatible units",

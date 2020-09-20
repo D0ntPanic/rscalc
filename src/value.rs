@@ -1,3 +1,4 @@
+use crate::complex::ComplexNumber;
 use crate::edit::NumberEditor;
 use crate::error::{Error, Result};
 use crate::font::{SANS_13, SANS_16, SANS_20, SANS_24};
@@ -22,6 +23,7 @@ use num_bigint::{BigInt, ToBigInt};
 pub enum Value {
 	Number(Number),
 	NumberWithUnit(Number, CompositeUnit),
+	Complex(ComplexNumber),
 	DateTime(NaiveDateTime),
 	Date(NaiveDate),
 	Time(NaiveTime),
@@ -30,19 +32,13 @@ pub enum Value {
 pub type ValueRef = StorageRef<Value>;
 
 impl Value {
-	pub fn is_numeric(&self) -> bool {
-		match self {
-			Value::Number(_) => true,
-			Value::NumberWithUnit(_, _) => true,
-			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => false,
-		}
-	}
-
-	pub fn number(&self) -> Result<&Number> {
+	pub fn real_number(&self) -> Result<&Number> {
 		match self {
 			Value::Number(num) => Ok(num),
 			Value::NumberWithUnit(num, _) => Ok(num),
-			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => Err(Error::NotANumber),
+			Value::Complex(_) | Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
+				Err(Error::NotARealNumber)
+			}
 		}
 	}
 
@@ -50,7 +46,9 @@ impl Value {
 		match self {
 			Value::Number(num) => num.to_int(),
 			Value::NumberWithUnit(num, _) => num.to_int(),
-			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => Err(Error::NotANumber),
+			Value::Complex(_) | Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
+				Err(Error::NotARealNumber)
+			}
 		}
 	}
 
@@ -65,7 +63,9 @@ impl Value {
 				Number::Integer(num.to_int()?.into_owned()),
 				unit.clone(),
 			))),
-			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => Err(Error::NotANumber),
+			Value::Complex(_) | Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
+				Err(Error::NotARealNumber)
+			}
 		}
 	}
 
@@ -73,6 +73,7 @@ impl Value {
 		match self {
 			Value::Number(num) => num.to_string(),
 			Value::NumberWithUnit(num, _) => num.to_string(),
+			Value::Complex(num) => num.to_string(),
 			Value::DateTime(dt) => dt.simple_format(&SimpleDateTimeFormat::full()),
 			Value::Date(date) => date.simple_format(&SimpleDateTimeFormat::date()),
 			Value::Time(time) => time.simple_format(&SimpleDateTimeFormat::time()),
@@ -83,32 +84,44 @@ impl Value {
 		match self {
 			Value::Number(num) => format.format_number(num),
 			Value::NumberWithUnit(num, _) => format.format_number(num),
+			Value::Complex(num) => num.format(format),
 			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => self.to_string(),
 		}
 	}
 
 	pub fn pow(&self, power: &Value) -> Result<Value> {
-		Ok(Value::Number(self.number()?.pow(power.number()?)))
+		Ok(Value::Number(self.real_number()?.pow(power.real_number()?)))
 	}
 
 	pub fn sqrt(&self) -> Result<Value> {
-		Ok(Value::Number(self.number()?.sqrt()))
+		if let Value::Complex(value) = self {
+			Ok(Self::check_complex(value.sqrt()))
+		} else {
+			let value = self.real_number()?;
+			if value.is_negative() {
+				Ok(Self::check_complex(
+					ComplexNumber::from_real(value.clone()).sqrt(),
+				))
+			} else {
+				Ok(Value::Number(self.real_number()?.sqrt()))
+			}
+		}
 	}
 
 	pub fn log(&self) -> Result<Value> {
-		Ok(Value::Number(self.number()?.log()))
+		Ok(Value::Number(self.real_number()?.log()))
 	}
 
 	pub fn exp10(&self) -> Result<Value> {
-		Ok(Value::Number(self.number()?.exp10()))
+		Ok(Value::Number(self.real_number()?.exp10()))
 	}
 
 	pub fn ln(&self) -> Result<Value> {
-		Ok(Value::Number(self.number()?.ln()))
+		Ok(Value::Number(self.real_number()?.ln()))
 	}
 
 	pub fn exp(&self) -> Result<Value> {
-		Ok(Value::Number(self.number()?.exp()))
+		Ok(Value::Number(self.real_number()?.exp()))
 	}
 
 	pub fn sin(&self, angle_mode: AngleUnit) -> Result<Value> {
@@ -123,7 +136,7 @@ impl Value {
 				}
 			}
 			_ => Ok(Value::Number(
-				self.number()?.angle_to_radians(angle_mode).sin(),
+				self.real_number()?.angle_to_radians(angle_mode).sin(),
 			)),
 		}
 	}
@@ -140,7 +153,7 @@ impl Value {
 				}
 			}
 			_ => Ok(Value::Number(
-				self.number()?.angle_to_radians(angle_mode).cos(),
+				self.real_number()?.angle_to_radians(angle_mode).cos(),
 			)),
 		}
 	}
@@ -157,14 +170,14 @@ impl Value {
 				}
 			}
 			_ => Ok(Value::Number(
-				self.number()?.angle_to_radians(angle_mode).tan(),
+				self.real_number()?.angle_to_radians(angle_mode).tan(),
 			)),
 		}
 	}
 
 	pub fn asin(&self, angle_mode: AngleUnit) -> Result<Value> {
 		Ok(Value::NumberWithUnit(
-			self.number()?
+			self.real_number()?
 				.asin()
 				.angle_from_radians(angle_mode)
 				.into_owned(),
@@ -174,7 +187,7 @@ impl Value {
 
 	pub fn acos(&self, angle_mode: AngleUnit) -> Result<Value> {
 		Ok(Value::NumberWithUnit(
-			self.number()?
+			self.real_number()?
 				.acos()
 				.angle_from_radians(angle_mode)
 				.into_owned(),
@@ -184,7 +197,7 @@ impl Value {
 
 	pub fn atan(&self, angle_mode: AngleUnit) -> Result<Value> {
 		Ok(Value::NumberWithUnit(
-			self.number()?
+			self.real_number()?
 				.atan()
 				.angle_from_radians(angle_mode)
 				.into_owned(),
@@ -207,7 +220,9 @@ impl Value {
 					Ok(Value::NumberWithUnit(new_num, new_unit))
 				}
 			}
-			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => Err(Error::NotANumber),
+			Value::Complex(_) | Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
+				Err(Error::NotARealNumber)
+			}
 		}
 	}
 
@@ -226,7 +241,9 @@ impl Value {
 					Ok(Value::NumberWithUnit(new_num, new_unit))
 				}
 			}
-			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => Err(Error::NotANumber),
+			Value::Complex(_) | Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
+				Err(Error::NotARealNumber)
+			}
 		}
 	}
 
@@ -242,7 +259,9 @@ impl Value {
 				}
 			}
 			Value::Number(_) => Err(Error::IncompatibleUnits),
-			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => Err(Error::NotANumber),
+			Value::Complex(_) | Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
+				Err(Error::NotARealNumber)
+			}
 		}
 	}
 
@@ -262,6 +281,15 @@ impl Value {
 		Ok(Value::Time(time.add(Duration::nanoseconds(nano))))
 	}
 
+	fn check_complex(value: ComplexNumber) -> Value {
+		if value.is_real() {
+			// Use a pure real number if imaginary part is zero
+			Value::Number(value.take_real_part())
+		} else {
+			Value::Complex(value)
+		}
+	}
+
 	fn value_add(&self, rhs: &Value) -> Result<Value> {
 		match self {
 			Value::Number(left) => match rhs {
@@ -269,6 +297,9 @@ impl Value {
 				Value::NumberWithUnit(right, right_unit) => {
 					Ok(Value::NumberWithUnit(left + right, right_unit.clone()))
 				}
+				Value::Complex(right) => Ok(Self::check_complex(
+					&ComplexNumber::from_real(left.clone()) + right,
+				)),
 				Value::DateTime(right) => self.datetime_add_secs(right, left),
 				Value::Date(right) => self.date_add_days(right, left),
 				Value::Time(right) => self.time_add_secs(right, left),
@@ -278,6 +309,9 @@ impl Value {
 				Value::NumberWithUnit(right, right_unit) => Ok(Value::NumberWithUnit(
 					&left_unit.coerce_to_other(left, right_unit)? + right,
 					right_unit.clone(),
+				)),
+				Value::Complex(right) => Ok(Self::check_complex(
+					&ComplexNumber::from_real(left.clone()) + right,
 				)),
 				Value::DateTime(right) => self.datetime_add_secs(
 					right,
@@ -301,6 +335,16 @@ impl Value {
 					)?,
 				),
 			},
+			Value::Complex(left) => match rhs {
+				Value::Number(right) => Ok(Self::check_complex(
+					left + &ComplexNumber::from_real(right.clone()),
+				)),
+				Value::NumberWithUnit(right, _) => Ok(Self::check_complex(
+					left + &ComplexNumber::from_real(right.clone()),
+				)),
+				Value::Complex(right) => Ok(Self::check_complex(left + right)),
+				_ => Err(Error::DataTypeMismatch),
+			},
 			Value::DateTime(left) => match rhs {
 				Value::Number(right) => self.datetime_add_secs(left, right),
 				Value::NumberWithUnit(right, right_unit) => self.datetime_add_secs(
@@ -310,6 +354,7 @@ impl Value {
 						&CompositeUnit::single_unit(TimeUnit::Seconds.into()),
 					)?,
 				),
+				Value::Complex(_) => Err(Error::NotARealNumber),
 				_ => Err(Error::DataTypeMismatch),
 			},
 			Value::Date(left) => match rhs {
@@ -321,6 +366,7 @@ impl Value {
 						&CompositeUnit::single_unit(TimeUnit::Days.into()),
 					)?,
 				),
+				Value::Complex(_) => Err(Error::NotARealNumber),
 				Value::Time(right) => Ok(Value::DateTime(NaiveDateTime::new(
 					left.clone(),
 					right.clone(),
@@ -336,6 +382,7 @@ impl Value {
 						&CompositeUnit::single_unit(TimeUnit::Seconds.into()),
 					)?,
 				),
+				Value::Complex(_) => Err(Error::NotARealNumber),
 				Value::Date(right) => Ok(Value::DateTime(NaiveDateTime::new(
 					right.clone(),
 					left.clone(),
@@ -352,6 +399,9 @@ impl Value {
 				Value::NumberWithUnit(right, right_unit) => {
 					Ok(Value::NumberWithUnit(left - right, right_unit.clone()))
 				}
+				Value::Complex(right) => Ok(Self::check_complex(
+					&ComplexNumber::from_real(left.clone()) - right,
+				)),
 				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
 					Err(Error::DataTypeMismatch)
 				}
@@ -362,9 +412,22 @@ impl Value {
 					&left_unit.coerce_to_other(left, right_unit)? - right,
 					right_unit.clone(),
 				)),
+				Value::Complex(right) => Ok(Self::check_complex(
+					&ComplexNumber::from_real(left.clone()) - right,
+				)),
 				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
 					Err(Error::DataTypeMismatch)
 				}
+			},
+			Value::Complex(left) => match rhs {
+				Value::Number(right) => Ok(Self::check_complex(
+					left - &ComplexNumber::from_real(right.clone()),
+				)),
+				Value::NumberWithUnit(right, _) => Ok(Self::check_complex(
+					left - &ComplexNumber::from_real(right.clone()),
+				)),
+				Value::Complex(right) => Ok(Self::check_complex(left - right)),
+				_ => Err(Error::DataTypeMismatch),
 			},
 			Value::DateTime(left) => match rhs {
 				Value::Number(right) => self.datetime_add_secs(left, &-right),
@@ -375,6 +438,7 @@ impl Value {
 						&CompositeUnit::single_unit(TimeUnit::Seconds.into()),
 					)?,
 				),
+				Value::Complex(_) => Err(Error::NotARealNumber),
 				Value::DateTime(right) => {
 					let nanoseconds = left
 						.signed_duration_since(*right)
@@ -396,6 +460,7 @@ impl Value {
 						&CompositeUnit::single_unit(TimeUnit::Days.into()),
 					)?,
 				),
+				Value::Complex(_) => Err(Error::NotARealNumber),
 				Value::Date(right) => {
 					let days: Number = left.signed_duration_since(*right).num_days().into();
 					Ok(Value::NumberWithUnit(
@@ -414,6 +479,7 @@ impl Value {
 						&CompositeUnit::single_unit(TimeUnit::Seconds.into()),
 					)?,
 				),
+				Value::Complex(_) => Err(Error::NotARealNumber),
 				Value::Time(right) => {
 					let nanoseconds = left
 						.signed_duration_since(*right)
@@ -436,6 +502,9 @@ impl Value {
 				Value::NumberWithUnit(right, right_unit) => {
 					Ok(Value::NumberWithUnit(left * right, right_unit.clone()))
 				}
+				Value::Complex(right) => Ok(Self::check_complex(
+					&ComplexNumber::from_real(left.clone()) * right,
+				)),
 				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
 					Err(Error::DataTypeMismatch)
 				}
@@ -447,6 +516,21 @@ impl Value {
 					let left = unit.combine(left, right_unit);
 					Ok(Value::NumberWithUnit(&left * right, unit))
 				}
+				Value::Complex(right) => Ok(Self::check_complex(
+					&ComplexNumber::from_real(left.clone()) * right,
+				)),
+				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
+					Err(Error::DataTypeMismatch)
+				}
+			},
+			Value::Complex(left) => match rhs {
+				Value::Number(right) => Ok(Self::check_complex(
+					left * &ComplexNumber::from_real(right.clone()),
+				)),
+				Value::NumberWithUnit(right, _) => Ok(Self::check_complex(
+					left * &ComplexNumber::from_real(right.clone()),
+				)),
+				Value::Complex(right) => Ok(Self::check_complex(left * right)),
 				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
 					Err(Error::DataTypeMismatch)
 				}
@@ -462,6 +546,9 @@ impl Value {
 				Value::NumberWithUnit(right, right_unit) => {
 					Ok(Value::NumberWithUnit(left / right, right_unit.inverse()))
 				}
+				Value::Complex(right) => Ok(Self::check_complex(
+					&ComplexNumber::from_real(left.clone()) / right,
+				)),
 				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
 					Err(Error::DataTypeMismatch)
 				}
@@ -473,6 +560,21 @@ impl Value {
 					let left = unit.combine(left, &right_unit.inverse());
 					Ok(Value::NumberWithUnit(&left / right, unit))
 				}
+				Value::Complex(right) => Ok(Self::check_complex(
+					&ComplexNumber::from_real(left.clone()) / right,
+				)),
+				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
+					Err(Error::DataTypeMismatch)
+				}
+			},
+			Value::Complex(left) => match rhs {
+				Value::Number(right) => Ok(Self::check_complex(
+					left / &ComplexNumber::from_real(right.clone()),
+				)),
+				Value::NumberWithUnit(right, _) => Ok(Self::check_complex(
+					left / &ComplexNumber::from_real(right.clone()),
+				)),
+				Value::Complex(right) => Ok(Self::check_complex(left / right)),
 				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
 					Err(Error::DataTypeMismatch)
 				}
@@ -636,7 +738,7 @@ impl Value {
 		};
 
 		// Check for alternate representation strings
-		let mut alt_string = match self.number() {
+		let mut alt_string = match self.real_number() {
 			Ok(Number::Integer(int)) => {
 				// Integer, if number is ten or greater check for the
 				// hexadecimal alternate form
@@ -661,7 +763,7 @@ impl Value {
 			Ok(Number::Rational(_, _)) => {
 				// Rational, show floating point as alternate form if enabled
 				if format.show_alt_float && format.mode == NumberFormatMode::Rational {
-					if let Ok(number) = self.number() {
+					if let Ok(number) = self.real_number() {
 						Some(format.decimal_format().format_decimal(&number.to_decimal()))
 					} else {
 						None
@@ -705,7 +807,7 @@ impl Value {
 		// Check for more complex renderings
 		let mut rational = false;
 		if format.mode == NumberFormatMode::Rational {
-			if let Ok(Number::Rational(num, denom)) = self.number() {
+			if let Ok(Number::Rational(num, denom)) = self.real_number() {
 				// Check to see if rational number has too much precision to display here
 				if num.bits() <= MAX_SHORT_DISPLAY_BITS && denom.bits() <= MAX_SHORT_DISPLAY_BITS {
 					// Rational number, display as an integer and fraction. Break rational
@@ -780,7 +882,7 @@ impl Value {
 
 			if min_layout.width() > max_width * 2 {
 				// String cannot fit onto two lines, render as decimal float
-				if let Ok(number) = self.number() {
+				if let Ok(number) = self.real_number() {
 					let string = format.format_decimal(&number.to_decimal());
 					if let Some(alt) = &alt_string {
 						if alt == &string {
@@ -848,7 +950,7 @@ impl Value {
 				let split_layout = Layout::Vertical(layout_items);
 				if split_layout.width() > max_width {
 					// String cannot fit onto two lines, render as decimal float
-					if let Ok(number) = self.number() {
+					if let Ok(number) = self.real_number() {
 						let string = format.format_decimal(&number.to_decimal());
 						if let Some(alt) = &alt_string {
 							if alt == &string {
@@ -973,6 +1075,12 @@ impl From<f64> for Value {
 	}
 }
 
+impl From<ComplexNumber> for Value {
+	fn from(val: ComplexNumber) -> Self {
+		Value::Complex(val)
+	}
+}
+
 impl core::ops::Add for Value {
 	type Output = Result<Value>;
 
@@ -1055,9 +1163,10 @@ impl core::ops::Neg for &Value {
 
 const VALUE_SERIALIZE_TYPE_NUMBER: u8 = 0;
 const VALUE_SERIALIZE_TYPE_NUMBER_WITH_UNIT: u8 = 1;
-const VALUE_SERIALIZE_TYPE_DATETIME: u8 = 2;
-const VALUE_SERIALIZE_TYPE_DATE: u8 = 3;
-const VALUE_SERIALIZE_TYPE_TIME: u8 = 4;
+const VALUE_SERIALIZE_TYPE_COMPLEX: u8 = 2;
+const VALUE_SERIALIZE_TYPE_DATETIME: u8 = 3;
+const VALUE_SERIALIZE_TYPE_DATE: u8 = 4;
+const VALUE_SERIALIZE_TYPE_TIME: u8 = 5;
 
 impl StorageObject for Value {
 	fn serialize<Ref: StorageRefSerializer, Out: SerializeOutput>(
@@ -1074,6 +1183,11 @@ impl StorageObject for Value {
 				output.write_u8(VALUE_SERIALIZE_TYPE_NUMBER_WITH_UNIT)?;
 				num.serialize(output, storage_refs)?;
 				unit.serialize(output, storage_refs)?;
+			}
+			Value::Complex(num) => {
+				output.write_u8(VALUE_SERIALIZE_TYPE_COMPLEX)?;
+				num.real_part().serialize(output, storage_refs)?;
+				num.imaginary_part().serialize(output, storage_refs)?;
 			}
 			Value::DateTime(dt) => {
 				output.write_u8(VALUE_SERIALIZE_TYPE_DATETIME)?;
@@ -1114,6 +1228,11 @@ impl StorageObject for Value {
 				let number = Number::deserialize(input, storage_refs)?;
 				let unit = CompositeUnit::deserialize(input, storage_refs)?;
 				Ok(Value::NumberWithUnit(number, unit))
+			}
+			VALUE_SERIALIZE_TYPE_COMPLEX => {
+				let real = Number::deserialize(input, storage_refs)?;
+				let imaginary = Number::deserialize(input, storage_refs)?;
+				Ok(Value::Complex(ComplexNumber::from_parts(real, imaginary)))
 			}
 			VALUE_SERIALIZE_TYPE_DATETIME => {
 				let year = input.read_i32()?;

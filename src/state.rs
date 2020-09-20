@@ -1,3 +1,4 @@
+use crate::complex::ComplexNumber;
 use crate::error::{Error, Result};
 use crate::font::{SANS_13, SANS_16, SANS_24};
 use crate::functions::{FunctionKeyState, FunctionMenu};
@@ -421,6 +422,19 @@ impl State {
 						self.input_state = InputState::Store;
 						self.location_entry = LocationEntryState::new("Sto");
 						self.stack.end_edit();
+					}
+					InputEvent::Complex => {
+						let real = self.entry(1)?;
+						let imaginary = self.entry(0)?;
+						self.replace_entries(
+							2,
+							ComplexNumber::from_parts(
+								real.real_number()?.clone(),
+								imaginary.real_number()?.clone(),
+							)
+							.into(),
+						)?;
+						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Clear => {
 						self.stack.clear();

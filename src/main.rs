@@ -26,6 +26,7 @@ mod dm42;
 #[cfg(not(feature = "dm42"))]
 mod simulated;
 
+mod complex;
 mod edit;
 mod error;
 mod font;
