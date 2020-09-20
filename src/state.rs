@@ -1,7 +1,7 @@
 use crate::error::{Error, Result};
 use crate::font::{SANS_13, SANS_16, SANS_24};
 use crate::functions::{FunctionKeyState, FunctionMenu};
-use crate::input::{AlphaMode, InputEvent, InputMode};
+use crate::input::{AlphaMode, InputEvent, InputMode, InputQueue};
 use crate::layout::Layout;
 use crate::menu::{setup_menu, Menu, MenuItemFunction};
 use crate::number::{IntegerMode, Number, NumberFormat, ToNumber};
@@ -65,13 +65,13 @@ pub enum StatusBarLeftDisplayType {
 
 pub struct State {
 	pub stack: Stack,
-	pub input_mode: InputMode,
-	pub format: NumberFormat,
-	pub function_keys: FunctionKeyState,
-	pub default_integer_format: IntegerMode,
-	pub prev_decimal_integer_mode: IntegerMode,
-	pub angle_mode: AngleUnit,
-	pub status_bar_left_display: StatusBarLeftDisplayType,
+	input_mode: InputMode,
+	format: NumberFormat,
+	function_keys: FunctionKeyState,
+	default_integer_format: IntegerMode,
+	prev_decimal_integer_mode: IntegerMode,
+	angle_mode: AngleUnit,
+	status_bar_left_display: StatusBarLeftDisplayType,
 	memory: BTreeMap<Location, ValueRef>,
 	input_state: InputState,
 	location_entry: LocationEntryState,
@@ -149,6 +149,51 @@ impl State {
 			force_refresh: true,
 			exit_from_menu: false,
 		}
+	}
+
+	pub fn format(&self) -> &NumberFormat {
+		&self.format
+	}
+
+	pub fn format_mut(&mut self) -> &mut NumberFormat {
+		self.stack.invalidate_rendering();
+		&mut self.format
+	}
+
+	pub fn function_keys(&mut self) -> &mut FunctionKeyState {
+		&mut self.function_keys
+	}
+
+	pub fn default_integer_format(&self) -> &IntegerMode {
+		&self.default_integer_format
+	}
+
+	pub fn set_default_integer_format(&mut self, mode: IntegerMode) {
+		self.default_integer_format = mode;
+	}
+
+	pub fn prev_decimal_integer_mode(&self) -> &IntegerMode {
+		&self.prev_decimal_integer_mode
+	}
+
+	pub fn set_prev_decimal_integer_mode(&mut self, mode: IntegerMode) {
+		self.prev_decimal_integer_mode = mode;
+	}
+
+	pub fn angle_mode(&self) -> &AngleUnit {
+		&self.angle_mode
+	}
+
+	pub fn set_angle_mode(&mut self, unit: AngleUnit) {
+		self.angle_mode = unit;
+	}
+
+	pub fn status_bar_left_display(&self) -> &StatusBarLeftDisplayType {
+		&self.status_bar_left_display
+	}
+
+	pub fn set_status_bar_left_display(&mut self, display_type: StatusBarLeftDisplayType) {
+		self.status_bar_left_display = display_type;
 	}
 
 	pub fn show_error(&mut self, error: Error) {
@@ -1009,6 +1054,9 @@ impl State {
 		}
 
 		// Render the stack
+		if self.force_refresh {
+			self.stack.force_refresh();
+		}
 		self.stack.render(screen, &self.format, stack_area);
 
 		// Refresh the LCD contents
@@ -1082,5 +1130,9 @@ impl State {
 	pub fn show_system_setup_menu(&mut self) {
 		#[cfg(feature = "dm42")]
 		show_system_setup_menu();
+	}
+
+	pub fn wait_for_input<InputT: InputQueue>(&mut self, input: &mut InputT) -> Option<InputEvent> {
+		input.wait(&mut self.input_mode)
 	}
 }

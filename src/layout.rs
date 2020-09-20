@@ -3,6 +3,7 @@ use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
 
+#[derive(Clone)]
 pub enum Layout {
 	Text(String, &'static Font, Color),
 	StaticText(&'static str, &'static Font, Color),

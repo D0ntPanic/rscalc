@@ -1,17 +1,27 @@
 use crate::edit::NumberEditor;
 use crate::error::{Error, Result};
 use crate::font::SANS_16;
+use crate::layout::Layout;
 use crate::num_bigint::ToBigInt;
 use crate::number::{IntegerMode, Number, NumberFormat};
 use crate::screen::{Color, Rect, Screen};
 use crate::storage::store;
 use crate::undo::{push_undo_action, UndoAction};
 use crate::value::{Value, ValueRef};
+use alloc::collections::BTreeMap;
 use alloc::string::ToString;
 use alloc::vec::Vec;
 
 pub const MAX_STACK_ENTRIES: usize = 1000;
 pub const MAX_STACK_INDEX_DIGITS: usize = 3;
+
+#[derive(Clone)]
+struct CachedStackEntryLayout {
+	width: i32,
+	idx: usize,
+	bottom: i32,
+	layout: Layout,
+}
 
 pub struct Stack {
 	zero: ValueRef,
@@ -19,6 +29,8 @@ pub struct Stack {
 	editor: Option<NumberEditor>,
 	push_new_entry: bool,
 	empty: bool,
+	render_cache: BTreeMap<usize, CachedStackEntryLayout>,
+	prev_render_top: i32,
 }
 
 impl Stack {
@@ -32,6 +44,8 @@ impl Stack {
 			editor: None,
 			push_new_entry: false,
 			empty: true,
+			render_cache: BTreeMap::new(),
+			prev_render_top: 0,
 		}
 	}
 
@@ -76,6 +90,19 @@ impl Stack {
 			return Err(Error::StackOverflow);
 		}
 		self.entries.push(store(value)?);
+
+		// If the prior top entry was being edited, remove it from the cache
+		if self.editor.is_some() {
+			self.render_cache.remove(&0);
+		}
+
+		// Update rendering cache for new indicies
+		let mut new_cache = BTreeMap::new();
+		for (key, value) in &self.render_cache {
+			new_cache.insert(key + 1, value.clone());
+		}
+		self.render_cache = new_cache;
+
 		self.push_new_entry = true;
 		self.empty = false;
 		self.editor = None;
@@ -104,6 +131,10 @@ impl Stack {
 		if idx >= self.entries.len() {
 			return Err(Error::NotEnoughValues);
 		}
+
+		// Invalidate rendering cache as the value may change
+		self.render_cache.remove(&idx);
+
 		let len = self.entries.len();
 		Ok(&mut self.entries[(len - 1) - idx])
 	}
@@ -115,6 +146,10 @@ impl Stack {
 		let len = self.entries.len();
 		let value_ref = store(value)?;
 		self.entries[(len - 1) - idx] = value_ref;
+
+		// Invalidate rendering cache as the value may have changed
+		self.render_cache.remove(&idx);
+
 		self.empty = false;
 		Ok(())
 	}
@@ -130,6 +165,10 @@ impl Stack {
 			self.entries[(len - 1) - idx].clone(),
 		));
 		self.entries[(len - 1) - idx] = value_ref;
+
+		// Invalidate rendering cache as the value may have changed
+		self.render_cache.remove(&idx);
+
 		self.empty = false;
 		Ok(())
 	}
@@ -161,12 +200,20 @@ impl Stack {
 		let len = self.entries.len();
 		let value_ref = store(value)?;
 		self.entries[len - 1] = value_ref;
+
+		// Invalidate rendering cache as the value may have changed
+		self.render_cache.remove(&0);
+
 		self.empty = false;
 		Ok(())
 	}
 
 	fn set_top_ref(&mut self, value: ValueRef) {
 		*self.entry_mut(0).unwrap() = value;
+
+		// Invalidate rendering cache as the value may have changed
+		self.render_cache.remove(&0);
+
 		self.push_new_entry = true;
 		self.empty = false;
 		self.editor = None;
@@ -177,10 +224,15 @@ impl Stack {
 			return Err(Error::NotEnoughValues);
 		}
 		let old_values = self.entries[self.entries.len() - count..].to_vec();
+
+		// Replace what will be the top entry with the new value
 		self.set_entry_internal(count - 1, value)?;
+
+		// Remove consumed values
 		for _ in 1..count {
 			self.pop_internal();
 		}
+
 		push_undo_action(UndoAction::Replace(old_values));
 		self.push_new_entry = true;
 		self.editor = None;
@@ -191,7 +243,17 @@ impl Stack {
 		let result = self.entries.pop().unwrap();
 		if self.entries.len() == 0 {
 			self.entries.push(self.zero.clone());
+			self.render_cache.clear();
 			self.empty = true;
+		} else {
+			// Update rendering cache for new indicies
+			let mut new_cache = BTreeMap::new();
+			for (key, value) in &self.render_cache {
+				if key > &0 {
+					new_cache.insert(key - 1, value.clone());
+				}
+			}
+			self.render_cache = new_cache;
 		}
 		self.push_new_entry = true;
 		self.editor = None;
@@ -221,6 +283,10 @@ impl Stack {
 			let top = self.top_ref().clone();
 			self.pop_internal();
 			self.entries.insert(0, top);
+
+			// Do not need to update rendering cache, as the pop_internal
+			// call above will ensure that the modified entries are
+			// invalidated and the indicies are correct.
 		}
 	}
 
@@ -229,6 +295,19 @@ impl Stack {
 			let bottom = self.entries[0].clone();
 			self.entries.remove(0);
 			self.entries.push(bottom);
+
+			// If the prior top entry was being edited, remove it from the cache
+			if self.editor.is_some() {
+				self.render_cache.remove(&0);
+			}
+
+			// Update rendering cache for new indicies
+			let mut new_cache = BTreeMap::new();
+			for (key, value) in &self.render_cache {
+				new_cache.insert(key + 1, value.clone());
+			}
+			self.render_cache = new_cache;
+
 			self.push_new_entry = true;
 			self.editor = None;
 		}
@@ -238,6 +317,7 @@ impl Stack {
 		push_undo_action(UndoAction::Clear(self.entries.clone()));
 		self.entries.clear();
 		self.entries.push(self.zero.clone());
+		self.render_cache.clear();
 		self.push_new_entry = false;
 		self.empty = true;
 		self.editor = None;
@@ -261,6 +341,10 @@ impl Stack {
 		if self.editor.is_some() {
 			self.push_new_entry = true;
 			self.editor = None;
+
+			// Invalidate rendering cache for top entry to ensure the final value
+			// is rendered without the editor
+			self.render_cache.remove(&0);
 		}
 	}
 
@@ -359,6 +443,7 @@ impl Stack {
 					value_refs.extend_from_slice(&self.entries);
 				}
 				self.entries = value_refs;
+				self.render_cache.clear();
 				self.push_new_entry = true;
 				self.editor = None;
 				self.empty = false;
@@ -373,12 +458,35 @@ impl Stack {
 		Ok(())
 	}
 
-	pub fn render<ScreenT: Screen>(&self, screen: &mut ScreenT, format: &NumberFormat, area: Rect) {
-		screen.fill(area.clone(), Color::ContentBackground);
+	pub fn force_refresh(&mut self) {
+		for (_, value) in self.render_cache.iter_mut() {
+			// Set bottom coordinate to an invalid position to force
+			// rerendering the entry
+			value.bottom = i32::MAX;
+		}
+		self.prev_render_top = 0;
+	}
 
+	pub fn invalidate_rendering(&mut self) {
+		// Clear everything as values may have changed representation
+		self.render_cache.clear();
+		self.prev_render_top = 0;
+	}
+
+	pub fn render<ScreenT: Screen>(
+		&mut self,
+		screen: &mut ScreenT,
+		format: &NumberFormat,
+		area: Rect,
+	) {
 		let mut bottom = area.y + area.h;
+		let mut new_cache = BTreeMap::new();
 
 		for idx in 0..self.len() {
+			if bottom < area.y {
+				break;
+			}
+
 			if idx > 0 {
 				// Render stack entry separator
 				screen.horizontal_pattern(
@@ -400,18 +508,53 @@ impl Stack {
 			};
 			let label = label + ": ";
 			let label_width = 4 + SANS_16.width(&label);
-
-			// Render stack entry to a layout
-			let entry = match self.entry(idx) {
-				Ok(entry) => entry,
-				Err(_) => continue,
-			};
-			let entry = Self::value_for_integer_mode(&format.integer_mode, entry);
 			let width = area.w - label_width - 8;
-			let layout = entry.render(format, if idx == 0 { &self.editor } else { &None }, width);
+
+			let layout = if let Some(cache) = self.render_cache.get(&idx) {
+				// Check to see if this stack entry already been rendered to the screen in the
+				// correct position with the same index
+				if idx == cache.idx && bottom == cache.bottom {
+					// Entry is already onscreen, no need to rerender
+					bottom -= cache.layout.height();
+					new_cache.insert(idx, cache.clone());
+					continue;
+				}
+
+				if cache.width == width {
+					Some(cache.layout.clone())
+				} else {
+					None
+				}
+			} else {
+				None
+			};
+
+			let layout = if let Some(layout) = layout {
+				layout
+			} else {
+				// Render stack entry to a layout
+				let entry = match self.entry(idx) {
+					Ok(entry) => entry,
+					Err(_) => continue,
+				};
+				let entry = Self::value_for_integer_mode(&format.integer_mode, entry);
+				entry.render(format, if idx == 0 { &self.editor } else { &None }, width)
+			};
+
+			// Clear the area of the stack entry
+			let height = layout.height();
+			screen.fill(
+				Rect {
+					x: area.x,
+					y: bottom - height,
+					w: area.w,
+					h: height,
+				}
+				.clipped_to(&area),
+				Color::ContentBackground,
+			);
 
 			// Draw the entry
-			let height = layout.height();
 			layout.render(
 				screen,
 				Rect {
@@ -434,10 +577,36 @@ impl Stack {
 				Color::StackLabelText,
 			);
 
+			// Insert rendered entry into rendering cache so that it can be quickly rendered next
+			// time the screen is updated.
+			new_cache.insert(
+				idx,
+				CachedStackEntryLayout {
+					width,
+					idx,
+					bottom,
+					layout,
+				},
+			);
+
 			bottom -= height;
-			if bottom < area.y {
-				break;
-			}
 		}
+
+		self.render_cache = new_cache;
+
+		// If there is empty space above the stack, clear it now
+		if bottom > area.y && bottom > self.prev_render_top {
+			let top = core::cmp::max(self.prev_render_top, area.y);
+			screen.fill(
+				Rect {
+					x: area.x,
+					y: top,
+					w: area.w,
+					h: bottom - top,
+				},
+				Color::ContentBackground,
+			);
+		}
+		self.prev_render_top = bottom;
 	}
 }

@@ -324,7 +324,7 @@ pub fn settings_menu(state: &State) -> Menu {
 	items.push(MenuItem {
 		layout: MenuItem::string_layout(
 			"Status Bar Text   ".to_string()
-				+ match state.status_bar_left_display {
+				+ match state.status_bar_left_display() {
 					StatusBarLeftDisplayType::CurrentTime => "[Current Time]",
 					StatusBarLeftDisplayType::FreeMemory => "[Free Memory]",
 				},

@@ -1443,7 +1443,7 @@ impl StorageObject for CompositeUnit {
 }
 
 fn value_layout<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Value) -> Layout {
-	let value_layout = value.render(&state.format, &None, screen.width());
+	let value_layout = value.render(&state.format(), &None, screen.width());
 	let mut layout_items = Vec::new();
 	layout_items.push(Layout::HorizontalRule);
 	layout_items.push(value_layout);

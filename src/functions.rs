@@ -93,162 +93,162 @@ impl Function {
 		match self {
 			Function::Input(input) => input.to_string(),
 			Function::NormalFormat => {
-				if state.format.mode == NumberFormatMode::Normal {
+				if state.format().mode == NumberFormatMode::Normal {
 					"▪Norm".to_string()
 				} else {
 					"Norm".to_string()
 				}
 			}
 			Function::RationalFormat => {
-				if state.format.mode == NumberFormatMode::Rational {
+				if state.format().mode == NumberFormatMode::Rational {
 					"▪Frac".to_string()
 				} else {
 					"Frac".to_string()
 				}
 			}
 			Function::ScientificFormat => {
-				if state.format.mode == NumberFormatMode::Scientific {
+				if state.format().mode == NumberFormatMode::Scientific {
 					"▪Sci".to_string()
 				} else {
 					"Sci".to_string()
 				}
 			}
 			Function::EngineeringFormat => {
-				if state.format.mode == NumberFormatMode::Engineering {
+				if state.format().mode == NumberFormatMode::Engineering {
 					"▪Eng".to_string()
 				} else {
 					"Eng".to_string()
 				}
 			}
 			Function::AlternateHex => {
-				if state.format.show_alt_hex {
+				if state.format().show_alt_hex {
 					"▪↓Hex".to_string()
 				} else {
 					"↓Hex".to_string()
 				}
 			}
 			Function::AlternateFloat => {
-				if state.format.show_alt_float {
+				if state.format().show_alt_float {
 					"▪↓Flt".to_string()
 				} else {
 					"↓Flt".to_string()
 				}
 			}
 			Function::ThousandsSeparatorOff => {
-				if state.format.thousands {
+				if state.format().thousands {
 					"1000".to_string()
 				} else {
 					"▪1000".to_string()
 				}
 			}
 			Function::ThousandsSeparatorOn => {
-				if state.format.thousands {
+				if state.format().thousands {
 					"▪1,000".to_string()
 				} else {
 					"1,000".to_string()
 				}
 			}
 			Function::DecimalPointPeriod => {
-				if state.format.decimal_point == NumberDecimalPointMode::Period {
+				if state.format().decimal_point == NumberDecimalPointMode::Period {
 					"▪0.5".to_string()
 				} else {
 					"0.5".to_string()
 				}
 			}
 			Function::DecimalPointComma => {
-				if state.format.decimal_point == NumberDecimalPointMode::Comma {
+				if state.format().decimal_point == NumberDecimalPointMode::Comma {
 					"▪0,5".to_string()
 				} else {
 					"0,5".to_string()
 				}
 			}
 			Function::Float => {
-				if state.format.integer_mode == IntegerMode::Float {
+				if state.format().integer_mode == IntegerMode::Float {
 					"▪float".to_string()
 				} else {
 					"float".to_string()
 				}
 			}
-			Function::SignedInteger => match state.format.integer_mode {
+			Function::SignedInteger => match state.format().integer_mode {
 				IntegerMode::BigInteger | IntegerMode::SizedInteger(_, true) => "▪int".to_string(),
 				_ => "int".to_string(),
 			},
-			Function::UnsignedInteger => match state.format.integer_mode {
+			Function::UnsignedInteger => match state.format().integer_mode {
 				IntegerMode::SizedInteger(_, false) => "▪uint".to_string(),
 				_ => "uint".to_string(),
 			},
 			Function::BigInteger => {
-				if state.format.integer_mode == IntegerMode::BigInteger {
+				if state.format().integer_mode == IntegerMode::BigInteger {
 					"▪int∞".to_string()
 				} else {
 					"int∞".to_string()
 				}
 			}
 			Function::Signed8Bit => {
-				if state.format.integer_mode == IntegerMode::SizedInteger(8, true) {
+				if state.format().integer_mode == IntegerMode::SizedInteger(8, true) {
 					"▪i8".to_string()
 				} else {
 					"i8".to_string()
 				}
 			}
 			Function::Signed16Bit => {
-				if state.format.integer_mode == IntegerMode::SizedInteger(16, true) {
+				if state.format().integer_mode == IntegerMode::SizedInteger(16, true) {
 					"▪i16".to_string()
 				} else {
 					"i16".to_string()
 				}
 			}
 			Function::Signed32Bit => {
-				if state.format.integer_mode == IntegerMode::SizedInteger(32, true) {
+				if state.format().integer_mode == IntegerMode::SizedInteger(32, true) {
 					"▪i32".to_string()
 				} else {
 					"i32".to_string()
 				}
 			}
 			Function::Signed64Bit => {
-				if state.format.integer_mode == IntegerMode::SizedInteger(64, true) {
+				if state.format().integer_mode == IntegerMode::SizedInteger(64, true) {
 					"▪i64".to_string()
 				} else {
 					"i64".to_string()
 				}
 			}
 			Function::Signed128Bit => {
-				if state.format.integer_mode == IntegerMode::SizedInteger(128, true) {
+				if state.format().integer_mode == IntegerMode::SizedInteger(128, true) {
 					"▪i128".to_string()
 				} else {
 					"i128".to_string()
 				}
 			}
 			Function::Unsigned8Bit => {
-				if state.format.integer_mode == IntegerMode::SizedInteger(8, false) {
+				if state.format().integer_mode == IntegerMode::SizedInteger(8, false) {
 					"▪u8".to_string()
 				} else {
 					"u8".to_string()
 				}
 			}
 			Function::Unsigned16Bit => {
-				if state.format.integer_mode == IntegerMode::SizedInteger(16, false) {
+				if state.format().integer_mode == IntegerMode::SizedInteger(16, false) {
 					"▪u16".to_string()
 				} else {
 					"u16".to_string()
 				}
 			}
 			Function::Unsigned32Bit => {
-				if state.format.integer_mode == IntegerMode::SizedInteger(32, false) {
+				if state.format().integer_mode == IntegerMode::SizedInteger(32, false) {
 					"▪u32".to_string()
 				} else {
 					"u32".to_string()
 				}
 			}
 			Function::Unsigned64Bit => {
-				if state.format.integer_mode == IntegerMode::SizedInteger(64, false) {
+				if state.format().integer_mode == IntegerMode::SizedInteger(64, false) {
 					"▪u64".to_string()
 				} else {
 					"u64".to_string()
 				}
 			}
 			Function::Unsigned128Bit => {
-				if state.format.integer_mode == IntegerMode::SizedInteger(128, false) {
+				if state.format().integer_mode == IntegerMode::SizedInteger(128, false) {
 					"▪u128".to_string()
 				} else {
 					"u128".to_string()
@@ -263,21 +263,21 @@ impl Function {
 			Function::RotateLeft => "rol".to_string(),
 			Function::RotateRight => "ror".to_string(),
 			Function::Hex => {
-				if state.format.integer_radix == 16 {
+				if state.format().integer_radix == 16 {
 					"▪Hex".to_string()
 				} else {
 					"Hex".to_string()
 				}
 			}
 			Function::Octal => {
-				if state.format.integer_radix == 8 {
+				if state.format().integer_radix == 8 {
 					"▪Oct".to_string()
 				} else {
 					"Oct".to_string()
 				}
 			}
 			Function::Decimal => {
-				if state.format.integer_radix == 10 {
+				if state.format().integer_radix == 10 {
 					"▪Dec".to_string()
 				} else {
 					"Dec".to_string()
@@ -290,21 +290,21 @@ impl Function {
 			Function::Date => "Date".to_string(),
 			Function::Time => "Time".to_string(),
 			Function::Degrees => {
-				if state.angle_mode == AngleUnit::Degrees {
+				if state.angle_mode() == &AngleUnit::Degrees {
 					"▪Deg".to_string()
 				} else {
 					"Deg".to_string()
 				}
 			}
 			Function::Radians => {
-				if state.angle_mode == AngleUnit::Radians {
+				if state.angle_mode() == &AngleUnit::Radians {
 					"▪Rad".to_string()
 				} else {
 					"Rad".to_string()
 				}
 			}
 			Function::Gradians => {
-				if state.angle_mode == AngleUnit::Gradians {
+				if state.angle_mode() == &AngleUnit::Gradians {
 					"▪Grad".to_string()
 				} else {
 					"Grad".to_string()
@@ -331,106 +331,108 @@ impl Function {
 				state.handle_input(*input, screen)?;
 			}
 			Function::NormalFormat => {
-				state.format.mode = NumberFormatMode::Normal;
+				state.format_mut().mode = NumberFormatMode::Normal;
 				state.stack.end_edit();
 			}
 			Function::RationalFormat => {
-				state.format.mode = NumberFormatMode::Rational;
+				state.format_mut().mode = NumberFormatMode::Rational;
 				state.stack.end_edit();
 			}
 			Function::ScientificFormat => {
-				state.format.mode = NumberFormatMode::Scientific;
+				state.format_mut().mode = NumberFormatMode::Scientific;
 				state.stack.end_edit();
 			}
 			Function::EngineeringFormat => {
-				state.format.mode = NumberFormatMode::Engineering;
+				state.format_mut().mode = NumberFormatMode::Engineering;
 				state.stack.end_edit();
 			}
 			Function::AlternateHex => {
-				state.format.show_alt_hex = !state.format.show_alt_hex;
+				state.format_mut().show_alt_hex = !state.format().show_alt_hex;
 			}
 			Function::AlternateFloat => {
-				state.format.show_alt_float = !state.format.show_alt_float;
+				state.format_mut().show_alt_float = !state.format().show_alt_float;
 			}
 			Function::ThousandsSeparatorOff => {
-				state.format.thousands = false;
+				state.format_mut().thousands = false;
 			}
 			Function::ThousandsSeparatorOn => {
-				state.format.thousands = true;
+				state.format_mut().thousands = true;
 			}
 			Function::DecimalPointPeriod => {
-				state.format.decimal_point = NumberDecimalPointMode::Period;
+				state.format_mut().decimal_point = NumberDecimalPointMode::Period;
 			}
 			Function::DecimalPointComma => {
-				state.format.decimal_point = NumberDecimalPointMode::Comma;
+				state.format_mut().decimal_point = NumberDecimalPointMode::Comma;
 			}
 			Function::Float => {
-				if state.format.integer_radix == 10 {
-					state.format.integer_mode = IntegerMode::Float;
+				if state.format().integer_radix == 10 {
+					state.format_mut().integer_mode = IntegerMode::Float;
 					state.stack.end_edit();
 				} else {
 					return Err(Error::FloatRequiresDecimalMode);
 				}
 			}
 			Function::SignedInteger => {
-				state.function_keys.show_menu(FunctionMenu::SignedInteger);
+				state.function_keys().show_menu(FunctionMenu::SignedInteger);
 			}
 			Function::UnsignedInteger => {
-				state.function_keys.show_menu(FunctionMenu::UnsignedInteger);
+				state
+					.function_keys()
+					.show_menu(FunctionMenu::UnsignedInteger);
 			}
 			Function::BigInteger => {
-				state.format.integer_mode = IntegerMode::BigInteger;
-				state.default_integer_format = state.format.integer_mode;
+				state.format_mut().integer_mode = IntegerMode::BigInteger;
+				state.set_default_integer_format(state.format().integer_mode);
 				state.stack.end_edit();
 			}
 			Function::Signed8Bit => {
-				state.format.integer_mode = IntegerMode::SizedInteger(8, true);
-				state.default_integer_format = state.format.integer_mode;
+				state.format_mut().integer_mode = IntegerMode::SizedInteger(8, true);
+				state.set_default_integer_format(state.format().integer_mode);
 				state.stack.end_edit();
 			}
 			Function::Signed16Bit => {
-				state.format.integer_mode = IntegerMode::SizedInteger(16, true);
-				state.default_integer_format = state.format.integer_mode;
+				state.format_mut().integer_mode = IntegerMode::SizedInteger(16, true);
+				state.set_default_integer_format(state.format().integer_mode);
 				state.stack.end_edit();
 			}
 			Function::Signed32Bit => {
-				state.format.integer_mode = IntegerMode::SizedInteger(32, true);
-				state.default_integer_format = state.format.integer_mode;
+				state.format_mut().integer_mode = IntegerMode::SizedInteger(32, true);
+				state.set_default_integer_format(state.format().integer_mode);
 				state.stack.end_edit();
 			}
 			Function::Signed64Bit => {
-				state.format.integer_mode = IntegerMode::SizedInteger(64, true);
-				state.default_integer_format = state.format.integer_mode;
+				state.format_mut().integer_mode = IntegerMode::SizedInteger(64, true);
+				state.set_default_integer_format(state.format().integer_mode);
 				state.stack.end_edit();
 			}
 			Function::Signed128Bit => {
-				state.format.integer_mode = IntegerMode::SizedInteger(128, true);
-				state.default_integer_format = state.format.integer_mode;
+				state.format_mut().integer_mode = IntegerMode::SizedInteger(128, true);
+				state.set_default_integer_format(state.format().integer_mode);
 				state.stack.end_edit();
 			}
 			Function::Unsigned8Bit => {
-				state.format.integer_mode = IntegerMode::SizedInteger(8, false);
-				state.default_integer_format = state.format.integer_mode;
+				state.format_mut().integer_mode = IntegerMode::SizedInteger(8, false);
+				state.set_default_integer_format(state.format().integer_mode);
 				state.stack.end_edit();
 			}
 			Function::Unsigned16Bit => {
-				state.format.integer_mode = IntegerMode::SizedInteger(16, false);
-				state.default_integer_format = state.format.integer_mode;
+				state.format_mut().integer_mode = IntegerMode::SizedInteger(16, false);
+				state.set_default_integer_format(state.format().integer_mode);
 				state.stack.end_edit();
 			}
 			Function::Unsigned32Bit => {
-				state.format.integer_mode = IntegerMode::SizedInteger(32, false);
-				state.default_integer_format = state.format.integer_mode;
+				state.format_mut().integer_mode = IntegerMode::SizedInteger(32, false);
+				state.set_default_integer_format(state.format().integer_mode);
 				state.stack.end_edit();
 			}
 			Function::Unsigned64Bit => {
-				state.format.integer_mode = IntegerMode::SizedInteger(64, false);
-				state.default_integer_format = state.format.integer_mode;
+				state.format_mut().integer_mode = IntegerMode::SizedInteger(64, false);
+				state.set_default_integer_format(state.format().integer_mode);
 				state.stack.end_edit();
 			}
 			Function::Unsigned128Bit => {
-				state.format.integer_mode = IntegerMode::SizedInteger(128, false);
-				state.default_integer_format = state.format.integer_mode;
+				state.format_mut().integer_mode = IntegerMode::SizedInteger(128, false);
+				state.set_default_integer_format(state.format().integer_mode);
 				state.stack.end_edit();
 			}
 			Function::And => {
@@ -458,7 +460,7 @@ impl Function {
 			Function::ShiftLeft => {
 				let x = state.stack.entry(0)?;
 				let mut x = x.to_int()?;
-				if let IntegerMode::SizedInteger(size, _) = state.format.integer_mode {
+				if let IntegerMode::SizedInteger(size, _) = state.format().integer_mode {
 					if size.is_power_of_two() {
 						x = Cow::Owned(&*x & &(size - 1).to_bigint().unwrap());
 					}
@@ -475,7 +477,7 @@ impl Function {
 			Function::ShiftRight => {
 				let x = state.stack.entry(0)?;
 				let mut x = x.to_int()?;
-				if let IntegerMode::SizedInteger(size, _) = state.format.integer_mode {
+				if let IntegerMode::SizedInteger(size, _) = state.format().integer_mode {
 					if size.is_power_of_two() {
 						x = Cow::Owned(&*x & (size - 1).to_bigint().unwrap());
 					}
@@ -487,7 +489,7 @@ impl Function {
 				state.replace_entries(2, value)?;
 			}
 			Function::RotateLeft => {
-				if let IntegerMode::SizedInteger(size, _) = state.format.integer_mode {
+				if let IntegerMode::SizedInteger(size, _) = state.format().integer_mode {
 					let x = state.stack.entry(0)?;
 					let mut x = x.to_int()?;
 					if size.is_power_of_two() {
@@ -504,7 +506,7 @@ impl Function {
 				}
 			}
 			Function::RotateRight => {
-				if let IntegerMode::SizedInteger(size, _) = state.format.integer_mode {
+				if let IntegerMode::SizedInteger(size, _) = state.format().integer_mode {
 					let x = state.stack.entry(0)?;
 					let mut x = x.to_int()?;
 					if size.is_power_of_two() {
@@ -521,29 +523,29 @@ impl Function {
 				}
 			}
 			Function::Hex => {
-				if state.format.integer_radix == 10 {
-					state.prev_decimal_integer_mode = state.format.integer_mode;
-					state.format.integer_mode = state.default_integer_format;
+				if state.format().integer_radix == 10 {
+					state.set_prev_decimal_integer_mode(state.format().integer_mode);
+					state.format_mut().integer_mode = state.default_integer_format().clone();
 				}
-				state.format.integer_radix = 16;
+				state.format_mut().integer_radix = 16;
 				state.stack.end_edit();
 			}
 			Function::Octal => {
-				if state.format.integer_radix == 10 {
-					state.prev_decimal_integer_mode = state.format.integer_mode;
-					state.format.integer_mode = state.default_integer_format;
+				if state.format().integer_radix == 10 {
+					state.set_prev_decimal_integer_mode(state.format().integer_mode);
+					state.format_mut().integer_mode = state.default_integer_format().clone();
 				}
-				state.format.integer_radix = 8;
+				state.format_mut().integer_radix = 8;
 				state.stack.end_edit();
 			}
 			Function::Decimal => {
-				if state.format.integer_radix != 10 {
-					state.format.integer_mode = state.prev_decimal_integer_mode;
+				if state.format().integer_radix != 10 {
+					state.format_mut().integer_mode = state.prev_decimal_integer_mode().clone();
 				}
-				state.format.integer_radix = 10;
+				state.format_mut().integer_radix = 10;
 				state.stack.end_edit();
 			}
-			Function::ConstCatalog => state.function_keys.show_menu(FunctionMenu::ConstCatalog),
+			Function::ConstCatalog => state.function_keys().show_menu(FunctionMenu::ConstCatalog),
 			Function::SpeedOfLight => {
 				state.stack.input_value(Value::NumberWithUnit(
 					299_792_458.to_number(),
@@ -553,7 +555,7 @@ impl Function {
 					),
 				))?;
 			}
-			Function::TimeCatalog => state.function_keys.show_menu(FunctionMenu::TimeCatalog),
+			Function::TimeCatalog => state.function_keys().show_menu(FunctionMenu::TimeCatalog),
 			Function::Now => {
 				state
 					.stack
@@ -592,13 +594,13 @@ impl Function {
 				}
 			}
 			Function::Degrees => {
-				state.angle_mode = AngleUnit::Degrees;
+				state.set_angle_mode(AngleUnit::Degrees);
 			}
 			Function::Radians => {
-				state.angle_mode = AngleUnit::Radians;
+				state.set_angle_mode(AngleUnit::Radians);
 			}
 			Function::Gradians => {
-				state.angle_mode = AngleUnit::Gradians;
+				state.set_angle_mode(AngleUnit::Gradians);
 			}
 			Function::UnitMenu(unit_type) => {
 				let menu = unit_menu_of_type(state, screen, &state.top(), *unit_type);
@@ -693,10 +695,10 @@ impl Function {
 				state.refresh_menu(menu);
 			}
 			Function::StatusBarLeftDisplayToggle => {
-				state.status_bar_left_display = match state.status_bar_left_display {
+				state.set_status_bar_left_display(match state.status_bar_left_display() {
 					StatusBarLeftDisplayType::CurrentTime => StatusBarLeftDisplayType::FreeMemory,
 					StatusBarLeftDisplayType::FreeMemory => StatusBarLeftDisplayType::CurrentTime,
-				};
+				});
 				let menu = settings_menu(state);
 				state.refresh_menu(menu);
 			}
