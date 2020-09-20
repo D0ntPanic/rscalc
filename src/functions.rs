@@ -75,9 +75,13 @@ pub enum Function {
 	Radians,
 	Gradians,
 	UnitMenu(UnitType),
-	AddUnit(Unit),
-	AddInvUnit(Unit),
-	ConvertToUnit(Unit),
+	AddUnit(Unit, UnitType),
+	AddUnitSquared(Unit, UnitType),
+	AddUnitCubed(Unit, UnitType),
+	AddInvUnit(Unit, UnitType),
+	AddInvUnitSquared(Unit, UnitType),
+	AddInvUnitCubed(Unit, UnitType),
+	ConvertToUnit(Unit, UnitType),
 	SettingsMenu,
 	SystemMenu,
 	Time24HourToggle,
@@ -307,9 +311,13 @@ impl Function {
 				}
 			}
 			Function::UnitMenu(unit_type) => unit_type.to_str(),
-			Function::AddUnit(unit) => unit.to_str(),
-			Function::AddInvUnit(unit) => "/".to_string() + &unit.to_str(),
-			Function::ConvertToUnit(unit) => "▸".to_string() + &unit.to_str(),
+			Function::AddUnit(unit, _) => unit.to_str(),
+			Function::AddUnitSquared(unit, _) => unit.to_str() + "²",
+			Function::AddUnitCubed(unit, _) => unit.to_str() + "³",
+			Function::AddInvUnit(unit, _) => "/".to_string() + &unit.to_str(),
+			Function::AddInvUnitSquared(unit, _) => "/".to_string() + &unit.to_str() + "²",
+			Function::AddInvUnitCubed(unit, _) => "/".to_string() + &unit.to_str() + "³",
+			Function::ConvertToUnit(unit, _) => "▸".to_string() + &unit.to_str(),
 			Function::SettingsMenu => "Settings".to_string(),
 			Function::SystemMenu => "Sys".to_string(),
 			Function::Time24HourToggle => "24Hr".to_string(),
@@ -596,30 +604,76 @@ impl Function {
 				let menu = unit_menu_of_type(state, screen, &state.top(), *unit_type);
 				state.show_menu(menu);
 			}
-			Function::AddUnit(unit) => {
+			Function::AddUnit(unit, unit_type) => {
 				let value = state.stack.top().add_unit(*unit)?;
 				state.set_top(value)?;
-				let menu = unit_menu_of_type(state, screen, &state.top(), unit.unit_type());
+				let menu = unit_menu_of_type(state, screen, &state.top(), *unit_type);
 				let parent = unit_menu(state, screen, &state.top());
 				let mut menus = Vec::new();
 				menus.push(parent);
 				menus.push(menu);
 				state.refresh_menu_stack(menus);
 			}
-			Function::AddInvUnit(unit) => {
+			Function::AddUnitSquared(unit, unit_type) => {
+				let value = state.stack.top().add_unit(*unit)?;
+				let value = value.add_unit(*unit)?;
+				state.set_top(value)?;
+				let menu = unit_menu_of_type(state, screen, &state.top(), *unit_type);
+				let parent = unit_menu(state, screen, &state.top());
+				let mut menus = Vec::new();
+				menus.push(parent);
+				menus.push(menu);
+				state.refresh_menu_stack(menus);
+			}
+			Function::AddUnitCubed(unit, unit_type) => {
+				let value = state.stack.top().add_unit(*unit)?;
+				let value = value.add_unit(*unit)?;
+				let value = value.add_unit(*unit)?;
+				state.set_top(value)?;
+				let menu = unit_menu_of_type(state, screen, &state.top(), *unit_type);
+				let parent = unit_menu(state, screen, &state.top());
+				let mut menus = Vec::new();
+				menus.push(parent);
+				menus.push(menu);
+				state.refresh_menu_stack(menus);
+			}
+			Function::AddInvUnit(unit, unit_type) => {
 				let value = state.stack.top().add_unit_inv(*unit)?;
 				state.set_top(value)?;
-				let menu = unit_menu_of_type(state, screen, &state.top(), unit.unit_type());
+				let menu = unit_menu_of_type(state, screen, &state.top(), *unit_type);
 				let parent = unit_menu(state, screen, &state.top());
 				let mut menus = Vec::new();
 				menus.push(parent);
 				menus.push(menu);
 				state.refresh_menu_stack(menus);
 			}
-			Function::ConvertToUnit(unit) => {
+			Function::AddInvUnitSquared(unit, unit_type) => {
+				let value = state.stack.top().add_unit_inv(*unit)?;
+				let value = value.add_unit_inv(*unit)?;
+				state.set_top(value)?;
+				let menu = unit_menu_of_type(state, screen, &state.top(), *unit_type);
+				let parent = unit_menu(state, screen, &state.top());
+				let mut menus = Vec::new();
+				menus.push(parent);
+				menus.push(menu);
+				state.refresh_menu_stack(menus);
+			}
+			Function::AddInvUnitCubed(unit, unit_type) => {
+				let value = state.stack.top().add_unit_inv(*unit)?;
+				let value = value.add_unit_inv(*unit)?;
+				let value = value.add_unit_inv(*unit)?;
+				state.set_top(value)?;
+				let menu = unit_menu_of_type(state, screen, &state.top(), *unit_type);
+				let parent = unit_menu(state, screen, &state.top());
+				let mut menus = Vec::new();
+				menus.push(parent);
+				menus.push(menu);
+				state.refresh_menu_stack(menus);
+			}
+			Function::ConvertToUnit(unit, unit_type) => {
 				let value = state.stack.top().convert_single_unit(*unit)?;
 				state.set_top(value)?;
-				let menu = unit_menu_of_type(state, screen, &state.top(), unit.unit_type());
+				let menu = unit_menu_of_type(state, screen, &state.top(), *unit_type);
 				let parent = unit_menu(state, screen, &state.top());
 				let mut menus = Vec::new();
 				menus.push(parent);

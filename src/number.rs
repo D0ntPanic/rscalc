@@ -243,20 +243,14 @@ impl Number {
 	pub fn angle_to_radians<'a>(&'a self, angle_mode: AngleUnit) -> Cow<'a, Number> {
 		match angle_mode {
 			AngleUnit::Radians => Cow::Borrowed(self),
-			_ => Cow::Owned(
-				self * &angle_mode.multiplier_to_standard()
-					/ AngleUnit::Radians.multiplier_to_standard(),
-			),
+			_ => Cow::Owned(AngleUnit::Radians.to_unit(self, &angle_mode)),
 		}
 	}
 
 	pub fn angle_from_radians<'a>(&'a self, angle_mode: AngleUnit) -> Cow<'a, Number> {
 		match angle_mode {
 			AngleUnit::Radians => Cow::Borrowed(self),
-			_ => Cow::Owned(
-				self / &angle_mode.multiplier_to_standard()
-					* AngleUnit::Radians.multiplier_to_standard(),
-			),
+			_ => Cow::Owned(angle_mode.to_unit(self, &AngleUnit::Radians)),
 		}
 	}
 

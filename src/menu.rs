@@ -29,6 +29,10 @@ impl MenuItem {
 	pub fn string_layout(text: String) -> Layout {
 		Layout::LeftAlign(Box::new(Layout::Text(text, &SANS_16, Color::ContentText)))
 	}
+
+	pub fn string_layout_small(text: String) -> Layout {
+		Layout::LeftAlign(Box::new(Layout::Text(text, &SANS_13, Color::ContentText)))
+	}
 }
 
 pub struct Menu {
