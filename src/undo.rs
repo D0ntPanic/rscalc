@@ -17,6 +17,7 @@ pub enum UndoAction {
 	Clear(Vec<ValueRef>),
 	RotateDown,
 	SetStackEntry(usize, ValueRef),
+	ReplaceTopWithMultiple(usize, ValueRef),
 }
 
 type UndoActionRef = StorageRef<UndoAction>;
@@ -32,6 +33,7 @@ const UNDO_SERIALIZE_TYPE_SWAP: u8 = 3;
 const UNDO_SERIALIZE_TYPE_CLEAR: u8 = 4;
 const UNDO_SERIALIZE_TYPE_ROTATE_DOWN: u8 = 5;
 const UNDO_SERIALIZE_TYPE_SET_STACK_ENTRY: u8 = 6;
+const UNDO_SERIALIZE_TYPE_REPLACE_TOP_WITH_MULTIPLE: u8 = 7;
 
 impl StorageObject for UndoAction {
 	fn serialize<Ref: StorageRefSerializer, Out: SerializeOutput>(
@@ -74,6 +76,11 @@ impl StorageObject for UndoAction {
 				output.write_u32(*idx as u32)?;
 				storage_refs.serialize(value, output)?;
 			}
+			UndoAction::ReplaceTopWithMultiple(count, value) => {
+				output.write_u8(UNDO_SERIALIZE_TYPE_REPLACE_TOP_WITH_MULTIPLE)?;
+				output.write_u32(*count as u32)?;
+				storage_refs.serialize(value, output)?;
+			}
 		}
 		Ok(())
 	}
@@ -113,6 +120,11 @@ impl StorageObject for UndoAction {
 				let idx = input.read_u32()? as usize;
 				let value = storage_refs.deserialize(input)?;
 				Ok(UndoAction::SetStackEntry(idx, value))
+			}
+			UNDO_SERIALIZE_TYPE_REPLACE_TOP_WITH_MULTIPLE => {
+				let count = input.read_u32()? as usize;
+				let value = storage_refs.deserialize(input)?;
+				Ok(UndoAction::ReplaceTopWithMultiple(count, value))
 			}
 			_ => Err(Error::CorruptData),
 		}

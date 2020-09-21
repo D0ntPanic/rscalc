@@ -1,7 +1,10 @@
+use crate::number::{Number, NumberFormat, NumberFormatMode, MAX_SHORT_DISPLAY_BITS};
 use crate::screen::{Color, Font, Rect, Screen};
 use alloc::boxed::Box;
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use intel_dfp::Decimal;
+use num_bigint::{BigInt, BigUint, ToBigInt};
 
 #[derive(Clone)]
 pub enum Layout {
@@ -23,6 +26,258 @@ pub enum Layout {
 }
 
 impl Layout {
+	pub fn single_line_string_layout(
+		string: &str,
+		font: &'static Font,
+		color: Color,
+		max_width: i32,
+		editor: bool,
+	) -> Option<Self> {
+		if font.width(string) <= max_width {
+			Some(Layout::editable_text(
+				string.to_string(),
+				font,
+				color,
+				editor,
+			))
+		} else {
+			None
+		}
+	}
+
+	pub fn double_line_string_layout(
+		string: &str,
+		default_font: &'static Font,
+		small_font: &'static Font,
+		color: Color,
+		max_width: i32,
+		editor: bool,
+	) -> Option<Self> {
+		// Check width to see if it is possible to fit within two lines
+		if small_font.width(string) > max_width * 2 {
+			return None;
+		}
+
+		// Check layout width for a single line in the normal font
+		if let Some(layout) =
+			Self::single_line_string_layout(string, default_font, color, max_width, editor)
+		{
+			return Some(layout);
+		}
+
+		// Check layout width for a single line in the smaller font
+		if let Some(layout) =
+			Self::single_line_string_layout(string, small_font, color, max_width, editor)
+		{
+			return Some(layout);
+		}
+
+		// String does not fit, try to split it to two lines
+		let chars: Vec<char> = string.chars().collect();
+		let mut split_point = 0;
+		let mut width = 0;
+		for i in 0..chars.len() {
+			let mut char_str = String::new();
+			char_str.push(chars[(chars.len() - 1) - i]);
+			split_point = i;
+			// Add in the width of this character
+			if i == 0 {
+				width += small_font.width(&char_str);
+			} else {
+				width += small_font.advance(&char_str);
+			}
+			if width > max_width {
+				break;
+			}
+		}
+
+		// Check for a puncuation point near the split point, and move the split
+		// there if there is one.
+		for i in 0..5 {
+			if i > split_point {
+				break;
+			}
+			match chars[(chars.len() - 1) - (split_point - i)] {
+				',' | '.' | 'x' | ' ' | '\'' => {
+					split_point -= i;
+					break;
+				}
+				_ => (),
+			}
+		}
+
+		// Split the line into two lines
+		let (first, second) = chars.split_at(chars.len() - split_point);
+		let first_str: String = first.iter().collect();
+		let second_str: String = second.iter().collect();
+		let mut layout_items = Vec::new();
+		layout_items.push(Layout::Text(first_str, &small_font, Color::ContentText));
+		layout_items.push(Layout::editable_text(
+			second_str,
+			&small_font,
+			Color::ContentText,
+			editor,
+		));
+		let split_layout = Layout::Vertical(layout_items);
+		if split_layout.width() <= max_width {
+			Some(split_layout)
+		} else {
+			None
+		}
+	}
+
+	pub fn single_line_decimal_layout(
+		value: &Decimal,
+		format: &NumberFormat,
+		prefix: &str,
+		suffix: &str,
+		font: &'static Font,
+		color: Color,
+		max_width: i32,
+	) -> Layout {
+		let mut format = format.clone();
+		loop {
+			// Try to format the string and see if it fits
+			let string = prefix.to_string() + &format.format_decimal(value) + suffix;
+			if font.width(&string) <= max_width {
+				// This string fits, return final layout
+				return Layout::Text(string, font, color);
+			}
+
+			// Try a reduced precision. If the precision is already 3 or less, just use the
+			// existing string.
+			if format.precision <= 3 {
+				return Layout::Text(string, font, color);
+			}
+			format = format.with_max_precision(format.precision - 1);
+		}
+	}
+
+	pub fn rational_layout(
+		num: &BigInt,
+		denom: &BigUint,
+		format: &NumberFormat,
+		int_font: &'static Font,
+		frac_font: &'static Font,
+		color: Color,
+		max_width: i32,
+	) -> Option<Layout> {
+		// Check to see if rational number has too much precision to display
+		if num.bits() <= MAX_SHORT_DISPLAY_BITS && denom.bits() <= MAX_SHORT_DISPLAY_BITS {
+			// Rational number, display as an integer and fraction. Break rational
+			// into an integer part and fractional part.
+			let int = num / denom.to_bigint().unwrap();
+			let mut num = if &int < &0.to_bigint().unwrap() {
+				-num - -&int * &denom.to_bigint().unwrap()
+			} else {
+				num - &int * &denom.to_bigint().unwrap()
+			};
+
+			// Get strings for the parts of the rational
+			let int_str = if int == 0.to_bigint().unwrap() {
+				if &num < &0.to_bigint().unwrap() {
+					num = -num;
+					"-".to_string()
+				} else {
+					"".to_string()
+				}
+			} else {
+				format.format_bigint(&int)
+			};
+			let num_str = format.format_bigint(&num);
+			let denom_str = format.format_bigint(&denom.to_bigint().unwrap());
+
+			// Construct a layout for the rational
+			let mut rational_horizontal_items = Vec::new();
+			rational_horizontal_items.push(Layout::Text(int_str, int_font, color));
+			rational_horizontal_items.push(Layout::HorizontalSpace(4));
+			rational_horizontal_items.push(Layout::Fraction(
+				Box::new(Layout::Text(num_str, frac_font, color)),
+				Box::new(Layout::Text(denom_str, frac_font, color)),
+				color,
+			));
+			let layout = Layout::Horizontal(rational_horizontal_items);
+			if layout.width() <= max_width {
+				Some(layout)
+			} else {
+				None
+			}
+		} else {
+			None
+		}
+	}
+
+	pub fn single_line_number_layout(
+		value: &Number,
+		format: &NumberFormat,
+		default_font: &'static Font,
+		small_font: &'static Font,
+		color: Color,
+		max_width: i32,
+	) -> Option<Layout> {
+		if let Number::Rational(num, denom) = value {
+			if format.mode == NumberFormatMode::Rational {
+				// Rational number, try to lay out as a fraction
+				if let Some(layout) = Layout::rational_layout(
+					num,
+					denom,
+					format,
+					default_font,
+					small_font,
+					color,
+					max_width,
+				) {
+					return Some(layout);
+				}
+			}
+		}
+
+		// Render full string of value and see if it fits
+		let string = format.format_number(value);
+		Layout::single_line_string_layout(&string, default_font, color, max_width, false)
+	}
+
+	pub fn double_line_number_layout(
+		value: &Number,
+		format: &NumberFormat,
+		default_font: &'static Font,
+		small_font: &'static Font,
+		color: Color,
+		max_width: i32,
+	) -> Option<(Layout, bool)> {
+		if let Number::Rational(num, denom) = value {
+			if format.mode == NumberFormatMode::Rational {
+				// Rational number, try to lay out as a fraction
+				if let Some(layout) = Layout::rational_layout(
+					num,
+					denom,
+					format,
+					default_font,
+					small_font,
+					color,
+					max_width,
+				) {
+					return Some((layout, true));
+				}
+			}
+		}
+
+		// Render full string of value and see if it fits
+		let string = format.format_number(value);
+		if let Some(layout) = Layout::double_line_string_layout(
+			&string,
+			default_font,
+			small_font,
+			color,
+			max_width,
+			false,
+		) {
+			Some((layout, false))
+		} else {
+			None
+		}
+	}
+
 	pub fn editable_text(string: String, font: &'static Font, color: Color, editor: bool) -> Self {
 		if editor {
 			Layout::EditText(string, font, color)

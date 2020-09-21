@@ -10,7 +10,7 @@ use crate::screen::{Color, Font, Rect, Screen};
 use crate::stack::{Stack, MAX_STACK_INDEX_DIGITS};
 use crate::storage::{available_bytes, store};
 use crate::time::{Now, SimpleDateTimeFormat, SimpleDateTimeToString};
-use crate::undo::{pop_undo_action, UndoAction};
+use crate::undo::pop_undo_action;
 use crate::unit::{unit_menu, AngleUnit};
 use crate::value::{Value, ValueRef};
 use alloc::collections::BTreeMap;
@@ -264,16 +264,7 @@ impl State {
 	}
 
 	pub fn undo(&mut self) -> Result<()> {
-		let action = pop_undo_action()?;
-		match action {
-			UndoAction::Push
-			| UndoAction::Pop(_)
-			| UndoAction::Replace(_)
-			| UndoAction::Swap(_, _)
-			| UndoAction::Clear(_)
-			| UndoAction::RotateDown
-			| UndoAction::SetStackEntry(_, _) => self.stack.undo(action),
-		}
+		self.stack.undo(pop_undo_action()?)
 	}
 
 	pub fn handle_input<ScreenT: Screen>(
@@ -424,16 +415,24 @@ impl State {
 						self.stack.end_edit();
 					}
 					InputEvent::Complex => {
-						let real = self.entry(1)?;
-						let imaginary = self.entry(0)?;
-						self.replace_entries(
-							2,
-							ComplexNumber::from_parts(
-								real.real_number()?.clone(),
-								imaginary.real_number()?.clone(),
-							)
-							.into(),
-						)?;
+						let top = self.entry(0)?;
+						if let Value::Complex(value) = top {
+							let mut items = Vec::new();
+							items.push(store(Value::Number(value.real_part().clone()))?);
+							items.push(store(Value::Number(value.imaginary_part().clone()))?);
+							self.stack.replace_top_with_multiple(items)?;
+						} else {
+							let real = self.entry(1)?;
+							let imaginary = top;
+							self.replace_entries(
+								2,
+								ComplexNumber::from_parts(
+									real.real_number()?.clone(),
+									imaginary.real_number()?.clone(),
+								)
+								.into(),
+							)?;
+						}
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Clear => {

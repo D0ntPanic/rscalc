@@ -219,11 +219,10 @@ impl Stack {
 		self.editor = None;
 	}
 
-	pub fn replace_entries(&mut self, count: usize, value: Value) -> Result<()> {
+	fn replace_entries_internal(&mut self, count: usize, value: Value) -> Result<()> {
 		if count > self.entries.len() {
 			return Err(Error::NotEnoughValues);
 		}
-		let old_values = self.entries[self.entries.len() - count..].to_vec();
 
 		// Replace what will be the top entry with the new value
 		self.set_entry_internal(count - 1, value)?;
@@ -233,9 +232,43 @@ impl Stack {
 			self.pop_internal();
 		}
 
-		push_undo_action(UndoAction::Replace(old_values));
 		self.push_new_entry = true;
 		self.editor = None;
+		Ok(())
+	}
+
+	pub fn replace_entries(&mut self, count: usize, value: Value) -> Result<()> {
+		if count > self.entries.len() {
+			return Err(Error::NotEnoughValues);
+		}
+		let old_values = self.entries[self.entries.len() - count..].to_vec();
+		self.replace_entries_internal(count, value)?;
+		push_undo_action(UndoAction::Replace(old_values));
+		Ok(())
+	}
+
+	pub fn replace_top_with_multiple(&mut self, items: Vec<ValueRef>) -> Result<()> {
+		let old_value = self.top_ref().clone();
+		if items.len() == 0 {
+			self.pop_internal();
+		} else {
+			if (self.entries.len() + items.len() - 1) >= MAX_STACK_ENTRIES {
+				return Err(Error::StackOverflow);
+			}
+			*self.entry_mut(0).unwrap() = items[0].clone();
+			self.entries.extend_from_slice(&items[1..]);
+
+			// Update rendering cache for new indicies
+			let mut new_cache = BTreeMap::new();
+			for (key, value) in &self.render_cache {
+				new_cache.insert(key + items.len() - 1, value.clone());
+			}
+			self.render_cache = new_cache;
+			self.push_new_entry = true;
+			self.empty = false;
+			self.editor = None;
+		}
+		push_undo_action(UndoAction::ReplaceTopWithMultiple(items.len(), old_value));
 		Ok(())
 	}
 
@@ -453,6 +486,9 @@ impl Stack {
 			}
 			UndoAction::SetStackEntry(idx, value) => {
 				self.set_entry_internal(idx, value.get()?)?;
+			}
+			UndoAction::ReplaceTopWithMultiple(count, value) => {
+				self.replace_entries_internal(count, value.get()?)?;
 			}
 		}
 		Ok(())

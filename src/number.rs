@@ -57,6 +57,7 @@ pub enum IntegerMode {
 	SizedInteger(usize, bool),
 }
 
+#[derive(Clone)]
 pub struct NumberFormat {
 	pub mode: NumberFormatMode,
 	pub integer_mode: IntegerMode,
@@ -178,6 +179,13 @@ impl Number {
 			Number::Integer(value) => value.sign() == Sign::Minus,
 			Number::Rational(numerator, _) => numerator.sign() == Sign::Minus,
 			Number::Decimal(value) => value < &Decimal::zero(),
+		}
+	}
+
+	pub fn is_rational(&self) -> bool {
+		match self {
+			Number::Rational(_, _) => true,
+			_ => false,
 		}
 	}
 
@@ -549,13 +557,13 @@ impl NumberFormat {
 			integer_radix: 16,
 			show_alt_hex: self.show_alt_hex,
 			show_alt_float: self.show_alt_float,
-			limit_size: true,
+			limit_size: self.limit_size,
 		}
 	}
 
 	pub fn decimal_format(&self) -> Self {
 		NumberFormat {
-			mode: NumberFormatMode::Normal,
+			mode: self.mode,
 			integer_mode: self.integer_mode,
 			decimal_point: self.decimal_point,
 			thousands: self.thousands,
@@ -564,7 +572,7 @@ impl NumberFormat {
 			integer_radix: 10,
 			show_alt_hex: self.show_alt_hex,
 			show_alt_float: self.show_alt_float,
-			limit_size: true,
+			limit_size: self.limit_size,
 		}
 	}
 

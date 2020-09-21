@@ -70,7 +70,6 @@ impl ComplexNumber {
 	}
 
 	pub fn format(&self, format: &NumberFormat) -> String {
-		let format = format.with_max_precision(6);
 		if self.imaginary.is_negative() {
 			format.format_number(&self.real)
 				+ " - " + &format.format_number(&-&self.imaginary)

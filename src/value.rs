@@ -12,7 +12,7 @@ use crate::time::{SimpleDateTimeFormat, SimpleDateTimeToString};
 use crate::unit::{AngleUnit, CompositeUnit, TimeUnit, Unit};
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
-use alloc::string::{String, ToString};
+use alloc::string::String;
 use alloc::vec::Vec;
 use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 use core::convert::TryFrom;
@@ -723,22 +723,8 @@ impl Value {
 		}
 	}
 
-	pub fn render(
-		&self,
-		format: &NumberFormat,
-		editor: &Option<NumberEditor>,
-		max_width: i32,
-	) -> Layout {
-		let mut max_width = max_width;
-
-		// Get string for number. If there is an editor, use editor state instead.
-		let string = match editor {
-			Some(editor) => editor.to_string(format),
-			None => self.format(&format),
-		};
-
-		// Check for alternate representation strings
-		let mut alt_string = match self.real_number() {
+	fn alternate_hex_layout(&self, format: &NumberFormat, max_width: i32) -> Option<Layout> {
+		match self.real_number() {
 			Ok(Number::Integer(int)) => {
 				// Integer, if number is ten or greater check for the
 				// hexadecimal alternate form
@@ -750,21 +736,45 @@ impl Value {
 						|| int >= &10.to_bigint().unwrap()
 						|| int <= &(-(format.integer_radix as i8)).to_bigint().unwrap()
 						|| int >= &(format.integer_radix as i8).to_bigint().unwrap())
+					&& int.bits() <= MAX_SHORT_DISPLAY_BITS
 				{
-					if format.integer_radix == 10 {
-						Some(self.format(&format.hex_format()))
+					// There is an alternate form to display, try to generate a single
+					// line layout for it.
+					let string = if format.integer_radix == 10 {
+						self.format(&format.hex_format())
 					} else {
-						Some(self.format(&format.decimal_format()))
-					}
+						self.format(&format.decimal_format())
+					};
+					Layout::single_line_string_layout(
+						&string,
+						&SANS_16,
+						Color::ContentText,
+						max_width,
+						false,
+					)
 				} else {
 					None
 				}
 			}
-			Ok(Number::Rational(_, _)) => {
-				// Rational, show floating point as alternate form if enabled
+			_ => None,
+		}
+	}
+
+	fn alternate_float_layout(&self, format: &NumberFormat, max_width: i32) -> Option<Layout> {
+		match self {
+			Value::Number(Number::Rational(_, _))
+			| Value::NumberWithUnit(Number::Rational(_, _), _) => {
+				// Real number in rational form
 				if format.show_alt_float && format.mode == NumberFormatMode::Rational {
 					if let Ok(number) = self.real_number() {
-						Some(format.decimal_format().format_decimal(&number.to_decimal()))
+						let string = format.decimal_format().format_decimal(&number.to_decimal());
+						Layout::single_line_string_layout(
+							&string,
+							&SANS_16,
+							Color::ContentText,
+							max_width,
+							false,
+						)
 					} else {
 						None
 					}
@@ -772,15 +782,85 @@ impl Value {
 					None
 				}
 			}
-			_ => None,
-		};
-
-		// If alternate representation is too wide, don't display it
-		if let Some(alt) = &alt_string {
-			let width = SANS_16.width(alt) + 4;
-			if width > max_width {
-				alt_string = None;
+			Value::Complex(value) => {
+				if format.show_alt_float
+					&& format.mode == NumberFormatMode::Rational
+					&& (value.real_part().is_rational() || value.imaginary_part().is_rational())
+				{
+					// Complex number with at least one part in rational form
+					let real_part = value.real_part().to_decimal();
+					let imaginary_part = value.imaginary_part().to_decimal();
+					let string = if imaginary_part.is_sign_negative() {
+						format.with_max_precision(8).format_decimal(&real_part)
+							+ " - " + &format
+							.with_max_precision(8)
+							.format_decimal(&-&*imaginary_part)
+							+ "ℹ"
+					} else {
+						format.with_max_precision(8).format_decimal(&real_part)
+							+ " + " + &format.with_max_precision(8).format_decimal(&imaginary_part)
+							+ "ℹ"
+					};
+					Layout::single_line_string_layout(
+						&string,
+						&SANS_16,
+						Color::ContentText,
+						max_width,
+						false,
+					)
+				} else {
+					None
+				}
 			}
+			_ => None,
+		}
+	}
+
+	pub fn render(
+		&self,
+		format: &NumberFormat,
+		editor: &Option<NumberEditor>,
+		max_width: i32,
+	) -> Layout {
+		let mut max_width = max_width;
+
+		// First check for an active editor. There can't be units at this stage so ignore
+		// them at this point.
+		if let Some(editor) = editor {
+			// Currently editing number, format editor text
+			let mut layout = if let Some(layout) = Layout::double_line_string_layout(
+				&editor.to_string(format),
+				&SANS_24,
+				&SANS_20,
+				Color::ContentText,
+				max_width,
+				true,
+			) {
+				// Full editor representation is OK, display it
+				layout
+			} else {
+				// Editor text cannot fit in the layout constaints, display floating
+				// point representation instead. Editor only operates on real numbers
+				// so we assume that it is a real number.
+				Layout::single_line_decimal_layout(
+					&self.real_number().unwrap().to_decimal(),
+					format,
+					"",
+					"",
+					&SANS_24,
+					Color::ContentText,
+					max_width,
+				)
+			};
+
+			// If the hex representation is enabled and valid, show it below
+			if let Some(alt_layout) = self.alternate_hex_layout(format, max_width) {
+				let mut alt_layout_items = Vec::new();
+				alt_layout_items.push(layout);
+				alt_layout_items.push(alt_layout);
+				layout = Layout::Vertical(alt_layout_items);
+			}
+			return layout;
 		}
 
 		// Generate unit layout if there are units
@@ -796,204 +876,193 @@ impl Value {
 			}
 		}
 
-		// Create layout for the default single line string rendering
-		let mut layout = Layout::editable_text(
-			string.clone(),
-			&SANS_24,
-			Color::ContentText,
-			editor.is_some(),
-		);
-
-		// Check for more complex renderings
-		let mut rational = false;
-		if format.mode == NumberFormatMode::Rational {
-			if let Ok(Number::Rational(num, denom)) = self.real_number() {
-				// Check to see if rational number has too much precision to display here
-				if num.bits() <= MAX_SHORT_DISPLAY_BITS && denom.bits() <= MAX_SHORT_DISPLAY_BITS {
-					// Rational number, display as an integer and fraction. Break rational
-					// into an integer part and fractional part.
-					let int = num / denom.to_bigint().unwrap();
-					let mut num = if &int < &0.to_bigint().unwrap() {
-						-num - -&int * &denom.to_bigint().unwrap()
-					} else {
-						num - &int * &denom.to_bigint().unwrap()
-					};
-
-					// Get strings for the parts of the rational
-					let int_str = if int == 0.to_bigint().unwrap() {
-						if &num < &0.to_bigint().unwrap() {
-							num = -num;
-							"-".to_string()
-						} else {
-							"".to_string()
-						}
-					} else {
-						format.format_bigint(&int)
-					};
-					let num_str = format.format_bigint(&num);
-					let denom_str = format.format_bigint(&denom.to_bigint().unwrap());
-
-					// Construct a layout for the rational
-					let mut rational_horizontal_items = Vec::new();
-					rational_horizontal_items.push(Layout::Text(
-						int_str,
-						&SANS_24,
-						Color::ContentText,
-					));
-					rational_horizontal_items.push(Layout::HorizontalSpace(4));
-					rational_horizontal_items.push(Layout::Fraction(
-						Box::new(Layout::Text(num_str, &SANS_20, Color::ContentText)),
-						Box::new(Layout::Text(denom_str, &SANS_20, Color::ContentText)),
-						Color::ContentText,
-					));
-					let rational_layout = Layout::Horizontal(rational_horizontal_items);
-
-					// Check fractional representation width
-					if rational_layout.width() <= max_width {
-						// Fractional representation fits, use it
-						layout = rational_layout;
-						rational = true;
-					} else {
-						// Fractional representation is too wide, represent as float
-						alt_string = None;
-					}
-				}
-			}
-		}
-
-		if !rational {
-			// If alternate representation is the same as normal representation, don't display it
-			if let Some(alt) = &alt_string {
-				if alt == &string {
-					alt_string = None;
-				}
-			}
-
-			// Integer or decimal float, first create a layout of the default
-			// representation with a smaller font. If the default layout is too
-			// wide, we will first reduce font size before splitting to multiple
-			// lines.
-			let min_layout = Layout::editable_text(
-				string.clone(),
-				&SANS_20,
-				Color::ContentText,
-				editor.is_some(),
-			);
-
-			if min_layout.width() > max_width * 2 {
-				// String cannot fit onto two lines, render as decimal float
-				if let Ok(number) = self.real_number() {
-					let string = format.format_decimal(&number.to_decimal());
-					if let Some(alt) = &alt_string {
-						if alt == &string {
-							// Don't display the same representation as an alternate
-							alt_string = None;
-						}
-					}
-
-					layout = Layout::editable_text(
-						string,
-						&SANS_24,
-						Color::ContentText,
-						editor.is_some(),
-					);
-				} else {
-					// TODO: Truncate non-numeric that doesn't fit
-				}
-			} else if min_layout.width() > max_width {
-				// String does not fit, try to split it to two lines
-				let chars: Vec<char> = string.chars().collect();
-				let mut split_point = 0;
-				let mut width = 0;
-				for i in 0..chars.len() {
-					let mut char_str = String::new();
-					char_str.push(chars[(chars.len() - 1) - i]);
-					split_point = i;
-					// Add in the width of this character
-					if i == 0 {
-						width += SANS_20.width(&char_str);
-					} else {
-						width += SANS_20.advance(&char_str);
-					}
-					if width > max_width {
-						break;
-					}
-				}
-
-				// Check for a puncuation point near the split point, and move the split
-				// there if there is one.
-				for i in 0..5 {
-					if i > split_point {
-						break;
-					}
-					match chars[(chars.len() - 1) - (split_point - i)] {
-						',' | '.' | 'x' | ' ' | '\'' => {
-							split_point -= i;
-							break;
-						}
-						_ => (),
-					}
-				}
-
-				// Split the line into two lines
-				let (first, second) = chars.split_at(chars.len() - split_point);
-				let first_str: String = first.iter().collect();
-				let second_str: String = second.iter().collect();
-				let mut layout_items = Vec::new();
-				layout_items.push(Layout::Text(first_str, &SANS_20, Color::ContentText));
-				layout_items.push(Layout::editable_text(
-					second_str,
+		// Check full detailed layout of value to see if it is valid and fits within the max size
+		match self {
+			Value::Number(value) | Value::NumberWithUnit(value, _) => {
+				// Real number, try to render full representation
+				if let Some((layout, is_rational)) = Layout::double_line_number_layout(
+					value,
+					format,
+					&SANS_24,
 					&SANS_20,
 					Color::ContentText,
-					editor.is_some(),
-				));
-				let split_layout = Layout::Vertical(layout_items);
-				if split_layout.width() > max_width {
-					// String cannot fit onto two lines, render as decimal float
-					if let Ok(number) = self.real_number() {
-						let string = format.format_decimal(&number.to_decimal());
-						if let Some(alt) = &alt_string {
-							if alt == &string {
-								// Don't display the same representation as an alternate
-								alt_string = None;
-							}
-						}
+					max_width,
+				) {
+					// If units are present, add them to the layout
+					let mut layout = if let Some(unit_layout) = unit_layout {
+						let mut horizontal_items = Vec::new();
+						horizontal_items.push(layout);
+						horizontal_items.push(unit_layout);
+						Layout::Horizontal(horizontal_items)
+					} else {
+						layout
+					};
 
-						layout = Layout::editable_text(
-							string,
+					// Check to see if alternate representations are available
+					if let Some(alt_layout) = self.alternate_hex_layout(format, max_width) {
+						let mut alt_layout_items = Vec::new();
+						alt_layout_items.push(layout);
+						alt_layout_items.push(alt_layout);
+						layout = Layout::Vertical(alt_layout_items);
+					} else if is_rational {
+						if let Some(alt_layout) = self.alternate_float_layout(format, max_width) {
+							let mut alt_layout_items = Vec::new();
+							alt_layout_items.push(layout);
+							alt_layout_items.push(alt_layout);
+							layout = Layout::Vertical(alt_layout_items);
+						}
+					}
+					return layout;
+				}
+			}
+			Value::Complex(value) => {
+				// Complex number, try to render the full representation of both real and
+				// imaginary parts.
+				let format = format.decimal_format();
+				if let Some(real_layout) = Layout::single_line_number_layout(
+					value.real_part(),
+					&format,
+					&SANS_24,
+					&SANS_20,
+					Color::ContentText,
+					max_width,
+				) {
+					let (sign_text, imaginary_part) = if value.imaginary_part().is_negative() {
+						(" - ", Cow::Owned(-value.imaginary_part()))
+					} else {
+						(" + ", Cow::Borrowed(value.imaginary_part()))
+					};
+
+					if let Some(imaginary_layout) = Layout::single_line_number_layout(
+						&*imaginary_part,
+						&format,
+						&SANS_24,
+						&SANS_20,
+						Color::ContentText,
+						max_width,
+					) {
+						// Both parts have a representation, construct final layout
+						let mut horizontal_items = Vec::new();
+						horizontal_items.push(real_layout);
+						horizontal_items.push(Layout::StaticText(
+							sign_text,
 							&SANS_24,
 							Color::ContentText,
-							editor.is_some(),
-						);
-					} else {
-						// TODO: Truncate non-numeric that doesn't fit
+						));
+						horizontal_items.push(imaginary_layout);
+						horizontal_items.push(Layout::StaticText(
+							"ℹ",
+							&SANS_24,
+							Color::ContentText,
+						));
+						let mut layout = Layout::Horizontal(horizontal_items);
+
+						if layout.width() <= max_width {
+							// Layout fits. Check to see if floating point alternate
+							// representation is enabled
+							if let Some(alt_layout) =
+								self.alternate_float_layout(&format, max_width)
+							{
+								let mut alt_layout_items = Vec::new();
+								alt_layout_items.push(layout);
+								alt_layout_items.push(alt_layout);
+								layout = Layout::Vertical(alt_layout_items);
+							}
+							return layout;
+						}
 					}
-				} else {
-					// String fits onto two lines
-					layout = split_layout;
 				}
-			} else if layout.width() > max_width {
-				layout = min_layout;
+
+				// Try to render the floating point representation on a single line
+				let string = value.format(&format);
+				if let Some(layout) = Layout::single_line_string_layout(
+					&string,
+					&SANS_24,
+					Color::ContentText,
+					max_width,
+					false,
+				) {
+					return layout;
+				}
+			}
+			_ => (),
+		}
+
+		// Generate simple layout that will always fit
+		match self {
+			Value::Number(value) | Value::NumberWithUnit(value, _) => {
+				// Render real numbers as a decimal of a precision that will fit
+				let layout = Layout::single_line_decimal_layout(
+					&value.to_decimal(),
+					format,
+					"",
+					"",
+					&SANS_24,
+					Color::ContentText,
+					max_width,
+				);
+
+				// If units are present, add them to the layout
+				if let Some(unit_layout) = unit_layout {
+					let mut horizontal_items = Vec::new();
+					horizontal_items.push(layout);
+					horizontal_items.push(unit_layout);
+					Layout::Horizontal(horizontal_items)
+				} else {
+					layout
+				}
+			}
+			Value::Complex(value) => {
+				// Render complex number as two lines, one with the decimal real part, and
+				// one with the decimal imaginary part.
+				let format = format.decimal_format();
+				let (sign_text, imaginary_part) = if value.imaginary_part().is_negative() {
+					("- ", Cow::Owned(-value.imaginary_part()))
+				} else {
+					("+ ", Cow::Borrowed(value.imaginary_part()))
+				};
+				let real_layout = Layout::single_line_decimal_layout(
+					&value.real_part().to_decimal(),
+					&format,
+					"",
+					"",
+					&SANS_20,
+					Color::ContentText,
+					max_width,
+				);
+				let imaginary_layout = Layout::single_line_decimal_layout(
+					&imaginary_part.to_decimal(),
+					&format,
+					sign_text,
+					"ℹ",
+					&SANS_20,
+					Color::ContentText,
+					max_width,
+				);
+
+				let mut vertical_layout_items = Vec::new();
+				vertical_layout_items.push(real_layout);
+				vertical_layout_items.push(imaginary_layout);
+				Layout::Vertical(vertical_layout_items)
+			}
+			_ => {
+				// Other type of value, just display as a string
+				// TODO: Use truncatable rendering here so that it will never fail
+				let string = self.to_string();
+				if let Some(layout) = Layout::double_line_string_layout(
+					&string,
+					&SANS_24,
+					&SANS_20,
+					Color::ContentText,
+					max_width,
+					false,
+				) {
+					layout
+				} else {
+					Layout::StaticText("<Render error>", &SANS_24, Color::ContentText)
+				}
 			}
 		}
-
-		// Add units to layout
-		if let Some(unit_layout) = unit_layout {
-			let mut items = Vec::new();
-			items.push(layout);
-			items.push(unit_layout);
-			layout = Layout::Horizontal(items);
-		}
-
-		// Add alternate string to layout if there was one
-		if let Some(alt_string) = alt_string {
-			let mut alt_layout_items = Vec::new();
-			alt_layout_items.push(layout);
-			alt_layout_items.push(Layout::Text(alt_string, &SANS_16, Color::ContentText));
-			layout = Layout::Vertical(alt_layout_items);
-		}
-
-		layout
 	}
 }
 
