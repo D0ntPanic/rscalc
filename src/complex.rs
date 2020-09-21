@@ -1,5 +1,6 @@
 use crate::number::{Number, NumberFormat, ToNumber};
 use alloc::string::String;
+use intel_dfp::Decimal;
 
 // Maximum integer size before it is converted into a floating point number.
 pub const MAX_COMPLEX_INTEGER_BITS: u64 = 1024;
@@ -79,6 +80,22 @@ impl ComplexNumber {
 		}
 	}
 
+	pub fn magnitude(&self) -> Number {
+		(&self.real * &self.real + &self.imaginary * &self.imaginary).sqrt()
+	}
+
+	pub fn polar_angle(&self) -> Number {
+		if self.real.is_zero() && self.imaginary.is_zero() {
+			0.to_number()
+		} else {
+			let mut angle = Decimal::atan2(&self.imaginary.to_decimal(), &self.real.to_decimal());
+			if angle.is_sign_negative() {
+				angle += Decimal::pi() * Decimal::from(2);
+			}
+			Number::Decimal(angle)
+		}
+	}
+
 	pub fn sqrt(&self) -> Self {
 		let magnitude = (&self.real * &self.real + &self.imaginary * &self.imaginary).sqrt();
 		let imaginary = ((&magnitude - &self.real) / 2.to_number()).sqrt();
@@ -90,6 +107,75 @@ impl ComplexNumber {
 				imaginary
 			}),
 		}
+	}
+
+	pub fn exp(&self) -> Self {
+		let real_exp = self.real.exp();
+		let cos_imag = self.imaginary.cos();
+		let sin_imag = self.imaginary.sin();
+		ComplexNumber {
+			real: &real_exp * &cos_imag,
+			imaginary: &real_exp * &sin_imag,
+		}
+	}
+
+	pub fn ln(&self) -> Self {
+		ComplexNumber {
+			real: self.magnitude().ln(),
+			imaginary: self.polar_angle(),
+		}
+	}
+
+	pub fn exp10(&self) -> Self {
+		ComplexNumber::from_real(10.to_number()).pow(self)
+	}
+
+	pub fn log(&self) -> Self {
+		self.ln() / ComplexNumber::from_real(10.to_number().ln())
+	}
+
+	pub fn pow(&self, power: &ComplexNumber) -> Self {
+		(power * &self.ln()).exp()
+	}
+
+	pub fn sin(&self) -> Self {
+		ComplexNumber {
+			real: &self.real.sin() * &self.imaginary.cosh(),
+			imaginary: &self.real.cos() * &self.imaginary.sinh(),
+		}
+	}
+
+	pub fn cos(&self) -> Self {
+		ComplexNumber {
+			real: &self.real.cos() * &self.imaginary.cosh(),
+			imaginary: &-self.real.sin() * &self.imaginary.sinh(),
+		}
+	}
+
+	pub fn tan(&self) -> Self {
+		self.sin() / self.cos()
+	}
+
+	pub fn asin(&self) -> Self {
+		ComplexNumber::from_parts(0.to_number(), -1.to_number())
+			* ((ComplexNumber::from_real(1.to_number()) - (self * self)).sqrt()
+				+ &ComplexNumber::from_parts(0.to_number(), 1.to_number()) * self)
+				.ln()
+	}
+
+	pub fn acos(&self) -> Self {
+		ComplexNumber::from_parts(0.to_number(), -1.to_number())
+			* (&(ComplexNumber::from_parts(0.to_number(), 1.to_number())
+				* (ComplexNumber::from_real(1.to_number()) - (self * self)).sqrt())
+				+ self)
+				.ln()
+	}
+
+	pub fn atan(&self) -> Self {
+		ComplexNumber::from_parts(0.to_number(), -1.to_number() / 2.to_number())
+			* ((&ComplexNumber::from_parts(0.to_number(), 1.to_number()) - self)
+				/ (&ComplexNumber::from_parts(0.to_number(), 1.to_number()) + self))
+				.ln()
 	}
 
 	fn complex_add(&self, other: &Self) -> Self {

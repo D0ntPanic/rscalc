@@ -42,6 +42,15 @@ impl Value {
 		}
 	}
 
+	pub fn complex_number<'a>(&'a self) -> Result<Cow<'a, ComplexNumber>> {
+		match self {
+			Value::Number(num) => Ok(Cow::Owned(ComplexNumber::from_real(num.clone()))),
+			Value::NumberWithUnit(num, _) => Ok(Cow::Owned(ComplexNumber::from_real(num.clone()))),
+			Value::Complex(value) => Ok(Cow::Borrowed(value)),
+			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => Err(Error::DataTypeMismatch),
+		}
+	}
+
 	pub fn to_int<'a>(&'a self) -> Result<Cow<'a, BigInt>> {
 		match self {
 			Value::Number(num) => num.to_int(),
@@ -90,7 +99,13 @@ impl Value {
 	}
 
 	pub fn pow(&self, power: &Value) -> Result<Value> {
-		Ok(Value::Number(self.real_number()?.pow(power.real_number()?)))
+		if let Value::Complex(value) = self {
+			Ok(Self::check_complex(value.pow(&*power.complex_number()?)))
+		} else if let Value::Complex(power) = power {
+			Ok(Self::check_complex(self.complex_number()?.pow(power)))
+		} else {
+			Ok(Value::Number(self.real_number()?.pow(power.real_number()?)))
+		}
 	}
 
 	pub fn sqrt(&self) -> Result<Value> {
@@ -109,19 +124,39 @@ impl Value {
 	}
 
 	pub fn log(&self) -> Result<Value> {
-		Ok(Value::Number(self.real_number()?.log()))
+		if let Value::Complex(value) = self {
+			Ok(Self::check_complex(value.log()))
+		} else if self.real_number()?.is_negative() {
+			Ok(Self::check_complex(self.complex_number()?.log()))
+		} else {
+			Ok(Value::Number(self.real_number()?.log()))
+		}
 	}
 
 	pub fn exp10(&self) -> Result<Value> {
-		Ok(Value::Number(self.real_number()?.exp10()))
+		if let Value::Complex(value) = self {
+			Ok(Self::check_complex(value.exp10()))
+		} else {
+			Ok(Value::Number(self.real_number()?.exp10()))
+		}
 	}
 
 	pub fn ln(&self) -> Result<Value> {
-		Ok(Value::Number(self.real_number()?.ln()))
+		if let Value::Complex(value) = self {
+			Ok(Self::check_complex(value.ln()))
+		} else if self.real_number()?.is_negative() {
+			Ok(Self::check_complex(self.complex_number()?.ln()))
+		} else {
+			Ok(Value::Number(self.real_number()?.ln()))
+		}
 	}
 
 	pub fn exp(&self) -> Result<Value> {
-		Ok(Value::Number(self.real_number()?.exp()))
+		if let Value::Complex(value) = self {
+			Ok(Self::check_complex(value.exp()))
+		} else {
+			Ok(Value::Number(self.real_number()?.exp()))
+		}
 	}
 
 	pub fn sin(&self, angle_mode: AngleUnit) -> Result<Value> {
@@ -135,6 +170,7 @@ impl Value {
 					_ => Ok(Value::Number(num.angle_to_radians(angle_mode).sin())),
 				}
 			}
+			Value::Complex(value) => Ok(Self::check_complex(value.sin())),
 			_ => Ok(Value::Number(
 				self.real_number()?.angle_to_radians(angle_mode).sin(),
 			)),
@@ -152,6 +188,7 @@ impl Value {
 					_ => Ok(Value::Number(num.angle_to_radians(angle_mode).cos())),
 				}
 			}
+			Value::Complex(value) => Ok(Self::check_complex(value.cos())),
 			_ => Ok(Value::Number(
 				self.real_number()?.angle_to_radians(angle_mode).cos(),
 			)),
@@ -169,6 +206,7 @@ impl Value {
 					_ => Ok(Value::Number(num.angle_to_radians(angle_mode).tan())),
 				}
 			}
+			Value::Complex(value) => Ok(Self::check_complex(value.tan())),
 			_ => Ok(Value::Number(
 				self.real_number()?.angle_to_radians(angle_mode).tan(),
 			)),
@@ -176,33 +214,51 @@ impl Value {
 	}
 
 	pub fn asin(&self, angle_mode: AngleUnit) -> Result<Value> {
-		Ok(Value::NumberWithUnit(
-			self.real_number()?
-				.asin()
-				.angle_from_radians(angle_mode)
-				.into_owned(),
-			CompositeUnit::single_unit(angle_mode.into()),
-		))
+		if let Value::Complex(value) = self {
+			Ok(Self::check_complex(value.asin()))
+		} else {
+			let result = self.real_number()?.asin();
+			if result.is_nan() {
+				Ok(Self::check_complex(self.complex_number()?.asin()))
+			} else {
+				Ok(Value::NumberWithUnit(
+					result.angle_from_radians(angle_mode).into_owned(),
+					CompositeUnit::single_unit(angle_mode.into()),
+				))
+			}
+		}
 	}
 
 	pub fn acos(&self, angle_mode: AngleUnit) -> Result<Value> {
-		Ok(Value::NumberWithUnit(
-			self.real_number()?
-				.acos()
-				.angle_from_radians(angle_mode)
-				.into_owned(),
-			CompositeUnit::single_unit(angle_mode.into()),
-		))
+		if let Value::Complex(value) = self {
+			Ok(Self::check_complex(value.acos()))
+		} else {
+			let result = self.real_number()?.acos();
+			if result.is_nan() {
+				Ok(Self::check_complex(self.complex_number()?.acos()))
+			} else {
+				Ok(Value::NumberWithUnit(
+					result.angle_from_radians(angle_mode).into_owned(),
+					CompositeUnit::single_unit(angle_mode.into()),
+				))
+			}
+		}
 	}
 
 	pub fn atan(&self, angle_mode: AngleUnit) -> Result<Value> {
-		Ok(Value::NumberWithUnit(
-			self.real_number()?
-				.atan()
-				.angle_from_radians(angle_mode)
-				.into_owned(),
-			CompositeUnit::single_unit(angle_mode.into()),
-		))
+		if let Value::Complex(value) = self {
+			Ok(Self::check_complex(value.atan()))
+		} else {
+			let result = self.real_number()?.atan();
+			if result.is_nan() {
+				Ok(Self::check_complex(self.complex_number()?.atan()))
+			} else {
+				Ok(Value::NumberWithUnit(
+					result.angle_from_radians(angle_mode).into_owned(),
+					CompositeUnit::single_unit(angle_mode.into()),
+				))
+			}
+		}
 	}
 
 	pub fn add_unit(&self, unit: Unit) -> Result<Value> {

@@ -189,6 +189,13 @@ impl Number {
 		}
 	}
 
+	pub fn is_nan(&self) -> bool {
+		match self {
+			Number::Decimal(value) => value.is_nan(),
+			_ => false,
+		}
+	}
+
 	pub fn sqrt(&self) -> Number {
 		match &self {
 			Number::Integer(value) => {
@@ -264,17 +271,41 @@ impl Number {
 		Number::Decimal(self.to_decimal().atan())
 	}
 
+	pub fn sinh(&self) -> Number {
+		Number::Decimal(self.to_decimal().sinh())
+	}
+
+	pub fn cosh(&self) -> Number {
+		Number::Decimal(self.to_decimal().cosh())
+	}
+
+	pub fn tanh(&self) -> Number {
+		Number::Decimal(self.to_decimal().tanh())
+	}
+
+	pub fn asinh(&self) -> Number {
+		Number::Decimal(self.to_decimal().asinh())
+	}
+
+	pub fn acosh(&self) -> Number {
+		Number::Decimal(self.to_decimal().acosh())
+	}
+
+	pub fn atanh(&self) -> Number {
+		Number::Decimal(self.to_decimal().atanh())
+	}
+
 	pub fn angle_to_radians<'a>(&'a self, angle_mode: AngleUnit) -> Cow<'a, Number> {
 		match angle_mode {
 			AngleUnit::Radians => Cow::Borrowed(self),
-			_ => Cow::Owned(AngleUnit::Radians.to_unit(self, &angle_mode)),
+			_ => Cow::Owned(angle_mode.to_unit(self, &AngleUnit::Radians)),
 		}
 	}
 
 	pub fn angle_from_radians<'a>(&'a self, angle_mode: AngleUnit) -> Cow<'a, Number> {
 		match angle_mode {
 			AngleUnit::Radians => Cow::Borrowed(self),
-			_ => Cow::Owned(angle_mode.to_unit(self, &AngleUnit::Radians)),
+			_ => Cow::Owned(AngleUnit::Radians.to_unit(self, &angle_mode)),
 		}
 	}
 
