@@ -62,6 +62,13 @@ impl ComplexNumber {
 		self.imaginary.is_zero()
 	}
 
+	pub fn is_out_of_range(&self) -> bool {
+		self.real.is_infinite()
+			|| self.real.is_nan()
+			|| self.imaginary.is_infinite()
+			|| self.imaginary.is_nan()
+	}
+
 	pub fn to_string(&self) -> String {
 		if self.imaginary.is_negative() {
 			self.real.to_string() + " - " + &(-&self.imaginary).to_string() + "ℹ"
@@ -98,9 +105,19 @@ impl ComplexNumber {
 
 	pub fn sqrt(&self) -> Self {
 		let magnitude = (&self.real * &self.real + &self.imaginary * &self.imaginary).sqrt();
-		let imaginary = ((&magnitude - &self.real) / 2.to_number()).sqrt();
+		let mut real_squared = (&self.real + &magnitude) / 2.to_number();
+		let mut imaginary_squared = (&magnitude - &self.real) / 2.to_number();
+		if real_squared.is_negative() {
+			// Numerical error can cause this to be a small negative, coerce to zero if it happens
+			real_squared = 0.to_number();
+		}
+		if imaginary_squared.is_negative() {
+			// Numerical error can cause this to be a small negative, coerce to zero if it happens
+			imaginary_squared = 0.to_number();
+		}
+		let imaginary = imaginary_squared.sqrt();
 		ComplexNumber {
-			real: Self::check_int_bounds(((&self.real + &magnitude) / 2.to_number()).sqrt()),
+			real: Self::check_int_bounds(real_squared.sqrt()),
 			imaginary: Self::check_int_bounds(if self.imaginary.is_negative() {
 				-imaginary
 			} else {

@@ -426,10 +426,10 @@ impl State {
 							let imaginary = top;
 							self.replace_entries(
 								2,
-								ComplexNumber::from_parts(
+								Value::check_complex(ComplexNumber::from_parts(
 									real.real_number()?.clone(),
 									imaginary.real_number()?.clone(),
-								)
+								))?
 								.into(),
 							)?;
 						}

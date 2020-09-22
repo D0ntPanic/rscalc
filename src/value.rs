@@ -100,9 +100,9 @@ impl Value {
 
 	pub fn pow(&self, power: &Value) -> Result<Value> {
 		if let Value::Complex(value) = self {
-			Ok(Self::check_complex(value.pow(&*power.complex_number()?)))
+			Self::check_complex(value.pow(&*power.complex_number()?))
 		} else if let Value::Complex(power) = power {
-			Ok(Self::check_complex(self.complex_number()?.pow(power)))
+			Self::check_complex(self.complex_number()?.pow(power))
 		} else {
 			Ok(Value::Number(self.real_number()?.pow(power.real_number()?)))
 		}
@@ -110,13 +110,11 @@ impl Value {
 
 	pub fn sqrt(&self) -> Result<Value> {
 		if let Value::Complex(value) = self {
-			Ok(Self::check_complex(value.sqrt()))
+			Self::check_complex(value.sqrt())
 		} else {
 			let value = self.real_number()?;
 			if value.is_negative() {
-				Ok(Self::check_complex(
-					ComplexNumber::from_real(value.clone()).sqrt(),
-				))
+				Self::check_complex(ComplexNumber::from_real(value.clone()).sqrt())
 			} else {
 				Ok(Value::Number(self.real_number()?.sqrt()))
 			}
@@ -125,9 +123,9 @@ impl Value {
 
 	pub fn log(&self) -> Result<Value> {
 		if let Value::Complex(value) = self {
-			Ok(Self::check_complex(value.log()))
+			Self::check_complex(value.log())
 		} else if self.real_number()?.is_negative() {
-			Ok(Self::check_complex(self.complex_number()?.log()))
+			Self::check_complex(self.complex_number()?.log())
 		} else {
 			Ok(Value::Number(self.real_number()?.log()))
 		}
@@ -135,7 +133,7 @@ impl Value {
 
 	pub fn exp10(&self) -> Result<Value> {
 		if let Value::Complex(value) = self {
-			Ok(Self::check_complex(value.exp10()))
+			Self::check_complex(value.exp10())
 		} else {
 			Ok(Value::Number(self.real_number()?.exp10()))
 		}
@@ -143,9 +141,9 @@ impl Value {
 
 	pub fn ln(&self) -> Result<Value> {
 		if let Value::Complex(value) = self {
-			Ok(Self::check_complex(value.ln()))
+			Self::check_complex(value.ln())
 		} else if self.real_number()?.is_negative() {
-			Ok(Self::check_complex(self.complex_number()?.ln()))
+			Self::check_complex(self.complex_number()?.ln())
 		} else {
 			Ok(Value::Number(self.real_number()?.ln()))
 		}
@@ -153,7 +151,7 @@ impl Value {
 
 	pub fn exp(&self) -> Result<Value> {
 		if let Value::Complex(value) = self {
-			Ok(Self::check_complex(value.exp()))
+			Self::check_complex(value.exp())
 		} else {
 			Ok(Value::Number(self.real_number()?.exp()))
 		}
@@ -170,7 +168,7 @@ impl Value {
 					_ => Ok(Value::Number(num.angle_to_radians(angle_mode).sin())),
 				}
 			}
-			Value::Complex(value) => Ok(Self::check_complex(value.sin())),
+			Value::Complex(value) => Self::check_complex(value.sin()),
 			_ => Ok(Value::Number(
 				self.real_number()?.angle_to_radians(angle_mode).sin(),
 			)),
@@ -188,7 +186,7 @@ impl Value {
 					_ => Ok(Value::Number(num.angle_to_radians(angle_mode).cos())),
 				}
 			}
-			Value::Complex(value) => Ok(Self::check_complex(value.cos())),
+			Value::Complex(value) => Self::check_complex(value.cos()),
 			_ => Ok(Value::Number(
 				self.real_number()?.angle_to_radians(angle_mode).cos(),
 			)),
@@ -206,7 +204,7 @@ impl Value {
 					_ => Ok(Value::Number(num.angle_to_radians(angle_mode).tan())),
 				}
 			}
-			Value::Complex(value) => Ok(Self::check_complex(value.tan())),
+			Value::Complex(value) => Self::check_complex(value.tan()),
 			_ => Ok(Value::Number(
 				self.real_number()?.angle_to_radians(angle_mode).tan(),
 			)),
@@ -215,11 +213,11 @@ impl Value {
 
 	pub fn asin(&self, angle_mode: AngleUnit) -> Result<Value> {
 		if let Value::Complex(value) = self {
-			Ok(Self::check_complex(value.asin()))
+			Self::check_complex(value.asin())
 		} else {
 			let result = self.real_number()?.asin();
 			if result.is_nan() {
-				Ok(Self::check_complex(self.complex_number()?.asin()))
+				Self::check_complex(self.complex_number()?.asin())
 			} else {
 				Ok(Value::NumberWithUnit(
 					result.angle_from_radians(angle_mode).into_owned(),
@@ -231,11 +229,11 @@ impl Value {
 
 	pub fn acos(&self, angle_mode: AngleUnit) -> Result<Value> {
 		if let Value::Complex(value) = self {
-			Ok(Self::check_complex(value.acos()))
+			Self::check_complex(value.acos())
 		} else {
 			let result = self.real_number()?.acos();
 			if result.is_nan() {
-				Ok(Self::check_complex(self.complex_number()?.acos()))
+				Self::check_complex(self.complex_number()?.acos())
 			} else {
 				Ok(Value::NumberWithUnit(
 					result.angle_from_radians(angle_mode).into_owned(),
@@ -247,11 +245,11 @@ impl Value {
 
 	pub fn atan(&self, angle_mode: AngleUnit) -> Result<Value> {
 		if let Value::Complex(value) = self {
-			Ok(Self::check_complex(value.atan()))
+			Self::check_complex(value.atan())
 		} else {
 			let result = self.real_number()?.atan();
 			if result.is_nan() {
-				Ok(Self::check_complex(self.complex_number()?.atan()))
+				Self::check_complex(self.complex_number()?.atan())
 			} else {
 				Ok(Value::NumberWithUnit(
 					result.angle_from_radians(angle_mode).into_owned(),
@@ -337,12 +335,14 @@ impl Value {
 		Ok(Value::Time(time.add(Duration::nanoseconds(nano))))
 	}
 
-	fn check_complex(value: ComplexNumber) -> Value {
-		if value.is_real() {
+	pub fn check_complex(value: ComplexNumber) -> Result<Value> {
+		if value.is_out_of_range() {
+			Err(Error::ValueOutOfRange)
+		} else if value.is_real() {
 			// Use a pure real number if imaginary part is zero
-			Value::Number(value.take_real_part())
+			Ok(Value::Number(value.take_real_part()))
 		} else {
-			Value::Complex(value)
+			Ok(Value::Complex(value))
 		}
 	}
 
@@ -353,9 +353,9 @@ impl Value {
 				Value::NumberWithUnit(right, right_unit) => {
 					Ok(Value::NumberWithUnit(left + right, right_unit.clone()))
 				}
-				Value::Complex(right) => Ok(Self::check_complex(
-					&ComplexNumber::from_real(left.clone()) + right,
-				)),
+				Value::Complex(right) => {
+					Self::check_complex(&ComplexNumber::from_real(left.clone()) + right)
+				}
 				Value::DateTime(right) => self.datetime_add_secs(right, left),
 				Value::Date(right) => self.date_add_days(right, left),
 				Value::Time(right) => self.time_add_secs(right, left),
@@ -366,9 +366,9 @@ impl Value {
 					&left_unit.coerce_to_other(left, right_unit)? + right,
 					right_unit.clone(),
 				)),
-				Value::Complex(right) => Ok(Self::check_complex(
-					&ComplexNumber::from_real(left.clone()) + right,
-				)),
+				Value::Complex(right) => {
+					Self::check_complex(&ComplexNumber::from_real(left.clone()) + right)
+				}
 				Value::DateTime(right) => self.datetime_add_secs(
 					right,
 					&left_unit.coerce_to_other(
@@ -392,13 +392,13 @@ impl Value {
 				),
 			},
 			Value::Complex(left) => match rhs {
-				Value::Number(right) => Ok(Self::check_complex(
-					left + &ComplexNumber::from_real(right.clone()),
-				)),
-				Value::NumberWithUnit(right, _) => Ok(Self::check_complex(
-					left + &ComplexNumber::from_real(right.clone()),
-				)),
-				Value::Complex(right) => Ok(Self::check_complex(left + right)),
+				Value::Number(right) => {
+					Self::check_complex(left + &ComplexNumber::from_real(right.clone()))
+				}
+				Value::NumberWithUnit(right, _) => {
+					Self::check_complex(left + &ComplexNumber::from_real(right.clone()))
+				}
+				Value::Complex(right) => Self::check_complex(left + right),
 				_ => Err(Error::DataTypeMismatch),
 			},
 			Value::DateTime(left) => match rhs {
@@ -455,9 +455,9 @@ impl Value {
 				Value::NumberWithUnit(right, right_unit) => {
 					Ok(Value::NumberWithUnit(left - right, right_unit.clone()))
 				}
-				Value::Complex(right) => Ok(Self::check_complex(
-					&ComplexNumber::from_real(left.clone()) - right,
-				)),
+				Value::Complex(right) => {
+					Self::check_complex(&ComplexNumber::from_real(left.clone()) - right)
+				}
 				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
 					Err(Error::DataTypeMismatch)
 				}
@@ -468,21 +468,21 @@ impl Value {
 					&left_unit.coerce_to_other(left, right_unit)? - right,
 					right_unit.clone(),
 				)),
-				Value::Complex(right) => Ok(Self::check_complex(
-					&ComplexNumber::from_real(left.clone()) - right,
-				)),
+				Value::Complex(right) => {
+					Self::check_complex(&ComplexNumber::from_real(left.clone()) - right)
+				}
 				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
 					Err(Error::DataTypeMismatch)
 				}
 			},
 			Value::Complex(left) => match rhs {
-				Value::Number(right) => Ok(Self::check_complex(
-					left - &ComplexNumber::from_real(right.clone()),
-				)),
-				Value::NumberWithUnit(right, _) => Ok(Self::check_complex(
-					left - &ComplexNumber::from_real(right.clone()),
-				)),
-				Value::Complex(right) => Ok(Self::check_complex(left - right)),
+				Value::Number(right) => {
+					Self::check_complex(left - &ComplexNumber::from_real(right.clone()))
+				}
+				Value::NumberWithUnit(right, _) => {
+					Self::check_complex(left - &ComplexNumber::from_real(right.clone()))
+				}
+				Value::Complex(right) => Self::check_complex(left - right),
 				_ => Err(Error::DataTypeMismatch),
 			},
 			Value::DateTime(left) => match rhs {
@@ -558,9 +558,9 @@ impl Value {
 				Value::NumberWithUnit(right, right_unit) => {
 					Ok(Value::NumberWithUnit(left * right, right_unit.clone()))
 				}
-				Value::Complex(right) => Ok(Self::check_complex(
-					&ComplexNumber::from_real(left.clone()) * right,
-				)),
+				Value::Complex(right) => {
+					Self::check_complex(&ComplexNumber::from_real(left.clone()) * right)
+				}
 				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
 					Err(Error::DataTypeMismatch)
 				}
@@ -572,21 +572,21 @@ impl Value {
 					let left = unit.combine(left, right_unit);
 					Ok(Value::NumberWithUnit(&left * right, unit))
 				}
-				Value::Complex(right) => Ok(Self::check_complex(
-					&ComplexNumber::from_real(left.clone()) * right,
-				)),
+				Value::Complex(right) => {
+					Self::check_complex(&ComplexNumber::from_real(left.clone()) * right)
+				}
 				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
 					Err(Error::DataTypeMismatch)
 				}
 			},
 			Value::Complex(left) => match rhs {
-				Value::Number(right) => Ok(Self::check_complex(
-					left * &ComplexNumber::from_real(right.clone()),
-				)),
-				Value::NumberWithUnit(right, _) => Ok(Self::check_complex(
-					left * &ComplexNumber::from_real(right.clone()),
-				)),
-				Value::Complex(right) => Ok(Self::check_complex(left * right)),
+				Value::Number(right) => {
+					Self::check_complex(left * &ComplexNumber::from_real(right.clone()))
+				}
+				Value::NumberWithUnit(right, _) => {
+					Self::check_complex(left * &ComplexNumber::from_real(right.clone()))
+				}
+				Value::Complex(right) => Self::check_complex(left * right),
 				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
 					Err(Error::DataTypeMismatch)
 				}
@@ -602,9 +602,9 @@ impl Value {
 				Value::NumberWithUnit(right, right_unit) => {
 					Ok(Value::NumberWithUnit(left / right, right_unit.inverse()))
 				}
-				Value::Complex(right) => Ok(Self::check_complex(
-					&ComplexNumber::from_real(left.clone()) / right,
-				)),
+				Value::Complex(right) => {
+					Self::check_complex(&ComplexNumber::from_real(left.clone()) / right)
+				}
 				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
 					Err(Error::DataTypeMismatch)
 				}
@@ -616,21 +616,21 @@ impl Value {
 					let left = unit.combine(left, &right_unit.inverse());
 					Ok(Value::NumberWithUnit(&left / right, unit))
 				}
-				Value::Complex(right) => Ok(Self::check_complex(
-					&ComplexNumber::from_real(left.clone()) / right,
-				)),
+				Value::Complex(right) => {
+					Self::check_complex(&ComplexNumber::from_real(left.clone()) / right)
+				}
 				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
 					Err(Error::DataTypeMismatch)
 				}
 			},
 			Value::Complex(left) => match rhs {
-				Value::Number(right) => Ok(Self::check_complex(
-					left / &ComplexNumber::from_real(right.clone()),
-				)),
-				Value::NumberWithUnit(right, _) => Ok(Self::check_complex(
-					left / &ComplexNumber::from_real(right.clone()),
-				)),
-				Value::Complex(right) => Ok(Self::check_complex(left / right)),
+				Value::Number(right) => {
+					Self::check_complex(left / &ComplexNumber::from_real(right.clone()))
+				}
+				Value::NumberWithUnit(right, _) => {
+					Self::check_complex(left / &ComplexNumber::from_real(right.clone()))
+				}
+				Value::Complex(right) => Self::check_complex(left / right),
 				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
 					Err(Error::DataTypeMismatch)
 				}

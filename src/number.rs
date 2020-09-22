@@ -189,6 +189,13 @@ impl Number {
 		}
 	}
 
+	pub fn is_infinite(&self) -> bool {
+		match self {
+			Number::Decimal(value) => value.is_infinite(),
+			_ => false,
+		}
+	}
+
 	pub fn is_nan(&self) -> bool {
 		match self {
 			Number::Decimal(value) => value.is_nan(),
