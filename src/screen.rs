@@ -53,7 +53,7 @@ impl Rect {
 		Rect { x, y, w, h }
 	}
 
-	pub fn clipped_to_screen<ScreenT: Screen>(&self, screen: &ScreenT) -> Self {
+	pub fn clipped_to_screen(&self, screen: &dyn Screen) -> Self {
 		self.clipped_to(&Rect {
 			x: 0,
 			y: 0,
@@ -110,15 +110,17 @@ pub struct Font {
 }
 
 impl Font {
-	pub fn draw<T: Screen>(&self, screen: &mut T, x: i32, y: i32, text: &str, color: Color) {
+	pub fn draw(&self, screen: &mut dyn Screen, x: i32, y: i32, text: &str, color: Color) {
 		// If no clip region provided, clip to entire screen
+		let width = screen.width();
+		let height = screen.height();
 		self.draw_clipped(
 			screen,
 			&Rect {
 				x: 0,
 				y: 0,
-				w: screen.width(),
-				h: screen.height(),
+				w: width,
+				h: height,
 			},
 			x,
 			y,
@@ -127,9 +129,9 @@ impl Font {
 		);
 	}
 
-	pub fn draw_clipped<T: Screen>(
+	pub fn draw_clipped(
 		&self,
-		screen: &mut T,
+		screen: &mut dyn Screen,
 		area: &Rect,
 		x: i32,
 		y: i32,

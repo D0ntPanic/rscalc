@@ -80,7 +80,6 @@ pub struct State {
 	menus: Vec<Menu>,
 	cached_status_bar_state: CachedStatusBarState,
 	force_refresh: bool,
-	exit_from_menu: bool,
 }
 
 pub enum InputResult {
@@ -148,7 +147,6 @@ impl State {
 			menus: Vec::new(),
 			cached_status_bar_state,
 			force_refresh: true,
-			exit_from_menu: false,
 		}
 	}
 
@@ -267,11 +265,7 @@ impl State {
 		self.stack.undo(pop_undo_action()?)
 	}
 
-	pub fn handle_input<ScreenT: Screen>(
-		&mut self,
-		input: InputEvent,
-		screen: &ScreenT,
-	) -> Result<InputResult> {
+	pub fn handle_input(&mut self, input: InputEvent, screen: &dyn Screen) -> Result<InputResult> {
 		if self.error.is_some() {
 			self.error = None;
 			return match input {
@@ -452,8 +446,7 @@ impl State {
 						self.function_keys.show_toplevel_menu(FunctionMenu::Logic);
 					}
 					InputEvent::Convert => {
-						let menu = unit_menu(self, screen, &self.top());
-						self.show_menu(menu);
+						self.show_menu(unit_menu());
 					}
 					InputEvent::Catalog => {
 						self.function_keys.show_toplevel_menu(FunctionMenu::Catalog);
@@ -536,47 +529,42 @@ impl State {
 					InputEvent::Up => menu.up(),
 					InputEvent::Down => menu.down(),
 					InputEvent::Enter | InputEvent::Add | InputEvent::Mul => {
+						menu.force_refresh();
 						let function = menu.selected_function();
 						self.force_refresh = true;
-						self.exit_from_menu = true;
 						match function {
-							MenuItemFunction::Action(action) => action.execute(self, screen)?,
-							MenuItemFunction::ConversionAction(action, _, _) => {
-								action.execute(self, screen)?
+							MenuItemFunction::Action(action) => {
+								action.execute(self, screen)?;
+								self.input_state = InputState::Normal;
+								self.menus.clear();
 							}
-						}
-						if self.exit_from_menu {
-							self.input_state = InputState::Normal;
-							self.menus.clear();
+							MenuItemFunction::InMenuAction(action) => {
+								action.execute(self, screen)?;
+							}
+							MenuItemFunction::ConversionAction(action, _, _) => {
+								action.execute(self, screen)?;
+							}
 						}
 					}
 					InputEvent::Sub | InputEvent::Div => {
+						menu.force_refresh();
 						let function = menu.selected_function();
 						match function {
-							MenuItemFunction::Action(_) => (),
+							MenuItemFunction::Action(_) | MenuItemFunction::InMenuAction(_) => (),
 							MenuItemFunction::ConversionAction(_, action, _) => {
 								self.force_refresh = true;
-								self.exit_from_menu = true;
 								action.execute(self, screen)?;
-								if self.exit_from_menu {
-									self.input_state = InputState::Normal;
-									self.menus.clear();
-								}
 							}
 						}
 					}
 					InputEvent::Swap => {
+						menu.force_refresh();
 						let function = menu.selected_function();
 						match function {
-							MenuItemFunction::Action(_) => (),
+							MenuItemFunction::Action(_) | MenuItemFunction::InMenuAction(_) => (),
 							MenuItemFunction::ConversionAction(_, _, action) => {
 								self.force_refresh = true;
-								self.exit_from_menu = true;
 								action.execute(self, screen)?;
-								if self.exit_from_menu {
-									self.input_state = InputState::Normal;
-									self.menus.clear();
-								}
 							}
 						}
 					}
@@ -711,9 +699,9 @@ impl State {
 		}
 	}
 
-	fn draw_status_bar_indicator<ScreenT: Screen>(
+	fn draw_status_bar_indicator(
 		&self,
-		screen: &mut ScreenT,
+		screen: &mut dyn Screen,
 		x: &mut i32,
 		text: &str,
 		font: &Font,
@@ -792,7 +780,7 @@ impl State {
 	}
 
 	#[cfg(feature = "dm42")]
-	fn draw_battery_indicator<ScreenT: Screen>(&self, screen: &mut ScreenT, x: &mut i32) {
+	fn draw_battery_indicator(&self, screen: &mut dyn Screen, x: &mut i32) {
 		// Determine how many bars are present inside the battery indicator
 		let usb = usb_powered();
 		let voltage = read_power_voltage();
@@ -863,7 +851,7 @@ impl State {
 		*x -= 8;
 	}
 
-	fn draw_status_bar<ScreenT: Screen>(&self, screen: &mut ScreenT) {
+	fn draw_status_bar(&self, screen: &mut dyn Screen) {
 		// Render status bar background
 		screen.fill(
 			Rect {
@@ -953,10 +941,10 @@ impl State {
 		SANS_13.height + 1
 	}
 
-	pub fn render<ScreenT: Screen>(&mut self, screen: &mut ScreenT) {
+	pub fn render(&mut self, screen: &mut dyn Screen) {
 		if self.input_state == InputState::Menu {
-			if let Some(menu) = self.menus.last_mut() {
-				menu.render(screen);
+			if let Some(menu) = self.menus.last() {
+				menu.render(self, screen);
 				return;
 			}
 		}
@@ -1077,7 +1065,7 @@ impl State {
 		self.force_refresh = false;
 	}
 
-	pub fn update_header<ScreenT: Screen>(&mut self, screen: &mut ScreenT) {
+	pub fn update_header(&mut self, screen: &mut dyn Screen) {
 		if self.input_state != InputState::Menu {
 			// When specifically updating the header, always render the header
 			self.update_status_bar_state();
@@ -1086,58 +1074,30 @@ impl State {
 		}
 	}
 
-	fn direct_select_menu_item<ScreenT: Screen>(
-		&mut self,
-		idx: usize,
-		screen: &ScreenT,
-	) -> Result<()> {
+	fn direct_select_menu_item(&mut self, idx: usize, screen: &dyn Screen) -> Result<()> {
 		let menu = self.menus.last_mut().unwrap();
+		menu.force_refresh();
 		if let Some(function) = menu.specific_function(idx) {
-			if let MenuItemFunction::Action(action) = function {
-				self.force_refresh = true;
-				self.exit_from_menu = true;
-				action.execute(self, screen)?;
-				if self.exit_from_menu {
+			match function {
+				MenuItemFunction::Action(action) => {
+					self.force_refresh = true;
+					action.execute(self, screen)?;
 					self.input_state = InputState::Normal;
 					self.menus.clear();
 				}
-			} else {
-				menu.set_selection(idx);
+				MenuItemFunction::InMenuAction(action) => {
+					self.force_refresh = true;
+					action.execute(self, screen)?;
+				}
+				_ => menu.set_selection(idx),
 			}
 		}
 		Ok(())
 	}
 
-	pub fn prevent_menu_exit(&mut self) {
-		self.exit_from_menu = false;
-	}
-
 	pub fn show_menu(&mut self, menu: Menu) {
 		self.menus.push(menu);
 		self.input_state = InputState::Menu;
-		self.prevent_menu_exit();
-	}
-
-	pub fn refresh_menu(&mut self, mut new_menu: Menu) {
-		if let Some(menu) = self.menus.last_mut() {
-			new_menu.set_selection(menu.selection());
-			*menu = new_menu;
-		} else {
-			self.menus.push(new_menu);
-			self.input_state = InputState::Menu;
-		}
-		self.prevent_menu_exit();
-	}
-
-	pub fn refresh_menu_stack(&mut self, mut new_menus: Vec<Menu>) {
-		if self.menus.len() == new_menus.len() {
-			for i in 0..new_menus.len() {
-				new_menus[i].set_selection(self.menus[i].selection());
-			}
-		}
-		self.menus = new_menus;
-		self.input_state = InputState::Menu;
-		self.prevent_menu_exit();
 	}
 
 	pub fn show_system_setup_menu(&mut self) {

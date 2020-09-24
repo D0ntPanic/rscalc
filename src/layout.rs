@@ -353,9 +353,9 @@ impl Layout {
 		}
 	}
 
-	pub fn render<ScreenT: Screen>(
+	pub fn render(
 		&self,
-		screen: &mut ScreenT,
+		screen: &mut dyn Screen,
 		rect: Rect,
 		clip_rect: &Rect,
 		color_override: Option<Color>,

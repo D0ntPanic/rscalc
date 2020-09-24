@@ -509,12 +509,7 @@ impl Stack {
 		self.prev_render_top = 0;
 	}
 
-	pub fn render<ScreenT: Screen>(
-		&mut self,
-		screen: &mut ScreenT,
-		format: &NumberFormat,
-		area: Rect,
-	) {
+	pub fn render(&mut self, screen: &mut dyn Screen, format: &NumberFormat, area: Rect) {
 		let mut bottom = area.y + area.h;
 		let mut new_cache = BTreeMap::new();
 

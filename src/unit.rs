@@ -1,13 +1,13 @@
 use crate::error::{Error, Result};
 use crate::functions::Function;
 use crate::layout::Layout;
-use crate::menu::{Menu, MenuItem, MenuItemFunction};
+use crate::menu::{Menu, MenuItem, MenuItemFunction, MenuItemLayout};
 use crate::number::{Number, ToNumber};
 use crate::screen::Screen;
 use crate::state::State;
 use crate::storage::{DeserializeInput, SerializeOutput, StorageObject, StorageRefSerializer};
-use crate::value::Value;
 use alloc::borrow::Cow;
+use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::string::ToString;
 use alloc::vec::Vec;
@@ -1442,116 +1442,110 @@ impl StorageObject for CompositeUnit {
 	}
 }
 
-fn value_layout<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Value) -> Layout {
-	let value_layout = value.render(&state.format(), &None, screen.width());
-	let mut layout_items = Vec::new();
-	layout_items.push(Layout::HorizontalRule);
-	layout_items.push(value_layout);
-	Layout::Vertical(layout_items)
+fn value_layout() -> Box<dyn Fn(&State, &dyn Screen) -> Layout> {
+	Box::new(|state, screen| {
+		let value = state.top();
+		let value_layout = value.render(&state.format(), &None, screen.width());
+		let mut layout_items = Vec::new();
+		layout_items.push(Layout::HorizontalRule);
+		layout_items.push(value_layout);
+		Layout::Vertical(layout_items)
+	})
 }
 
-pub fn unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Value) -> Menu {
+pub fn unit_menu() -> Menu {
 	let mut items = Vec::new();
 	items.push(MenuItem {
-		layout: MenuItem::static_string_layout("Angle"),
-		function: MenuItemFunction::Action(Function::UnitMenu(UnitType::Angle)),
+		layout: MenuItemLayout::Static(MenuItem::static_string_layout("Angle")),
+		function: MenuItemFunction::InMenuAction(Function::UnitMenu(UnitType::Angle)),
 	});
 	items.push(MenuItem {
-		layout: MenuItem::static_string_layout("Area"),
-		function: MenuItemFunction::Action(Function::UnitMenu(UnitType::Area)),
+		layout: MenuItemLayout::Static(MenuItem::static_string_layout("Area")),
+		function: MenuItemFunction::InMenuAction(Function::UnitMenu(UnitType::Area)),
 	});
 	items.push(MenuItem {
-		layout: MenuItem::static_string_layout("Distance"),
-		function: MenuItemFunction::Action(Function::UnitMenu(UnitType::Distance)),
+		layout: MenuItemLayout::Static(MenuItem::static_string_layout("Distance")),
+		function: MenuItemFunction::InMenuAction(Function::UnitMenu(UnitType::Distance)),
 	});
 	items.push(MenuItem {
-		layout: MenuItem::static_string_layout("Energy"),
-		function: MenuItemFunction::Action(Function::UnitMenu(UnitType::Energy)),
+		layout: MenuItemLayout::Static(MenuItem::static_string_layout("Energy")),
+		function: MenuItemFunction::InMenuAction(Function::UnitMenu(UnitType::Energy)),
 	});
 	items.push(MenuItem {
-		layout: MenuItem::static_string_layout("Force"),
-		function: MenuItemFunction::Action(Function::UnitMenu(UnitType::Force)),
+		layout: MenuItemLayout::Static(MenuItem::static_string_layout("Force")),
+		function: MenuItemFunction::InMenuAction(Function::UnitMenu(UnitType::Force)),
 	});
 	items.push(MenuItem {
-		layout: MenuItem::static_string_layout("Mass"),
-		function: MenuItemFunction::Action(Function::UnitMenu(UnitType::Mass)),
+		layout: MenuItemLayout::Static(MenuItem::static_string_layout("Mass")),
+		function: MenuItemFunction::InMenuAction(Function::UnitMenu(UnitType::Mass)),
 	});
 	items.push(MenuItem {
-		layout: MenuItem::static_string_layout("Power"),
-		function: MenuItemFunction::Action(Function::UnitMenu(UnitType::Power)),
+		layout: MenuItemLayout::Static(MenuItem::static_string_layout("Power")),
+		function: MenuItemFunction::InMenuAction(Function::UnitMenu(UnitType::Power)),
 	});
 	items.push(MenuItem {
-		layout: MenuItem::static_string_layout("Pressure"),
-		function: MenuItemFunction::Action(Function::UnitMenu(UnitType::Pressure)),
+		layout: MenuItemLayout::Static(MenuItem::static_string_layout("Pressure")),
+		function: MenuItemFunction::InMenuAction(Function::UnitMenu(UnitType::Pressure)),
 	});
 	items.push(MenuItem {
-		layout: MenuItem::static_string_layout("Temp"),
-		function: MenuItemFunction::Action(Function::UnitMenu(UnitType::Temperature)),
+		layout: MenuItemLayout::Static(MenuItem::static_string_layout("Temp")),
+		function: MenuItemFunction::InMenuAction(Function::UnitMenu(UnitType::Temperature)),
 	});
 	items.push(MenuItem {
-		layout: MenuItem::static_string_layout("Time"),
-		function: MenuItemFunction::Action(Function::UnitMenu(UnitType::Time)),
+		layout: MenuItemLayout::Static(MenuItem::static_string_layout("Time")),
+		function: MenuItemFunction::InMenuAction(Function::UnitMenu(UnitType::Time)),
 	});
 	items.push(MenuItem {
-		layout: MenuItem::static_string_layout("Volume"),
-		function: MenuItemFunction::Action(Function::UnitMenu(UnitType::Volume)),
+		layout: MenuItemLayout::Static(MenuItem::static_string_layout("Volume")),
+		function: MenuItemFunction::InMenuAction(Function::UnitMenu(UnitType::Volume)),
 	});
 
-	let mut menu = Menu::new_with_bottom("Units", items, value_layout(state, screen, value));
+	let mut menu = Menu::new_with_bottom("Units", items, value_layout());
 	menu.set_columns(3);
 	menu
 }
 
-pub fn unit_menu_of_type<ScreenT: Screen>(
-	state: &State,
-	screen: &ScreenT,
-	value: &Value,
-	unit_type: UnitType,
-) -> Menu {
+pub fn unit_menu_of_type(unit_type: UnitType) -> Menu {
 	match unit_type {
-		UnitType::Angle => angle_unit_menu(state, screen, value),
-		UnitType::Area => area_unit_menu(state, screen, value),
-		UnitType::Distance => distance_unit_menu(state, screen, value),
-		UnitType::Energy => energy_unit_menu(state, screen, value),
-		UnitType::Force => force_unit_menu(state, screen, value),
-		UnitType::Mass => mass_unit_menu(state, screen, value),
-		UnitType::Power => power_unit_menu(state, screen, value),
-		UnitType::Pressure => pressure_unit_menu(state, screen, value),
-		UnitType::Temperature => temperature_unit_menu(state, screen, value),
-		UnitType::Time => time_unit_menu(state, screen, value),
-		UnitType::Volume => volume_unit_menu(state, screen, value),
+		UnitType::Angle => angle_unit_menu(),
+		UnitType::Area => area_unit_menu(),
+		UnitType::Distance => distance_unit_menu(),
+		UnitType::Energy => energy_unit_menu(),
+		UnitType::Force => force_unit_menu(),
+		UnitType::Mass => mass_unit_menu(),
+		UnitType::Power => power_unit_menu(),
+		UnitType::Pressure => pressure_unit_menu(),
+		UnitType::Temperature => temperature_unit_menu(),
+		UnitType::Time => time_unit_menu(),
+		UnitType::Volume => volume_unit_menu(),
 	}
 }
 
-fn angle_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Value) -> Menu {
+fn angle_unit_menu() -> Menu {
 	let mut items = Vec::new();
 	for unit in &[AngleUnit::Degrees, AngleUnit::Radians, AngleUnit::Gradians] {
 		items.push(MenuItem {
-			layout: MenuItem::static_string_layout(unit.to_str()),
+			layout: MenuItemLayout::Static(MenuItem::static_string_layout(unit.to_str())),
 			function: MenuItemFunction::ConversionAction(
-				Function::AddUnit(Unit::Angle(*unit), UnitType::Angle),
-				Function::AddInvUnit(Unit::Angle(*unit), UnitType::Angle),
-				Function::ConvertToUnit(Unit::Angle(*unit), UnitType::Angle),
+				Function::AddUnit(Unit::Angle(*unit)),
+				Function::AddInvUnit(Unit::Angle(*unit)),
+				Function::ConvertToUnit(Unit::Angle(*unit)),
 			),
 		});
 	}
 
-	Menu::new_with_bottom(
-		"Angle (×,÷ Assign; x≷y Convert)",
-		items,
-		value_layout(state, screen, value),
-	)
+	Menu::new_with_bottom("Angle (×,÷ Assign; x≷y Convert)", items, value_layout())
 }
 
-fn area_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Value) -> Menu {
+fn area_unit_menu() -> Menu {
 	let mut items = Vec::new();
 	for unit in &[AreaUnit::Acres, AreaUnit::Hectares] {
 		items.push(MenuItem {
-			layout: MenuItem::static_string_layout(unit.to_str()),
+			layout: MenuItemLayout::Static(MenuItem::static_string_layout(unit.to_str())),
 			function: MenuItemFunction::ConversionAction(
-				Function::AddUnit(Unit::Area(*unit), UnitType::Area),
-				Function::AddInvUnit(Unit::Area(*unit), UnitType::Area),
-				Function::ConvertToUnit(Unit::Area(*unit), UnitType::Area),
+				Function::AddUnit(Unit::Area(*unit)),
+				Function::AddInvUnit(Unit::Area(*unit)),
+				Function::ConvertToUnit(Unit::Area(*unit)),
 			),
 		});
 	}
@@ -1567,25 +1561,23 @@ fn area_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Valu
 		DistanceUnit::Miles,
 	] {
 		items.push(MenuItem {
-			layout: MenuItem::string_layout(unit.to_str().to_string() + "²"),
+			layout: MenuItemLayout::Static(MenuItem::string_layout(
+				unit.to_str().to_string() + "²",
+			)),
 			function: MenuItemFunction::ConversionAction(
-				Function::AddUnitSquared(Unit::Distance(*unit), UnitType::Area),
-				Function::AddInvUnitSquared(Unit::Distance(*unit), UnitType::Area),
-				Function::ConvertToUnit(Unit::Distance(*unit), UnitType::Area),
+				Function::AddUnitSquared(Unit::Distance(*unit)),
+				Function::AddInvUnitSquared(Unit::Distance(*unit)),
+				Function::ConvertToUnit(Unit::Distance(*unit)),
 			),
 		});
 	}
 
-	let mut menu = Menu::new_with_bottom(
-		"Area (×,÷ Assign; x≷y Convert)",
-		items,
-		value_layout(state, screen, value),
-	);
+	let mut menu = Menu::new_with_bottom("Area (×,÷ Assign; x≷y Convert)", items, value_layout());
 	menu.set_columns(3);
 	menu
 }
 
-fn distance_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Value) -> Menu {
+fn distance_unit_menu() -> Menu {
 	let mut items = Vec::new();
 	for unit in &[
 		DistanceUnit::Meters,
@@ -1602,25 +1594,22 @@ fn distance_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &
 		DistanceUnit::AstronomicalUnits,
 	] {
 		items.push(MenuItem {
-			layout: MenuItem::static_string_layout(unit.to_str()),
+			layout: MenuItemLayout::Static(MenuItem::static_string_layout(unit.to_str())),
 			function: MenuItemFunction::ConversionAction(
-				Function::AddUnit(Unit::Distance(*unit), UnitType::Distance),
-				Function::AddInvUnit(Unit::Distance(*unit), UnitType::Distance),
-				Function::ConvertToUnit(Unit::Distance(*unit), UnitType::Distance),
+				Function::AddUnit(Unit::Distance(*unit)),
+				Function::AddInvUnit(Unit::Distance(*unit)),
+				Function::ConvertToUnit(Unit::Distance(*unit)),
 			),
 		});
 	}
 
-	let mut menu = Menu::new_with_bottom(
-		"Distance (×,÷ Assign; x≷y Convert)",
-		items,
-		value_layout(state, screen, value),
-	);
+	let mut menu =
+		Menu::new_with_bottom("Distance (×,÷ Assign; x≷y Convert)", items, value_layout());
 	menu.set_columns(3);
 	menu
 }
 
-fn energy_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Value) -> Menu {
+fn energy_unit_menu() -> Menu {
 	let mut items = Vec::new();
 	for unit in &[
 		EnergyUnit::Joules,
@@ -1637,25 +1626,21 @@ fn energy_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Va
 		EnergyUnit::Erg,
 	] {
 		items.push(MenuItem {
-			layout: MenuItem::static_string_layout(unit.to_str()),
+			layout: MenuItemLayout::Static(MenuItem::static_string_layout(unit.to_str())),
 			function: MenuItemFunction::ConversionAction(
-				Function::AddUnit(Unit::Energy(*unit), UnitType::Energy),
-				Function::AddInvUnit(Unit::Energy(*unit), UnitType::Energy),
-				Function::ConvertToUnit(Unit::Energy(*unit), UnitType::Energy),
+				Function::AddUnit(Unit::Energy(*unit)),
+				Function::AddInvUnit(Unit::Energy(*unit)),
+				Function::ConvertToUnit(Unit::Energy(*unit)),
 			),
 		});
 	}
 
-	let mut menu = Menu::new_with_bottom(
-		"Energy (×,÷ Assign; x≷y Convert)",
-		items,
-		value_layout(state, screen, value),
-	);
+	let mut menu = Menu::new_with_bottom("Energy (×,÷ Assign; x≷y Convert)", items, value_layout());
 	menu.set_columns(3);
 	menu
 }
 
-fn force_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Value) -> Menu {
+fn force_unit_menu() -> Menu {
 	let mut items = Vec::new();
 	for unit in &[
 		ForceUnit::Newton,
@@ -1667,25 +1652,21 @@ fn force_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Val
 		ForceUnit::Kip,
 	] {
 		items.push(MenuItem {
-			layout: MenuItem::static_string_layout(unit.to_str()),
+			layout: MenuItemLayout::Static(MenuItem::static_string_layout(unit.to_str())),
 			function: MenuItemFunction::ConversionAction(
-				Function::AddUnit(Unit::Force(*unit), UnitType::Force),
-				Function::AddInvUnit(Unit::Force(*unit), UnitType::Force),
-				Function::ConvertToUnit(Unit::Force(*unit), UnitType::Force),
+				Function::AddUnit(Unit::Force(*unit)),
+				Function::AddInvUnit(Unit::Force(*unit)),
+				Function::ConvertToUnit(Unit::Force(*unit)),
 			),
 		});
 	}
 
-	let mut menu = Menu::new_with_bottom(
-		"Force (×,÷ Assign; x≷y Convert)",
-		items,
-		value_layout(state, screen, value),
-	);
+	let mut menu = Menu::new_with_bottom("Force (×,÷ Assign; x≷y Convert)", items, value_layout());
 	menu.set_columns(2);
 	menu
 }
 
-fn mass_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Value) -> Menu {
+fn mass_unit_menu() -> Menu {
 	let mut items = Vec::new();
 	for unit in &[
 		MassUnit::Kilograms,
@@ -1699,25 +1680,21 @@ fn mass_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Valu
 		MassUnit::UKTons,
 	] {
 		items.push(MenuItem {
-			layout: MenuItem::static_string_layout(unit.to_str()),
+			layout: MenuItemLayout::Static(MenuItem::static_string_layout(unit.to_str())),
 			function: MenuItemFunction::ConversionAction(
-				Function::AddUnit(Unit::Mass(*unit), UnitType::Mass),
-				Function::AddInvUnit(Unit::Mass(*unit), UnitType::Mass),
-				Function::ConvertToUnit(Unit::Mass(*unit), UnitType::Mass),
+				Function::AddUnit(Unit::Mass(*unit)),
+				Function::AddInvUnit(Unit::Mass(*unit)),
+				Function::ConvertToUnit(Unit::Mass(*unit)),
 			),
 		});
 	}
 
-	let mut menu = Menu::new_with_bottom(
-		"Mass (×,÷ Assign; x≷y Convert)",
-		items,
-		value_layout(state, screen, value),
-	);
+	let mut menu = Menu::new_with_bottom("Mass (×,÷ Assign; x≷y Convert)", items, value_layout());
 	menu.set_columns(3);
 	menu
 }
 
-fn power_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Value) -> Menu {
+fn power_unit_menu() -> Menu {
 	let mut items = Vec::new();
 	for unit in &[
 		PowerUnit::Watts,
@@ -1731,25 +1708,21 @@ fn power_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Val
 		PowerUnit::TonsOfRefrigeration,
 	] {
 		items.push(MenuItem {
-			layout: MenuItem::static_string_layout(unit.to_str()),
+			layout: MenuItemLayout::Static(MenuItem::static_string_layout(unit.to_str())),
 			function: MenuItemFunction::ConversionAction(
-				Function::AddUnit(Unit::Power(*unit), UnitType::Power),
-				Function::AddInvUnit(Unit::Power(*unit), UnitType::Power),
-				Function::ConvertToUnit(Unit::Power(*unit), UnitType::Power),
+				Function::AddUnit(Unit::Power(*unit)),
+				Function::AddInvUnit(Unit::Power(*unit)),
+				Function::ConvertToUnit(Unit::Power(*unit)),
 			),
 		});
 	}
 
-	let mut menu = Menu::new_with_bottom(
-		"Power (×,÷ Assign; x≷y Convert)",
-		items,
-		value_layout(state, screen, value),
-	);
+	let mut menu = Menu::new_with_bottom("Power (×,÷ Assign; x≷y Convert)", items, value_layout());
 	menu.set_columns(3);
 	menu
 }
 
-fn pressure_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Value) -> Menu {
+fn pressure_unit_menu() -> Menu {
 	let mut items = Vec::new();
 	for unit in &[
 		PressureUnit::Pascals,
@@ -1765,25 +1738,22 @@ fn pressure_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &
 		PressureUnit::Torr,
 	] {
 		items.push(MenuItem {
-			layout: MenuItem::static_string_layout(unit.to_str()),
+			layout: MenuItemLayout::Static(MenuItem::static_string_layout(unit.to_str())),
 			function: MenuItemFunction::ConversionAction(
-				Function::AddUnit(Unit::Pressure(*unit), UnitType::Pressure),
-				Function::AddInvUnit(Unit::Pressure(*unit), UnitType::Pressure),
-				Function::ConvertToUnit(Unit::Pressure(*unit), UnitType::Pressure),
+				Function::AddUnit(Unit::Pressure(*unit)),
+				Function::AddInvUnit(Unit::Pressure(*unit)),
+				Function::ConvertToUnit(Unit::Pressure(*unit)),
 			),
 		});
 	}
 
-	let mut menu = Menu::new_with_bottom(
-		"Pressure (×,÷ Assign; x≷y Convert)",
-		items,
-		value_layout(state, screen, value),
-	);
+	let mut menu =
+		Menu::new_with_bottom("Pressure (×,÷ Assign; x≷y Convert)", items, value_layout());
 	menu.set_columns(3);
 	menu
 }
 
-fn temperature_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Value) -> Menu {
+fn temperature_unit_menu() -> Menu {
 	let mut items = Vec::new();
 	for unit in &[
 		TemperatureUnit::Celsius,
@@ -1792,23 +1762,19 @@ fn temperature_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value
 		TemperatureUnit::Rankine,
 	] {
 		items.push(MenuItem {
-			layout: MenuItem::static_string_layout(unit.to_str()),
+			layout: MenuItemLayout::Static(MenuItem::static_string_layout(unit.to_str())),
 			function: MenuItemFunction::ConversionAction(
-				Function::AddUnit(Unit::Temperature(*unit), UnitType::Temperature),
-				Function::AddInvUnit(Unit::Temperature(*unit), UnitType::Temperature),
-				Function::ConvertToUnit(Unit::Temperature(*unit), UnitType::Temperature),
+				Function::AddUnit(Unit::Temperature(*unit)),
+				Function::AddInvUnit(Unit::Temperature(*unit)),
+				Function::ConvertToUnit(Unit::Temperature(*unit)),
 			),
 		});
 	}
 
-	Menu::new_with_bottom(
-		"Temp (×,÷ Assign; x≷y Convert)",
-		items,
-		value_layout(state, screen, value),
-	)
+	Menu::new_with_bottom("Temp (×,÷ Assign; x≷y Convert)", items, value_layout())
 }
 
-fn time_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Value) -> Menu {
+fn time_unit_menu() -> Menu {
 	let mut items = Vec::new();
 	for unit in &[
 		TimeUnit::Seconds,
@@ -1821,25 +1787,21 @@ fn time_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Valu
 		TimeUnit::Years,
 	] {
 		items.push(MenuItem {
-			layout: MenuItem::static_string_layout(unit.to_str()),
+			layout: MenuItemLayout::Static(MenuItem::static_string_layout(unit.to_str())),
 			function: MenuItemFunction::ConversionAction(
-				Function::AddUnit(Unit::Time(*unit), UnitType::Time),
-				Function::AddInvUnit(Unit::Time(*unit), UnitType::Time),
-				Function::ConvertToUnit(Unit::Time(*unit), UnitType::Time),
+				Function::AddUnit(Unit::Time(*unit)),
+				Function::AddInvUnit(Unit::Time(*unit)),
+				Function::ConvertToUnit(Unit::Time(*unit)),
 			),
 		});
 	}
 
-	let mut menu = Menu::new_with_bottom(
-		"Time (×,÷ Assign; x≷y Convert)",
-		items,
-		value_layout(state, screen, value),
-	);
+	let mut menu = Menu::new_with_bottom("Time (×,÷ Assign; x≷y Convert)", items, value_layout());
 	menu.set_columns(2);
 	menu
 }
 
-fn volume_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Value) -> Menu {
+fn volume_unit_menu() -> Menu {
 	let mut items = Vec::new();
 	for unit in &[
 		VolumeUnit::Litre,
@@ -1859,11 +1821,11 @@ fn volume_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Va
 		VolumeUnit::UKTeaspoons,
 	] {
 		items.push(MenuItem {
-			layout: MenuItem::static_string_layout_small(unit.to_str()),
+			layout: MenuItemLayout::Static(MenuItem::static_string_layout_small(unit.to_str())),
 			function: MenuItemFunction::ConversionAction(
-				Function::AddUnit(Unit::Volume(*unit), UnitType::Volume),
-				Function::AddInvUnit(Unit::Volume(*unit), UnitType::Volume),
-				Function::ConvertToUnit(Unit::Volume(*unit), UnitType::Volume),
+				Function::AddUnit(Unit::Volume(*unit)),
+				Function::AddInvUnit(Unit::Volume(*unit)),
+				Function::ConvertToUnit(Unit::Volume(*unit)),
 			),
 		});
 	}
@@ -1875,20 +1837,18 @@ fn volume_unit_menu<ScreenT: Screen>(state: &State, screen: &ScreenT, value: &Va
 		DistanceUnit::Feet,
 	] {
 		items.push(MenuItem {
-			layout: MenuItem::string_layout_small(unit.to_str().to_string() + "³"),
+			layout: MenuItemLayout::Static(MenuItem::string_layout_small(
+				unit.to_str().to_string() + "³",
+			)),
 			function: MenuItemFunction::ConversionAction(
-				Function::AddUnitCubed(Unit::Distance(*unit), UnitType::Volume),
-				Function::AddInvUnitCubed(Unit::Distance(*unit), UnitType::Volume),
-				Function::ConvertToUnit(Unit::Distance(*unit), UnitType::Volume),
+				Function::AddUnitCubed(Unit::Distance(*unit)),
+				Function::AddInvUnitCubed(Unit::Distance(*unit)),
+				Function::ConvertToUnit(Unit::Distance(*unit)),
 			),
 		});
 	}
 
-	let mut menu = Menu::new_with_bottom(
-		"Volume (×,÷ Assign; x≷y Convert)",
-		items,
-		value_layout(state, screen, value),
-	);
+	let mut menu = Menu::new_with_bottom("Volume (×,÷ Assign; x≷y Convert)", items, value_layout());
 	menu.set_columns(4);
 	menu
 }

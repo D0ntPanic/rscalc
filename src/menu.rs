@@ -5,9 +5,11 @@ use crate::number::Number;
 use crate::screen::{Color, Rect, Screen};
 use crate::state::{State, StatusBarLeftDisplayType};
 use crate::storage::{available_bytes, free_bytes, reclaimable_bytes, used_bytes};
+use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use core::cell::RefCell;
 
 #[cfg(feature = "dm42")]
 use crate::dm42::time_24_hour;
@@ -15,13 +17,20 @@ use crate::dm42::time_24_hour;
 use crate::time::time_24_hour;
 
 #[derive(PartialEq, Eq, Clone, Copy)]
+#[allow(dead_code)]
 pub enum MenuItemFunction {
 	Action(Function),
+	InMenuAction(Function),
 	ConversionAction(Function, Function, Function),
 }
 
+pub enum MenuItemLayout {
+	Static(Layout),
+	Dynamic(Box<dyn Fn(&State, &dyn Screen) -> Layout>),
+}
+
 pub struct MenuItem {
-	pub layout: Layout,
+	pub layout: MenuItemLayout,
 	pub function: MenuItemFunction,
 }
 
@@ -51,14 +60,18 @@ impl MenuItem {
 	}
 }
 
+pub struct MenuRenderCache {
+	initial_render: bool,
+	rendered_selection: Option<usize>,
+}
+
 pub struct Menu {
 	title: String,
 	items: Vec<MenuItem>,
-	bottom: Option<Layout>,
+	bottom: Option<Box<dyn Fn(&State, &dyn Screen) -> Layout>>,
 	selection: usize,
-	initial_render: bool,
-	rendered_selection: Option<usize>,
 	columns: usize,
+	cache: RefCell<MenuRenderCache>,
 }
 
 impl Menu {
@@ -68,21 +81,29 @@ impl Menu {
 			items,
 			bottom: None,
 			selection: 0,
-			initial_render: true,
-			rendered_selection: None,
 			columns: 1,
+			cache: RefCell::new(MenuRenderCache {
+				initial_render: true,
+				rendered_selection: None,
+			}),
 		}
 	}
 
-	pub fn new_with_bottom(title: &str, items: Vec<MenuItem>, bottom: Layout) -> Self {
+	pub fn new_with_bottom(
+		title: &str,
+		items: Vec<MenuItem>,
+		bottom: Box<dyn Fn(&State, &dyn Screen) -> Layout>,
+	) -> Self {
 		Menu {
 			title: title.to_string(),
 			items,
 			bottom: Some(bottom),
 			selection: 0,
-			initial_render: true,
-			rendered_selection: None,
 			columns: 1,
+			cache: RefCell::new(MenuRenderCache {
+				initial_render: true,
+				rendered_selection: None,
+			}),
 		}
 	}
 
@@ -119,22 +140,21 @@ impl Menu {
 		}
 	}
 
-	pub fn selection(&self) -> usize {
-		self.selection
-	}
-
 	pub fn set_selection(&mut self, idx: usize) {
 		if idx < self.items.len() {
 			self.selection = idx;
 		}
 	}
 
-	pub fn force_refresh(&mut self) {
-		self.initial_render = true;
+	pub fn force_refresh(&self) {
+		self.cache.borrow_mut().initial_render = true;
 	}
 
-	pub fn render<ScreenT: Screen>(&mut self, screen: &mut ScreenT) {
-		if self.initial_render {
+	pub fn render(&self, state: &State, screen: &mut dyn Screen) {
+		let initial_render = self.cache.borrow().initial_render;
+		let rendered_selection = self.cache.borrow().rendered_selection;
+
+		if initial_render {
 			// On initial render, clear screen and draw title
 			screen.clear();
 
@@ -151,6 +171,7 @@ impl Menu {
 
 			// Draw bottom layout if present
 			if let Some(bottom) = &self.bottom {
+				let bottom = bottom(state, screen);
 				let height = bottom.height();
 				let rect = Rect {
 					x: 4,
@@ -172,13 +193,18 @@ impl Menu {
 		let mut y = top;
 
 		for item in &self.items {
+			let layout = match &item.layout {
+				MenuItemLayout::Static(layout) => Cow::Borrowed(layout),
+				MenuItemLayout::Dynamic(func) => Cow::Owned(func(state, screen)),
+			};
+
 			// Get height of item
-			let height = item.layout.height();
+			let height = layout.height();
 
 			// Render item if it has been updated
-			if self.initial_render
-				|| i == self.selection && Some(i) != self.rendered_selection
-				|| Some(i) == self.rendered_selection
+			if initial_render
+				|| i == self.selection && Some(i) != rendered_selection
+				|| Some(i) == rendered_selection
 			{
 				// Get label for item
 				let label = match i + 1 {
@@ -227,7 +253,7 @@ impl Menu {
 					w: col_width - (label_width + 4),
 					h: height,
 				};
-				item.layout.render(
+				layout.render(
 					screen,
 					rect.clone(),
 					&rect,
@@ -252,8 +278,8 @@ impl Menu {
 
 		screen.refresh();
 
-		self.rendered_selection = Some(self.selection);
-		self.initial_render = false;
+		self.cache.borrow_mut().rendered_selection = Some(self.selection);
+		self.cache.borrow_mut().initial_render = false;
 	}
 }
 
@@ -262,81 +288,92 @@ pub fn setup_menu() -> Menu {
 
 	// Create setup menu items
 	items.push(MenuItem {
-		layout: MenuItem::static_string_layout("Display Settings >"),
-		function: MenuItemFunction::Action(Function::SettingsMenu),
+		layout: MenuItemLayout::Static(MenuItem::static_string_layout("Display Settings >")),
+		function: MenuItemFunction::InMenuAction(Function::SettingsMenu),
 	});
 
 	#[cfg(feature = "dm42")]
 	items.push(MenuItem {
-		layout: MenuItem::static_string_layout("System Settings >"),
+		layout: MenuItemLayout::Static(MenuItem::static_string_layout("System Settings >")),
 		function: MenuItemFunction::Action(Function::SystemMenu),
 	});
 
-	// Create memory usage indicator on bottom, start with text with bytes available
-	let mut bottom_items = Vec::new();
-	bottom_items.push(Layout::LeftAlign(Box::new(Layout::Text(
-		"Memory: ".to_string()
-			+ &Number::Integer(available_bytes().into()).to_string()
-			+ " bytes available",
-		&SANS_16,
-		Color::ContentText,
-	))));
-
-	// Add memory usage graph
-	bottom_items.push(Layout::UsageGraph(
-		used_bytes() - reclaimable_bytes(),
-		reclaimable_bytes(),
-		free_bytes(),
-	));
-
-	// Add legend for the graph
-	let mut legend_items = Vec::new();
-	legend_items.push(Layout::UsageGraphUsedLegend);
-	legend_items.push(Layout::StaticText(" Used   ", &SANS_13, Color::ContentText));
-	legend_items.push(Layout::UsageGraphReclaimableLegend);
-	legend_items.push(Layout::StaticText(
-		" Reclaimable   ",
-		&SANS_13,
-		Color::ContentText,
-	));
-	legend_items.push(Layout::UsageGraphFreeLegend);
-	legend_items.push(Layout::StaticText(" Free", &SANS_13, Color::ContentText));
-	bottom_items.push(Layout::LeftAlign(Box::new(Layout::Horizontal(
-		legend_items,
-	))));
-
-	// Add temporary memory available
-	#[cfg(feature = "dm42")]
-	bottom_items.push(Layout::LeftAlign(Box::new(Layout::Text(
-		Number::Integer(crate::dm42::sys_free_mem().into()).to_string() + " bytes temporary memory",
-		&SANS_13,
-		Color::ContentText,
-	))));
-
 	// Return the menu object
-	Menu::new_with_bottom("Setup", items, Layout::Vertical(bottom_items))
+	Menu::new_with_bottom(
+		"Setup",
+		items,
+		Box::new(|_state, _screen| {
+			// Create memory usage indicator on bottom, start with text with bytes available
+			let mut bottom_items = Vec::new();
+			bottom_items.push(Layout::LeftAlign(Box::new(Layout::Text(
+				"Memory: ".to_string()
+					+ &Number::Integer(available_bytes().into()).to_string()
+					+ " bytes available",
+				&SANS_16,
+				Color::ContentText,
+			))));
+
+			// Add memory usage graph
+			bottom_items.push(Layout::UsageGraph(
+				used_bytes() - reclaimable_bytes(),
+				reclaimable_bytes(),
+				free_bytes(),
+			));
+
+			// Add legend for the graph
+			let mut legend_items = Vec::new();
+			legend_items.push(Layout::UsageGraphUsedLegend);
+			legend_items.push(Layout::StaticText(" Used   ", &SANS_13, Color::ContentText));
+			legend_items.push(Layout::UsageGraphReclaimableLegend);
+			legend_items.push(Layout::StaticText(
+				" Reclaimable   ",
+				&SANS_13,
+				Color::ContentText,
+			));
+			legend_items.push(Layout::UsageGraphFreeLegend);
+			legend_items.push(Layout::StaticText(" Free", &SANS_13, Color::ContentText));
+			bottom_items.push(Layout::LeftAlign(Box::new(Layout::Horizontal(
+				legend_items,
+			))));
+
+			// Add temporary memory available
+			#[cfg(feature = "dm42")]
+			bottom_items.push(Layout::LeftAlign(Box::new(Layout::Text(
+				Number::Integer(crate::dm42::sys_free_mem().into()).to_string()
+					+ " bytes temporary memory",
+				&SANS_13,
+				Color::ContentText,
+			))));
+
+			Layout::Vertical(bottom_items)
+		}),
+	)
 }
 
-pub fn settings_menu(state: &State) -> Menu {
+pub fn settings_menu() -> Menu {
 	let mut items = Vec::new();
 
 	// Create settings menu items
 	items.push(MenuItem {
-		layout: MenuItem::string_layout(
-			"Status Bar Text   ".to_string()
-				+ match state.status_bar_left_display() {
-					StatusBarLeftDisplayType::CurrentTime => "[Current Time]",
-					StatusBarLeftDisplayType::FreeMemory => "[Free Memory]",
-				},
-		),
-		function: MenuItemFunction::Action(Function::StatusBarLeftDisplayToggle),
+		layout: MenuItemLayout::Dynamic(Box::new(|state, _screen| {
+			MenuItem::string_layout(
+				"Status Bar Text   ".to_string()
+					+ match state.status_bar_left_display() {
+						StatusBarLeftDisplayType::CurrentTime => "[Current Time]",
+						StatusBarLeftDisplayType::FreeMemory => "[Free Memory]",
+					},
+			)
+		})),
+		function: MenuItemFunction::InMenuAction(Function::StatusBarLeftDisplayToggle),
 	});
 
 	items.push(MenuItem {
-		layout: MenuItem::string_layout(
-			"24-hour Clock   ".to_string() + if time_24_hour() { "[On]" } else { "[Off]" },
-		),
-		function: MenuItemFunction::Action(Function::Time24HourToggle),
+		layout: MenuItemLayout::Dynamic(Box::new(|_state, _screen| {
+			MenuItem::string_layout(
+				"24-hour Clock   ".to_string() + if time_24_hour() { "[On]" } else { "[Off]" },
+			)
+		})),
+		function: MenuItemFunction::InMenuAction(Function::Time24HourToggle),
 	});
 
 	// Return the menu object
