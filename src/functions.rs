@@ -1,3 +1,4 @@
+use crate::catalog::{assign_menu, catalog_menu, CatalogPage};
 use crate::error::{Error, Result};
 use crate::font::SANS_13;
 use crate::input::InputEvent;
@@ -14,6 +15,7 @@ use crate::unit::{
 };
 use crate::value::Value;
 use alloc::borrow::Cow;
+use alloc::boxed::Box;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
@@ -26,7 +28,7 @@ use crate::dm42::{set_time_24_hour, time_24_hour};
 #[cfg(not(feature = "dm42"))]
 use crate::time::{set_time_24_hour, time_24_hour};
 
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone)]
 #[allow(dead_code)]
 pub enum Function {
 	Input(InputEvent),
@@ -65,15 +67,19 @@ pub enum Function {
 	Hex,
 	Octal,
 	Decimal,
-	ConstCatalog,
+	CatalogPage(CatalogPage),
+	AssignCatalogMenu(usize),
+	AssignCatalogPage(usize, CatalogPage),
+	AssignCatalogFunction(usize, Box<Function>),
+	RemoveCustomAssign(usize),
 	SpeedOfLight,
-	TimeCatalog,
 	Now,
 	Date,
 	Time,
 	Degrees,
 	Radians,
 	Gradians,
+	ClearUnits,
 	UnitMenu(UnitType),
 	AddUnit(Unit),
 	AddUnitSquared(Unit),
@@ -283,9 +289,12 @@ impl Function {
 					"Dec".to_string()
 				}
 			}
-			Function::ConstCatalog => "Const".to_string(),
+			Function::CatalogPage(page) => page.to_str().to_string(),
+			Function::AssignCatalogMenu(_) => "Catalog".to_string(),
+			Function::AssignCatalogPage(_, page) => page.to_str().to_string(),
+			Function::AssignCatalogFunction(_, func) => func.to_string(state),
+			Function::RemoveCustomAssign(_) => "(None)".to_string(),
 			Function::SpeedOfLight => "c".to_string(),
-			Function::TimeCatalog => "Time".to_string(),
 			Function::Now => "Now".to_string(),
 			Function::Date => "Date".to_string(),
 			Function::Time => "Time".to_string(),
@@ -310,6 +319,7 @@ impl Function {
 					"Grad".to_string()
 				}
 			}
+			Function::ClearUnits => "←Unit".to_string(),
 			Function::UnitMenu(unit_type) => unit_type.to_str().to_string(),
 			Function::AddUnit(unit) => unit.to_str().to_string(),
 			Function::AddUnitSquared(unit) => unit.to_str().to_string() + "²",
@@ -545,7 +555,27 @@ impl Function {
 				state.format_mut().integer_radix = 10;
 				state.stack.end_edit();
 			}
-			Function::ConstCatalog => state.function_keys().show_menu(FunctionMenu::ConstCatalog),
+			Function::CatalogPage(page) => {
+				state.show_menu(page.menu(|page| Function::CatalogPage(page), |func| func));
+			}
+			Function::AssignCatalogMenu(idx) => {
+				state.show_menu(catalog_menu(|page| Function::AssignCatalogPage(*idx, page)));
+			}
+			Function::AssignCatalogPage(idx, page) => {
+				state.show_menu(page.menu(
+					|page| Function::AssignCatalogPage(*idx, page),
+					|func| Function::AssignCatalogFunction(*idx, Box::new(func)),
+				));
+			}
+			Function::AssignCatalogFunction(idx, func) => {
+				state.set_custom_function(*idx, Some(func.as_ref().clone()));
+				let mut menu = assign_menu();
+				menu.set_selection(*idx);
+				state.show_menu(menu);
+			}
+			Function::RemoveCustomAssign(idx) => {
+				state.set_custom_function(*idx, None);
+			}
 			Function::SpeedOfLight => {
 				state.stack.input_value(Value::NumberWithUnit(
 					299_792_458.to_number(),
@@ -555,7 +585,6 @@ impl Function {
 					),
 				))?;
 			}
-			Function::TimeCatalog => state.function_keys().show_menu(FunctionMenu::TimeCatalog),
 			Function::Now => {
 				state
 					.stack
@@ -601,6 +630,14 @@ impl Function {
 			}
 			Function::Gradians => {
 				state.set_angle_mode(AngleUnit::Gradians);
+			}
+			Function::ClearUnits => {
+				let value = if let Value::NumberWithUnit(num, _) = state.stack.top() {
+					Value::Number(num)
+				} else {
+					state.stack.top()
+				};
+				state.set_top(value)?;
 			}
 			Function::UnitMenu(unit_type) => {
 				let menu = unit_menu_of_type(*unit_type);
@@ -663,20 +700,19 @@ impl Function {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum FunctionMenu {
+	Custom,
 	Disp,
 	Mode,
 	Base,
 	SignedInteger,
 	UnsignedInteger,
 	Logic,
-	Catalog,
-	ConstCatalog,
-	TimeCatalog,
 }
 
 impl FunctionMenu {
-	pub fn functions(&self) -> Vec<Option<Function>> {
+	pub fn functions(&self, state: &FunctionKeyState) -> Vec<Option<Function>> {
 		match self {
+			FunctionMenu::Custom => state.custom_functions.clone(),
 			FunctionMenu::Disp => [
 				Some(Function::NormalFormat),
 				Some(Function::RationalFormat),
@@ -734,16 +770,6 @@ impl FunctionMenu {
 				Some(Function::RotateRight),
 			]
 			.to_vec(),
-			FunctionMenu::Catalog => {
-				[Some(Function::ConstCatalog), Some(Function::TimeCatalog)].to_vec()
-			}
-			FunctionMenu::ConstCatalog => [Some(Function::SpeedOfLight)].to_vec(),
-			FunctionMenu::TimeCatalog => [
-				Some(Function::Now),
-				Some(Function::Date),
-				Some(Function::Time),
-			]
-			.to_vec(),
 		}
 	}
 }
@@ -754,6 +780,7 @@ pub struct FunctionKeyState {
 	page: usize,
 	menu_stack: Vec<(Option<FunctionMenu>, usize)>,
 	quick_functions: Vec<Option<Function>>,
+	custom_functions: Vec<Option<Function>>,
 	menu_strings: RefCell<Vec<String>>,
 }
 
@@ -765,6 +792,7 @@ impl FunctionKeyState {
 			page: 0,
 			menu_stack: Vec::new(),
 			quick_functions: Vec::new(),
+			custom_functions: Vec::new(),
 			menu_strings: RefCell::new(Vec::new()),
 		}
 	}
@@ -794,7 +822,7 @@ impl FunctionKeyState {
 	pub fn update(&mut self, format: &NumberFormat) {
 		// Update function list from current menu
 		if let Some(menu) = self.menu {
-			self.functions = menu.functions();
+			self.functions = menu.functions(self);
 		} else {
 			self.functions = self.quick_functions(format);
 		}
@@ -839,7 +867,7 @@ impl FunctionKeyState {
 	pub fn show_menu(&mut self, menu: FunctionMenu) {
 		self.menu_stack.push((self.menu, self.page));
 		self.menu = Some(menu);
-		self.functions = menu.functions();
+		self.functions = menu.functions(self);
 		self.page = 0;
 	}
 
@@ -847,7 +875,7 @@ impl FunctionKeyState {
 		self.menu_stack.clear();
 		self.menu_stack.push((None, 0));
 		self.menu = Some(menu);
-		self.functions = menu.functions();
+		self.functions = menu.functions(self);
 		self.page = 0;
 	}
 
@@ -873,6 +901,28 @@ impl FunctionKeyState {
 
 	pub fn multiple_pages(&self) -> bool {
 		self.functions.len() > 6
+	}
+
+	pub fn custom_function(&self, idx: usize) -> Option<Function> {
+		if let Some(func) = self.custom_functions.get(idx) {
+			func.clone()
+		} else {
+			None
+		}
+	}
+
+	pub fn set_custom_function(&mut self, idx: usize, func: Option<Function>) {
+		if let Some(dest) = self.custom_functions.get_mut(idx) {
+			*dest = func;
+			while let Some(None) = self.custom_functions.last() {
+				self.custom_functions.pop();
+			}
+		} else if func.is_some() {
+			while self.custom_functions.len() < idx {
+				self.custom_functions.push(None);
+			}
+			self.custom_functions.push(func);
+		}
 	}
 
 	pub fn render(&self, screen: &mut dyn Screen) {

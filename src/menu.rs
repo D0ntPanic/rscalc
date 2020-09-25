@@ -16,11 +16,12 @@ use crate::dm42::time_24_hour;
 #[cfg(not(feature = "dm42"))]
 use crate::time::time_24_hour;
 
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone)]
 #[allow(dead_code)]
 pub enum MenuItemFunction {
 	Action(Function),
 	InMenuAction(Function),
+	InMenuActionWithDelete(Function, Function),
 	ConversionAction(Function, Function, Function),
 }
 
@@ -128,13 +129,13 @@ impl Menu {
 	}
 
 	pub fn selected_function(&self) -> MenuItemFunction {
-		self.items[self.selection].function
+		self.items[self.selection].function.clone()
 	}
 
 	pub fn specific_function(&mut self, idx: usize) -> Option<MenuItemFunction> {
 		if let Some(item) = self.items.get(idx) {
 			self.selection = idx;
-			Some(item.function)
+			Some(item.function.clone())
 		} else {
 			None
 		}

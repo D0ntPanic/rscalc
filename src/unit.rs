@@ -1455,51 +1455,27 @@ fn value_layout() -> Box<dyn Fn(&State, &dyn Screen) -> Layout> {
 
 pub fn unit_menu() -> Menu {
 	let mut items = Vec::new();
-	items.push(MenuItem {
-		layout: MenuItemLayout::Static(MenuItem::static_string_layout("Angle")),
-		function: MenuItemFunction::InMenuAction(Function::UnitMenu(UnitType::Angle)),
-	});
-	items.push(MenuItem {
-		layout: MenuItemLayout::Static(MenuItem::static_string_layout("Area")),
-		function: MenuItemFunction::InMenuAction(Function::UnitMenu(UnitType::Area)),
-	});
-	items.push(MenuItem {
-		layout: MenuItemLayout::Static(MenuItem::static_string_layout("Distance")),
-		function: MenuItemFunction::InMenuAction(Function::UnitMenu(UnitType::Distance)),
-	});
-	items.push(MenuItem {
-		layout: MenuItemLayout::Static(MenuItem::static_string_layout("Energy")),
-		function: MenuItemFunction::InMenuAction(Function::UnitMenu(UnitType::Energy)),
-	});
-	items.push(MenuItem {
-		layout: MenuItemLayout::Static(MenuItem::static_string_layout("Force")),
-		function: MenuItemFunction::InMenuAction(Function::UnitMenu(UnitType::Force)),
-	});
-	items.push(MenuItem {
-		layout: MenuItemLayout::Static(MenuItem::static_string_layout("Mass")),
-		function: MenuItemFunction::InMenuAction(Function::UnitMenu(UnitType::Mass)),
-	});
-	items.push(MenuItem {
-		layout: MenuItemLayout::Static(MenuItem::static_string_layout("Power")),
-		function: MenuItemFunction::InMenuAction(Function::UnitMenu(UnitType::Power)),
-	});
-	items.push(MenuItem {
-		layout: MenuItemLayout::Static(MenuItem::static_string_layout("Pressure")),
-		function: MenuItemFunction::InMenuAction(Function::UnitMenu(UnitType::Pressure)),
-	});
-	items.push(MenuItem {
-		layout: MenuItemLayout::Static(MenuItem::static_string_layout("Temp")),
-		function: MenuItemFunction::InMenuAction(Function::UnitMenu(UnitType::Temperature)),
-	});
-	items.push(MenuItem {
-		layout: MenuItemLayout::Static(MenuItem::static_string_layout("Time")),
-		function: MenuItemFunction::InMenuAction(Function::UnitMenu(UnitType::Time)),
-	});
-	items.push(MenuItem {
-		layout: MenuItemLayout::Static(MenuItem::static_string_layout("Volume")),
-		function: MenuItemFunction::InMenuAction(Function::UnitMenu(UnitType::Volume)),
-	});
-
+	for item in &[
+		("Angle", UnitType::Angle),
+		("Area", UnitType::Area),
+		("Distance", UnitType::Distance),
+		("Energy", UnitType::Energy),
+		("Force", UnitType::Force),
+		("Mass", UnitType::Mass),
+		("Power", UnitType::Power),
+		("Pressure", UnitType::Pressure),
+		("Temp", UnitType::Temperature),
+		("Time", UnitType::Time),
+		("Volume", UnitType::Volume),
+	] {
+		items.push(MenuItem {
+			layout: MenuItemLayout::Static(MenuItem::static_string_layout(item.0)),
+			function: MenuItemFunction::InMenuActionWithDelete(
+				Function::UnitMenu(item.1),
+				Function::ClearUnits,
+			),
+		});
+	}
 	let mut menu = Menu::new_with_bottom("Units", items, value_layout());
 	menu.set_columns(3);
 	menu

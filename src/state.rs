@@ -1,7 +1,8 @@
+use crate::catalog::{assign_menu, catalog_menu};
 use crate::complex::ComplexNumber;
 use crate::error::{Error, Result};
 use crate::font::{SANS_13, SANS_16, SANS_24};
-use crate::functions::{FunctionKeyState, FunctionMenu};
+use crate::functions::{Function, FunctionKeyState, FunctionMenu};
 use crate::input::{AlphaMode, InputEvent, InputMode, InputQueue};
 use crate::layout::Layout;
 use crate::menu::{setup_menu, Menu, MenuItemFunction};
@@ -193,6 +194,14 @@ impl State {
 
 	pub fn set_status_bar_left_display(&mut self, display_type: StatusBarLeftDisplayType) {
 		self.status_bar_left_display = display_type;
+	}
+
+	pub fn custom_function(&self, idx: usize) -> Option<Function> {
+		self.function_keys.custom_function(idx)
+	}
+
+	pub fn set_custom_function(&mut self, idx: usize, func: Option<Function>) {
+		self.function_keys.set_custom_function(idx, func);
 	}
 
 	pub fn show_error(&mut self, error: Error) {
@@ -448,8 +457,14 @@ impl State {
 					InputEvent::Convert => {
 						self.show_menu(unit_menu());
 					}
+					InputEvent::Assign => {
+						self.show_menu(assign_menu());
+					}
+					InputEvent::Custom => {
+						self.function_keys.show_toplevel_menu(FunctionMenu::Custom);
+					}
 					InputEvent::Catalog => {
-						self.function_keys.show_toplevel_menu(FunctionMenu::Catalog);
+						self.show_menu(catalog_menu(|page| Function::CatalogPage(page)));
 					}
 					InputEvent::FunctionKey(func, _) => {
 						if let Some(func) = self.function_keys.function(func) {
@@ -534,11 +549,14 @@ impl State {
 						self.force_refresh = true;
 						match function {
 							MenuItemFunction::Action(action) => {
-								action.execute(self, screen)?;
 								self.input_state = InputState::Normal;
 								self.menus.clear();
+								action.execute(self, screen)?;
 							}
 							MenuItemFunction::InMenuAction(action) => {
+								action.execute(self, screen)?;
+							}
+							MenuItemFunction::InMenuActionWithDelete(action, _) => {
 								action.execute(self, screen)?;
 							}
 							MenuItemFunction::ConversionAction(action, _, _) => {
@@ -550,7 +568,9 @@ impl State {
 						menu.force_refresh();
 						let function = menu.selected_function();
 						match function {
-							MenuItemFunction::Action(_) | MenuItemFunction::InMenuAction(_) => (),
+							MenuItemFunction::Action(_)
+							| MenuItemFunction::InMenuAction(_)
+							| MenuItemFunction::InMenuActionWithDelete(_, _) => (),
 							MenuItemFunction::ConversionAction(_, action, _) => {
 								self.force_refresh = true;
 								action.execute(self, screen)?;
@@ -561,9 +581,23 @@ impl State {
 						menu.force_refresh();
 						let function = menu.selected_function();
 						match function {
-							MenuItemFunction::Action(_) | MenuItemFunction::InMenuAction(_) => (),
+							MenuItemFunction::Action(_)
+							| MenuItemFunction::InMenuAction(_)
+							| MenuItemFunction::InMenuActionWithDelete(_, _) => (),
 							MenuItemFunction::ConversionAction(_, _, action) => {
 								self.force_refresh = true;
+								action.execute(self, screen)?;
+							}
+						}
+					}
+					InputEvent::Backspace => {
+						menu.force_refresh();
+						let function = menu.selected_function();
+						match function {
+							MenuItemFunction::Action(_)
+							| MenuItemFunction::InMenuAction(_)
+							| MenuItemFunction::ConversionAction(_, _, _) => (),
+							MenuItemFunction::InMenuActionWithDelete(_, action) => {
 								action.execute(self, screen)?;
 							}
 						}
@@ -1080,12 +1114,13 @@ impl State {
 		if let Some(function) = menu.specific_function(idx) {
 			match function {
 				MenuItemFunction::Action(action) => {
-					self.force_refresh = true;
-					action.execute(self, screen)?;
 					self.input_state = InputState::Normal;
 					self.menus.clear();
+					self.force_refresh = true;
+					action.execute(self, screen)?;
 				}
-				MenuItemFunction::InMenuAction(action) => {
+				MenuItemFunction::InMenuAction(action)
+				| MenuItemFunction::InMenuActionWithDelete(action, _) => {
 					self.force_refresh = true;
 					action.execute(self, screen)?;
 				}
