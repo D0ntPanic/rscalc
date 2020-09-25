@@ -183,19 +183,11 @@ impl Decimal {
 	}
 
 	pub fn asin(&self) -> Self {
-		let mut result = core::mem::MaybeUninit::<Decimal>::uninit();
-		unsafe {
-			__bid128_asin(result.as_mut_ptr(), &self);
-			result.assume_init()
-		}
+		Self::atan2(self, &(Decimal::from(1) - self * self).sqrt())
 	}
 
 	pub fn acos(&self) -> Self {
-		let mut result = core::mem::MaybeUninit::<Decimal>::uninit();
-		unsafe {
-			__bid128_acos(result.as_mut_ptr(), &self);
-			result.assume_init()
-		}
+		Self::atan2(&(Decimal::from(1) - self * self).sqrt(), self)
 	}
 
 	pub fn atan(&self) -> Self {
