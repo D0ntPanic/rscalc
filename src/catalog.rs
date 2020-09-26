@@ -7,6 +7,7 @@ use alloc::vec::Vec;
 pub enum CatalogPage {
 	Constants,
 	Time,
+	Transcendental,
 }
 
 impl CatalogPage {
@@ -14,6 +15,7 @@ impl CatalogPage {
 		match self {
 			CatalogPage::Constants => "Constants",
 			CatalogPage::Time => "Time",
+			CatalogPage::Transcendental => "Transcendental",
 		}
 	}
 
@@ -25,6 +27,7 @@ impl CatalogPage {
 		match self {
 			CatalogPage::Constants => constant_catalog_menu(func),
 			CatalogPage::Time => time_catalog_menu(func),
+			CatalogPage::Transcendental => transcendental_catalog_menu(func),
 		}
 	}
 }
@@ -60,6 +63,7 @@ where
 		create_parent_items(&[
 			("Constants", func(CatalogPage::Constants)),
 			("Time", func(CatalogPage::Time)),
+			("Transcendental", func(CatalogPage::Transcendental)),
 		]),
 	)
 }
@@ -86,6 +90,35 @@ where
 			("Time", func(Function::Time)),
 		]),
 	)
+}
+
+fn transcendental_catalog_menu<F>(func: F) -> Menu
+where
+	F: Fn(Function) -> Function,
+{
+	let mut menu = Menu::new(
+		"Transcendental",
+		create_action_items(&[
+			("log", func(Function::Log)),
+			("10ˣ", func(Function::Exp10)),
+			("ln", func(Function::Ln)),
+			("eˣ", func(Function::Exp)),
+			("sin", func(Function::Sin)),
+			("cos", func(Function::Cos)),
+			("tan", func(Function::Tan)),
+			("sinh", func(Function::Sinh)),
+			("cosh", func(Function::Cosh)),
+			("tanh", func(Function::Tanh)),
+			("asin", func(Function::Asin)),
+			("acos", func(Function::Acos)),
+			("atan", func(Function::Atan)),
+			("asinh", func(Function::Asinh)),
+			("acosh", func(Function::Acosh)),
+			("atanh", func(Function::Atanh)),
+		]),
+	);
+	menu.set_columns(2);
+	menu
 }
 
 pub fn assign_menu() -> Menu {

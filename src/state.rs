@@ -350,19 +350,19 @@ impl State {
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Log => {
-						self.set_top(self.top().log()?)?;
+						Function::Log.execute(self, screen)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::TenX => {
-						self.set_top(self.top().exp10()?)?;
+						Function::Exp10.execute(self, screen)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Ln => {
-						self.set_top(self.top().ln()?)?;
+						Function::Ln.execute(self, screen)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::EX => {
-						self.set_top(self.top().exp()?)?;
+						Function::Exp.execute(self, screen)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Percent => {
@@ -376,27 +376,27 @@ impl State {
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Sin => {
-						self.set_top(self.top().sin(self.angle_mode)?)?;
+						Function::Sin.execute(self, screen)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Cos => {
-						self.set_top(self.top().cos(self.angle_mode)?)?;
+						Function::Cos.execute(self, screen)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Tan => {
-						self.set_top(self.top().tan(self.angle_mode)?)?;
+						Function::Tan.execute(self, screen)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Asin => {
-						self.set_top(self.top().asin(self.angle_mode)?)?;
+						Function::Asin.execute(self, screen)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Acos => {
-						self.set_top(self.top().acos(self.angle_mode)?)?;
+						Function::Acos.execute(self, screen)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::Atan => {
-						self.set_top(self.top().atan(self.angle_mode)?)?;
+						Function::Atan.execute(self, screen)?;
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
 					InputEvent::RotateDown => {

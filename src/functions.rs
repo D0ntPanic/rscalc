@@ -92,6 +92,22 @@ pub enum Function {
 	SystemMenu,
 	Time24HourToggle,
 	StatusBarLeftDisplayToggle,
+	Log,
+	Exp10,
+	Ln,
+	Exp,
+	Sin,
+	Cos,
+	Tan,
+	Asin,
+	Acos,
+	Atan,
+	Sinh,
+	Cosh,
+	Tanh,
+	Asinh,
+	Acosh,
+	Atanh,
 }
 
 impl Function {
@@ -332,6 +348,22 @@ impl Function {
 			Function::SystemMenu => "Sys".to_string(),
 			Function::Time24HourToggle => "24Hr".to_string(),
 			Function::StatusBarLeftDisplayToggle => "StatusBar".to_string(),
+			Function::Log => "log".to_string(),
+			Function::Exp10 => "10ˣ".to_string(),
+			Function::Ln => "ln".to_string(),
+			Function::Exp => "eˣ".to_string(),
+			Function::Sin => "sin".to_string(),
+			Function::Cos => "cos".to_string(),
+			Function::Tan => "tan".to_string(),
+			Function::Asin => "asin".to_string(),
+			Function::Acos => "acos".to_string(),
+			Function::Atan => "atan".to_string(),
+			Function::Sinh => "sinh".to_string(),
+			Function::Cosh => "cosh".to_string(),
+			Function::Tanh => "tanh".to_string(),
+			Function::Asinh => "asinh".to_string(),
+			Function::Acosh => "acosh".to_string(),
+			Function::Atanh => "atanh".to_string(),
 		}
 	}
 
@@ -693,6 +725,22 @@ impl Function {
 					StatusBarLeftDisplayType::FreeMemory => StatusBarLeftDisplayType::CurrentTime,
 				});
 			}
+			Function::Log => state.set_top(state.top().log()?)?,
+			Function::Exp10 => state.set_top(state.top().exp10()?)?,
+			Function::Ln => state.set_top(state.top().ln()?)?,
+			Function::Exp => state.set_top(state.top().exp()?)?,
+			Function::Sin => state.set_top(state.top().sin(*state.angle_mode())?)?,
+			Function::Cos => state.set_top(state.top().cos(*state.angle_mode())?)?,
+			Function::Tan => state.set_top(state.top().tan(*state.angle_mode())?)?,
+			Function::Asin => state.set_top(state.top().asin(*state.angle_mode())?)?,
+			Function::Acos => state.set_top(state.top().acos(*state.angle_mode())?)?,
+			Function::Atan => state.set_top(state.top().atan(*state.angle_mode())?)?,
+			Function::Sinh => state.set_top(state.top().sinh()?)?,
+			Function::Cosh => state.set_top(state.top().cosh()?)?,
+			Function::Tanh => state.set_top(state.top().tanh()?)?,
+			Function::Asinh => state.set_top(state.top().asinh()?)?,
+			Function::Acosh => state.set_top(state.top().acosh()?)?,
+			Function::Atanh => state.set_top(state.top().atanh()?)?,
 		}
 		Ok(())
 	}

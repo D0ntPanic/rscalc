@@ -259,6 +259,69 @@ impl Value {
 		}
 	}
 
+	pub fn sinh(&self) -> Result<Value> {
+		match self {
+			Value::Complex(value) => Self::check_complex(value.sinh()),
+			_ => Ok(Value::Number(self.real_number()?.sinh())),
+		}
+	}
+
+	pub fn cosh(&self) -> Result<Value> {
+		match self {
+			Value::Complex(value) => Self::check_complex(value.cosh()),
+			_ => Ok(Value::Number(self.real_number()?.cosh())),
+		}
+	}
+
+	pub fn tanh(&self) -> Result<Value> {
+		match self {
+			Value::Complex(value) => Self::check_complex(value.tanh()),
+			_ => Ok(Value::Number(self.real_number()?.tanh())),
+		}
+	}
+
+	pub fn asinh(&self) -> Result<Value> {
+		match self {
+			Value::Complex(value) => Self::check_complex(value.asinh()),
+			_ => {
+				let result = self.real_number()?.asinh();
+				if result.is_nan() {
+					Self::check_complex(self.complex_number()?.asinh())
+				} else {
+					Ok(Value::Number(result))
+				}
+			}
+		}
+	}
+
+	pub fn acosh(&self) -> Result<Value> {
+		match self {
+			Value::Complex(value) => Self::check_complex(value.acosh()),
+			_ => {
+				let result = self.real_number()?.acosh();
+				if result.is_nan() {
+					Self::check_complex(self.complex_number()?.acosh())
+				} else {
+					Ok(Value::Number(result))
+				}
+			}
+		}
+	}
+
+	pub fn atanh(&self) -> Result<Value> {
+		match self {
+			Value::Complex(value) => Self::check_complex(value.atanh()),
+			_ => {
+				let result = self.real_number()?.atanh();
+				if result.is_nan() {
+					Self::check_complex(self.complex_number()?.atanh())
+				} else {
+					Ok(Value::Number(result))
+				}
+			}
+		}
+	}
+
 	pub fn add_unit(&self, unit: Unit) -> Result<Value> {
 		match self {
 			Value::Number(num) => Ok(Value::NumberWithUnit(

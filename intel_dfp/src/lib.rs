@@ -12,6 +12,10 @@ pub struct Decimal {
 	parts: [u64; 2],
 }
 
+pub trait ToDecimal {
+	fn to_decimal(self) -> Decimal;
+}
+
 #[repr(C)]
 #[allow(dead_code)]
 enum Class {
@@ -51,15 +55,7 @@ extern "C" {
 	fn __bid128_sin(result: *mut Decimal, x: &Decimal);
 	fn __bid128_cos(result: *mut Decimal, x: &Decimal);
 	fn __bid128_tan(result: *mut Decimal, x: &Decimal);
-	fn __bid128_asin(result: *mut Decimal, x: &Decimal);
-	fn __bid128_acos(result: *mut Decimal, x: &Decimal);
 	fn __bid128_atan(result: *mut Decimal, x: &Decimal);
-	fn __bid128_sinh(result: *mut Decimal, x: &Decimal);
-	fn __bid128_cosh(result: *mut Decimal, x: &Decimal);
-	fn __bid128_tanh(result: *mut Decimal, x: &Decimal);
-	fn __bid128_asinh(result: *mut Decimal, x: &Decimal);
-	fn __bid128_acosh(result: *mut Decimal, x: &Decimal);
-	fn __bid128_atanh(result: *mut Decimal, x: &Decimal);
 	fn __bid128_log1p(result: *mut Decimal, x: &Decimal);
 	fn __bid128_expm1(result: *mut Decimal, x: &Decimal);
 	fn __bid128_log10(result: *mut Decimal, x: &Decimal);
@@ -199,51 +195,28 @@ impl Decimal {
 	}
 
 	pub fn sinh(&self) -> Self {
-		let mut result = core::mem::MaybeUninit::<Decimal>::uninit();
-		unsafe {
-			__bid128_sinh(result.as_mut_ptr(), &self);
-			result.assume_init()
-		}
+		(1.to_decimal() - (&(-2).to_decimal() * self).exp()) / (2.to_decimal() * (-self).exp())
 	}
 
 	pub fn cosh(&self) -> Self {
-		let mut result = core::mem::MaybeUninit::<Decimal>::uninit();
-		unsafe {
-			__bid128_cosh(result.as_mut_ptr(), &self);
-			result.assume_init()
-		}
+		(1.to_decimal() + (&(-2).to_decimal() * self).exp()) / (2.to_decimal() * (-self).exp())
 	}
 
 	pub fn tanh(&self) -> Self {
-		let mut result = core::mem::MaybeUninit::<Decimal>::uninit();
-		unsafe {
-			__bid128_tanh(result.as_mut_ptr(), &self);
-			result.assume_init()
-		}
+		let e_2x = (&2.to_decimal() * self).exp();
+		(&e_2x - &1.to_decimal()) / (&e_2x + &1.to_decimal())
 	}
 
 	pub fn asinh(&self) -> Self {
-		let mut result = core::mem::MaybeUninit::<Decimal>::uninit();
-		unsafe {
-			__bid128_asinh(result.as_mut_ptr(), &self);
-			result.assume_init()
-		}
+		(self + &(self * self + 1.to_decimal()).sqrt()).ln()
 	}
 
 	pub fn acosh(&self) -> Self {
-		let mut result = core::mem::MaybeUninit::<Decimal>::uninit();
-		unsafe {
-			__bid128_acosh(result.as_mut_ptr(), &self);
-			result.assume_init()
-		}
+		(self + &(self * self - 1.to_decimal()).sqrt()).ln()
 	}
 
 	pub fn atanh(&self) -> Self {
-		let mut result = core::mem::MaybeUninit::<Decimal>::uninit();
-		unsafe {
-			__bid128_atanh(result.as_mut_ptr(), &self);
-			result.assume_init()
-		}
+		((&1.to_decimal() + self) / (&1.to_decimal() - self)).ln() / 2.to_decimal()
 	}
 
 	pub fn ln_1p(&self) -> Self {
@@ -513,6 +486,42 @@ impl From<f64> for Decimal {
 			__binary64_to_bid128(result.as_mut_ptr(), &value);
 			result.assume_init()
 		}
+	}
+}
+
+impl ToDecimal for i32 {
+	fn to_decimal(self) -> Decimal {
+		self.into()
+	}
+}
+
+impl ToDecimal for u32 {
+	fn to_decimal(self) -> Decimal {
+		self.into()
+	}
+}
+
+impl ToDecimal for i64 {
+	fn to_decimal(self) -> Decimal {
+		self.into()
+	}
+}
+
+impl ToDecimal for u64 {
+	fn to_decimal(self) -> Decimal {
+		self.into()
+	}
+}
+
+impl ToDecimal for f32 {
+	fn to_decimal(self) -> Decimal {
+		self.into()
+	}
+}
+
+impl ToDecimal for f64 {
+	fn to_decimal(self) -> Decimal {
+		self.into()
 	}
 }
 

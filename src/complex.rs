@@ -15,6 +15,10 @@ pub struct ComplexNumber {
 	imaginary: Number,
 }
 
+pub trait ToComplex {
+	fn to_complex(self) -> ComplexNumber;
+}
+
 impl ComplexNumber {
 	pub fn from_real(real: Number) -> Self {
 		ComplexNumber {
@@ -27,6 +31,20 @@ impl ComplexNumber {
 		ComplexNumber {
 			real: Self::check_int_bounds(real),
 			imaginary: Self::check_int_bounds(imaginary),
+		}
+	}
+
+	pub fn i() -> Self {
+		ComplexNumber {
+			real: 0.into(),
+			imaginary: 1.into(),
+		}
+	}
+
+	pub fn neg_i() -> Self {
+		ComplexNumber {
+			real: 0.into(),
+			imaginary: (-1).into(),
 		}
 	}
 
@@ -144,11 +162,11 @@ impl ComplexNumber {
 	}
 
 	pub fn exp10(&self) -> Self {
-		ComplexNumber::from_real(10.to_number()).pow(self)
+		10.to_complex().pow(self)
 	}
 
 	pub fn log(&self) -> Self {
-		self.ln() / ComplexNumber::from_real(10.to_number().ln())
+		self.ln() / 10.to_number().ln().to_complex()
 	}
 
 	pub fn pow(&self, power: &ComplexNumber) -> Self {
@@ -175,24 +193,42 @@ impl ComplexNumber {
 
 	pub fn asin(&self) -> Self {
 		ComplexNumber::from_parts(0.to_number(), -1.to_number())
-			* ((ComplexNumber::from_real(1.to_number()) - (self * self)).sqrt()
-				+ &ComplexNumber::from_parts(0.to_number(), 1.to_number()) * self)
-				.ln()
+			* ((1.to_complex() - (self * self)).sqrt() + &ComplexNumber::i() * self).ln()
 	}
 
 	pub fn acos(&self) -> Self {
-		ComplexNumber::from_parts(0.to_number(), -1.to_number())
-			* (&(ComplexNumber::from_parts(0.to_number(), 1.to_number())
-				* (ComplexNumber::from_real(1.to_number()) - (self * self)).sqrt())
-				+ self)
-				.ln()
+		ComplexNumber::neg_i()
+			* (&(ComplexNumber::i() * (1.to_complex() - (self * self)).sqrt()) + self).ln()
 	}
 
 	pub fn atan(&self) -> Self {
 		ComplexNumber::from_parts(0.to_number(), -1.to_number() / 2.to_number())
-			* ((&ComplexNumber::from_parts(0.to_number(), 1.to_number()) - self)
-				/ (&ComplexNumber::from_parts(0.to_number(), 1.to_number()) + self))
-				.ln()
+			* ((&ComplexNumber::i() - self) / (&ComplexNumber::i() + self)).ln()
+	}
+
+	pub fn sinh(&self) -> Self {
+		(1.to_complex() - (&(-2).to_complex() * self).exp()) / (2.to_complex() * (-self).exp())
+	}
+
+	pub fn cosh(&self) -> Self {
+		(1.to_complex() + (&(-2).to_complex() * self).exp()) / (2.to_complex() * (-self).exp())
+	}
+
+	pub fn tanh(&self) -> Self {
+		let e_2x = (&2.to_complex() * self).exp();
+		(&e_2x - &1.to_complex()) / (&e_2x + &1.to_complex())
+	}
+
+	pub fn asinh(&self) -> Self {
+		(self + &(self * self + 1.to_complex()).sqrt()).ln()
+	}
+
+	pub fn acosh(&self) -> Self {
+		(self + &(self * self - 1.to_complex()).sqrt()).ln()
+	}
+
+	pub fn atanh(&self) -> Self {
+		((&1.to_complex() + self) / (&1.to_complex() - self)).ln() / 2.to_complex()
 	}
 
 	fn complex_add(&self, other: &Self) -> Self {
@@ -318,5 +354,45 @@ impl core::ops::Div for &ComplexNumber {
 impl core::ops::DivAssign for ComplexNumber {
 	fn div_assign(&mut self, rhs: Self) {
 		*self = self.complex_div(&rhs);
+	}
+}
+
+impl core::ops::Neg for ComplexNumber {
+	type Output = Self;
+
+	fn neg(self) -> Self::Output {
+		0.to_complex().complex_sub(&self)
+	}
+}
+
+impl core::ops::Neg for &ComplexNumber {
+	type Output = ComplexNumber;
+
+	fn neg(self) -> Self::Output {
+		0.to_complex().complex_sub(self)
+	}
+}
+
+impl<T: ToNumber> From<T> for ComplexNumber {
+	fn from(val: T) -> Self {
+		ComplexNumber::from_real(val.to_number())
+	}
+}
+
+impl From<Number> for ComplexNumber {
+	fn from(val: Number) -> Self {
+		ComplexNumber::from_real(val)
+	}
+}
+
+impl<T: ToNumber> ToComplex for T {
+	fn to_complex(self) -> ComplexNumber {
+		self.into()
+	}
+}
+
+impl ToComplex for Number {
+	fn to_complex(self) -> ComplexNumber {
+		self.into()
 	}
 }

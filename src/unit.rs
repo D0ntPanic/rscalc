@@ -127,6 +127,8 @@ pub enum TimeUnit {
 	Minutes,
 	Hours,
 	Days,
+	Weeks,
+	Months,
 	Years,
 }
 
@@ -376,6 +378,8 @@ impl TimeUnit {
 			TimeUnit::Minutes => "min",
 			TimeUnit::Hours => "hr",
 			TimeUnit::Days => "day",
+			TimeUnit::Weeks => "wk",
+			TimeUnit::Months => "month",
 			TimeUnit::Years => "yr",
 		}
 	}
@@ -542,7 +546,9 @@ impl Unit {
 			Unit::Time(TimeUnit::Minutes) => 0x0904,
 			Unit::Time(TimeUnit::Hours) => 0x0905,
 			Unit::Time(TimeUnit::Days) => 0x0906,
-			Unit::Time(TimeUnit::Years) => 0x0907,
+			Unit::Time(TimeUnit::Weeks) => 0x0907,
+			Unit::Time(TimeUnit::Months) => 0x0908,
+			Unit::Time(TimeUnit::Years) => 0x0909,
 			Unit::Volume(VolumeUnit::Litre) => 0x0a00,
 			Unit::Volume(VolumeUnit::Millilitre) => 0x0a01,
 			Unit::Volume(VolumeUnit::Gallons) => 0x0a02,
@@ -639,7 +645,9 @@ impl Unit {
 			0x0904 => Some(Unit::Time(TimeUnit::Minutes)),
 			0x0905 => Some(Unit::Time(TimeUnit::Hours)),
 			0x0906 => Some(Unit::Time(TimeUnit::Days)),
-			0x0907 => Some(Unit::Time(TimeUnit::Years)),
+			0x0907 => Some(Unit::Time(TimeUnit::Weeks)),
+			0x0908 => Some(Unit::Time(TimeUnit::Months)),
+			0x0909 => Some(Unit::Time(TimeUnit::Years)),
 			0x0a00 => Some(Unit::Volume(VolumeUnit::Litre)),
 			0x0a01 => Some(Unit::Volume(VolumeUnit::Millilitre)),
 			0x0a02 => Some(Unit::Volume(VolumeUnit::Gallons)),
@@ -908,7 +916,9 @@ impl MultiplierUnitConversion for TimeUnit {
 			TimeUnit::Minutes => 60.to_number(),
 			TimeUnit::Hours => 3600.to_number(),
 			TimeUnit::Days => (3600 * 24).to_number(),
-			TimeUnit::Years => 31556952.to_number(), // Average length of year over 400 years
+			TimeUnit::Weeks => (3600 * 24 * 7).to_number(),
+			TimeUnit::Months => 2_629_746.to_number(), // Average length of 1/12 year over 400 years
+			TimeUnit::Years => 31_556_952.to_number(), // Average length of year over 400 years
 		}
 	}
 }
@@ -1760,6 +1770,8 @@ fn time_unit_menu() -> Menu {
 		TimeUnit::Minutes,
 		TimeUnit::Hours,
 		TimeUnit::Days,
+		TimeUnit::Weeks,
+		TimeUnit::Months,
 		TimeUnit::Years,
 	] {
 		items.push(MenuItem {
@@ -1773,7 +1785,7 @@ fn time_unit_menu() -> Menu {
 	}
 
 	let mut menu = Menu::new_with_bottom("Time (×,÷ Assign; x≷y Convert)", items, value_layout());
-	menu.set_columns(2);
+	menu.set_columns(3);
 	menu
 }
 
