@@ -8,6 +8,7 @@ pub enum CatalogPage {
 	Constants,
 	Time,
 	Transcendental,
+	Units,
 }
 
 impl CatalogPage {
@@ -16,18 +17,20 @@ impl CatalogPage {
 			CatalogPage::Constants => "Constants",
 			CatalogPage::Time => "Time",
 			CatalogPage::Transcendental => "Transcendental",
+			CatalogPage::Units => "Units",
 		}
 	}
 
-	pub fn menu<PageF, FuncF>(&self, _page: PageF, func: FuncF) -> Menu
-	where
-		PageF: Fn(CatalogPage) -> Function,
-		FuncF: Fn(Function) -> Function,
-	{
+	pub fn menu(
+		&self,
+		_page: &dyn Fn(CatalogPage) -> Function,
+		func: &dyn Fn(Function) -> Function,
+	) -> Menu {
 		match self {
 			CatalogPage::Constants => constant_catalog_menu(func),
 			CatalogPage::Time => time_catalog_menu(func),
 			CatalogPage::Transcendental => transcendental_catalog_menu(func),
+			CatalogPage::Units => main_unit_catalog_menu(func),
 		}
 	}
 }
@@ -54,34 +57,26 @@ fn create_action_items(items: &[(&'static str, Function)]) -> Vec<MenuItem> {
 	result
 }
 
-pub fn catalog_menu<F>(func: F) -> Menu
-where
-	F: Fn(CatalogPage) -> Function,
-{
+pub fn catalog_menu(func: &dyn Fn(CatalogPage) -> Function) -> Menu {
 	Menu::new(
 		"Catalog",
 		create_parent_items(&[
 			("Constants", func(CatalogPage::Constants)),
 			("Time", func(CatalogPage::Time)),
 			("Transcendental", func(CatalogPage::Transcendental)),
+			("Units", func(CatalogPage::Units)),
 		]),
 	)
 }
 
-fn constant_catalog_menu<F>(func: F) -> Menu
-where
-	F: Fn(Function) -> Function,
-{
+fn constant_catalog_menu(func: &dyn Fn(Function) -> Function) -> Menu {
 	Menu::new(
 		"Constants",
 		create_action_items(&[("c - Speed of Light", func(Function::SpeedOfLight))]),
 	)
 }
 
-fn time_catalog_menu<F>(func: F) -> Menu
-where
-	F: Fn(Function) -> Function,
-{
+fn time_catalog_menu(func: &dyn Fn(Function) -> Function) -> Menu {
 	Menu::new(
 		"Time",
 		create_action_items(&[
@@ -92,10 +87,7 @@ where
 	)
 }
 
-fn transcendental_catalog_menu<F>(func: F) -> Menu
-where
-	F: Fn(Function) -> Function,
-{
+fn transcendental_catalog_menu(func: &dyn Fn(Function) -> Function) -> Menu {
 	let mut menu = Menu::new(
 		"Transcendental",
 		create_action_items(&[
@@ -119,6 +111,17 @@ where
 	);
 	menu.set_columns(2);
 	menu
+}
+
+fn main_unit_catalog_menu(func: &dyn Fn(Function) -> Function) -> Menu {
+	Menu::new(
+		"Units",
+		create_parent_items(&[
+			("Assign Unit", func(Function::AddUnitCatalogMenu)),
+			("Assign Inverse Unit", func(Function::AddInvUnitCatalogMenu)),
+			("Convert Unit", func(Function::ConvertUnitCatalogMenu)),
+		]),
+	)
 }
 
 pub fn assign_menu() -> Menu {

@@ -174,6 +174,14 @@ impl AngleUnit {
 			AngleUnit::Gradians => "grad",
 		}
 	}
+
+	fn units() -> &'static [Unit] {
+		&[
+			Unit::Angle(AngleUnit::Degrees),
+			Unit::Angle(AngleUnit::Radians),
+			Unit::Angle(AngleUnit::Gradians),
+		]
+	}
 }
 
 impl AreaUnit {
@@ -227,6 +235,21 @@ impl AreaUnit {
 			value.clone()
 		}
 	}
+
+	fn units() -> &'static [Unit] {
+		&[
+			Unit::Area(AreaUnit::Acres),
+			Unit::Area(AreaUnit::Hectares),
+			Unit::Distance(DistanceUnit::Meters),
+			Unit::Distance(DistanceUnit::Millimeters),
+			Unit::Distance(DistanceUnit::Centimeters),
+			Unit::Distance(DistanceUnit::Kilometers),
+			Unit::Distance(DistanceUnit::Inches),
+			Unit::Distance(DistanceUnit::Feet),
+			Unit::Distance(DistanceUnit::Yards),
+			Unit::Distance(DistanceUnit::Miles),
+		]
+	}
 }
 
 impl DistanceUnit {
@@ -245,6 +268,23 @@ impl DistanceUnit {
 			DistanceUnit::NauticalMiles => "nmi",
 			DistanceUnit::AstronomicalUnits => "au",
 		}
+	}
+
+	fn units() -> &'static [Unit] {
+		&[
+			Unit::Distance(DistanceUnit::Meters),
+			Unit::Distance(DistanceUnit::Nanometers),
+			Unit::Distance(DistanceUnit::Micrometers),
+			Unit::Distance(DistanceUnit::Millimeters),
+			Unit::Distance(DistanceUnit::Centimeters),
+			Unit::Distance(DistanceUnit::Kilometers),
+			Unit::Distance(DistanceUnit::Inches),
+			Unit::Distance(DistanceUnit::Feet),
+			Unit::Distance(DistanceUnit::Yards),
+			Unit::Distance(DistanceUnit::Miles),
+			Unit::Distance(DistanceUnit::NauticalMiles),
+			Unit::Distance(DistanceUnit::AstronomicalUnits),
+		]
 	}
 }
 
@@ -265,6 +305,23 @@ impl EnergyUnit {
 			EnergyUnit::Erg => "erg",
 		}
 	}
+
+	fn units() -> &'static [Unit] {
+		&[
+			Unit::Energy(EnergyUnit::Joules),
+			Unit::Energy(EnergyUnit::Millijoules),
+			Unit::Energy(EnergyUnit::Kilojoules),
+			Unit::Energy(EnergyUnit::Megajoules),
+			Unit::Energy(EnergyUnit::Calories),
+			Unit::Energy(EnergyUnit::Kilocalories),
+			Unit::Energy(EnergyUnit::BTU),
+			Unit::Energy(EnergyUnit::FootPounds),
+			Unit::Energy(EnergyUnit::FootPoundals),
+			Unit::Energy(EnergyUnit::WattHours),
+			Unit::Energy(EnergyUnit::KilowattHours),
+			Unit::Energy(EnergyUnit::Erg),
+		]
+	}
 }
 
 impl ForceUnit {
@@ -278,6 +335,18 @@ impl ForceUnit {
 			ForceUnit::Poundal => "pdl",
 			ForceUnit::Kip => "kip",
 		}
+	}
+
+	fn units() -> &'static [Unit] {
+		&[
+			Unit::Force(ForceUnit::Newton),
+			Unit::Force(ForceUnit::Kilonewton),
+			Unit::Force(ForceUnit::Dyne),
+			Unit::Force(ForceUnit::KilogramForce),
+			Unit::Force(ForceUnit::PoundForce),
+			Unit::Force(ForceUnit::Poundal),
+			Unit::Force(ForceUnit::Kip),
+		]
 	}
 }
 
@@ -295,6 +364,20 @@ impl MassUnit {
 			MassUnit::UKTons => "UK ton",
 		}
 	}
+
+	fn units() -> &'static [Unit] {
+		&[
+			Unit::Mass(MassUnit::Kilograms),
+			Unit::Mass(MassUnit::Grams),
+			Unit::Mass(MassUnit::Milligrams),
+			Unit::Mass(MassUnit::MetricTons),
+			Unit::Mass(MassUnit::Pounds),
+			Unit::Mass(MassUnit::Ounces),
+			Unit::Mass(MassUnit::Stones),
+			Unit::Mass(MassUnit::Tons),
+			Unit::Mass(MassUnit::UKTons),
+		]
+	}
 }
 
 impl PowerUnit {
@@ -310,6 +393,20 @@ impl PowerUnit {
 			PowerUnit::ElectricalHorsepower => "hpE",
 			PowerUnit::TonsOfRefrigeration => "RT",
 		}
+	}
+
+	fn units() -> &'static [Unit] {
+		&[
+			Unit::Power(PowerUnit::Watts),
+			Unit::Power(PowerUnit::Milliwatts),
+			Unit::Power(PowerUnit::Kilowatts),
+			Unit::Power(PowerUnit::Megawatts),
+			Unit::Power(PowerUnit::Gigawatts),
+			Unit::Power(PowerUnit::MechanicalHorsepower),
+			Unit::Power(PowerUnit::MetricHorsepower),
+			Unit::Power(PowerUnit::ElectricalHorsepower),
+			Unit::Power(PowerUnit::TonsOfRefrigeration),
+		]
 	}
 }
 
@@ -328,6 +425,22 @@ impl PressureUnit {
 			PressureUnit::PoundsPerSquareInch => "psi",
 			PressureUnit::Torr => "Torr",
 		}
+	}
+
+	fn units() -> &'static [Unit] {
+		&[
+			Unit::Pressure(PressureUnit::Pascals),
+			Unit::Pressure(PressureUnit::Kilopascals),
+			Unit::Pressure(PressureUnit::Bars),
+			Unit::Pressure(PressureUnit::Millibars),
+			Unit::Pressure(PressureUnit::Atmospheres),
+			Unit::Pressure(PressureUnit::InchesOfMercury),
+			Unit::Pressure(PressureUnit::MillimetersOfMercury),
+			Unit::Pressure(PressureUnit::InchesOfWater),
+			Unit::Pressure(PressureUnit::MillimetersOfWater),
+			Unit::Pressure(PressureUnit::PoundsPerSquareInch),
+			Unit::Pressure(PressureUnit::Torr),
+		]
 	}
 }
 
@@ -366,6 +479,15 @@ impl TemperatureUnit {
 			),
 		}
 	}
+
+	fn units() -> &'static [Unit] {
+		&[
+			Unit::Temperature(TemperatureUnit::Celsius),
+			Unit::Temperature(TemperatureUnit::Fahrenheit),
+			Unit::Temperature(TemperatureUnit::Kelvin),
+			Unit::Temperature(TemperatureUnit::Rankine),
+		]
+	}
 }
 
 impl TimeUnit {
@@ -382,6 +504,21 @@ impl TimeUnit {
 			TimeUnit::Months => "month",
 			TimeUnit::Years => "yr",
 		}
+	}
+
+	fn units() -> &'static [Unit] {
+		&[
+			Unit::Time(TimeUnit::Seconds),
+			Unit::Time(TimeUnit::Nanoseconds),
+			Unit::Time(TimeUnit::Microseconds),
+			Unit::Time(TimeUnit::Milliseconds),
+			Unit::Time(TimeUnit::Minutes),
+			Unit::Time(TimeUnit::Hours),
+			Unit::Time(TimeUnit::Days),
+			Unit::Time(TimeUnit::Weeks),
+			Unit::Time(TimeUnit::Months),
+			Unit::Time(TimeUnit::Years),
+		]
 	}
 }
 
@@ -448,6 +585,30 @@ impl VolumeUnit {
 		} else {
 			value.clone()
 		}
+	}
+
+	fn units() -> &'static [Unit] {
+		&[
+			Unit::Volume(VolumeUnit::Litre),
+			Unit::Volume(VolumeUnit::Millilitre),
+			Unit::Volume(VolumeUnit::Gallons),
+			Unit::Volume(VolumeUnit::Quarts),
+			Unit::Volume(VolumeUnit::Pints),
+			Unit::Volume(VolumeUnit::Cups),
+			Unit::Volume(VolumeUnit::FluidOunces),
+			Unit::Volume(VolumeUnit::ImperialGallons),
+			Unit::Volume(VolumeUnit::ImperialQuarts),
+			Unit::Volume(VolumeUnit::ImperialPints),
+			Unit::Volume(VolumeUnit::ImperialOunces),
+			Unit::Volume(VolumeUnit::Tablespoons),
+			Unit::Volume(VolumeUnit::Teaspoons),
+			Unit::Volume(VolumeUnit::UKTablespoons),
+			Unit::Volume(VolumeUnit::UKTeaspoons),
+			Unit::Distance(DistanceUnit::Meters),
+			Unit::Distance(DistanceUnit::Centimeters),
+			Unit::Distance(DistanceUnit::Inches),
+			Unit::Distance(DistanceUnit::Feet),
+		]
 	}
 }
 
@@ -738,7 +899,7 @@ impl UnitType {
 		match self {
 			UnitType::Angle => "Angle",
 			UnitType::Area => "Area",
-			UnitType::Distance => "Dist",
+			UnitType::Distance => "Distance",
 			UnitType::Energy => "Energy",
 			UnitType::Force => "Force",
 			UnitType::Mass => "Mass",
@@ -747,6 +908,22 @@ impl UnitType {
 			UnitType::Temperature => "Temp",
 			UnitType::Time => "Time",
 			UnitType::Volume => "Volume",
+		}
+	}
+
+	pub fn units(&self) -> &'static [Unit] {
+		match self {
+			UnitType::Angle => AngleUnit::units(),
+			UnitType::Area => AreaUnit::units(),
+			UnitType::Distance => DistanceUnit::units(),
+			UnitType::Energy => EnergyUnit::units(),
+			UnitType::Force => ForceUnit::units(),
+			UnitType::Mass => MassUnit::units(),
+			UnitType::Power => PowerUnit::units(),
+			UnitType::Pressure => PressureUnit::units(),
+			UnitType::Temperature => TemperatureUnit::units(),
+			UnitType::Time => TimeUnit::units(),
+			UnitType::Volume => VolumeUnit::units(),
 		}
 	}
 }
@@ -1492,351 +1669,142 @@ pub fn unit_menu() -> Menu {
 }
 
 pub fn unit_menu_of_type(unit_type: UnitType) -> Menu {
-	match unit_type {
-		UnitType::Angle => angle_unit_menu(),
-		UnitType::Area => area_unit_menu(),
-		UnitType::Distance => distance_unit_menu(),
-		UnitType::Energy => energy_unit_menu(),
-		UnitType::Force => force_unit_menu(),
-		UnitType::Mass => mass_unit_menu(),
-		UnitType::Power => power_unit_menu(),
-		UnitType::Pressure => pressure_unit_menu(),
-		UnitType::Temperature => temperature_unit_menu(),
-		UnitType::Time => time_unit_menu(),
-		UnitType::Volume => volume_unit_menu(),
-	}
-}
-
-fn angle_unit_menu() -> Menu {
 	let mut items = Vec::new();
-	for unit in &[AngleUnit::Degrees, AngleUnit::Radians, AngleUnit::Gradians] {
-		items.push(MenuItem {
-			layout: MenuItemLayout::Static(MenuItem::static_string_layout(unit.to_str())),
-			function: MenuItemFunction::ConversionAction(
-				Function::AddUnit(Unit::Angle(*unit)),
-				Function::AddInvUnit(Unit::Angle(*unit)),
-				Function::ConvertToUnit(Unit::Angle(*unit)),
-			),
-		});
+	for unit in unit_type.units() {
+		if unit.unit_type() == unit_type {
+			let function = MenuItemFunction::ConversionAction(
+				Function::AddUnit(*unit),
+				Function::AddInvUnit(*unit),
+				Function::ConvertToUnit(*unit),
+			);
+			match unit_type {
+				UnitType::Volume => items.push(MenuItem {
+					layout: MenuItemLayout::Static(MenuItem::static_string_layout_small(
+						unit.to_str(),
+					)),
+					function,
+				}),
+				_ => items.push(MenuItem {
+					layout: MenuItemLayout::Static(MenuItem::static_string_layout(unit.to_str())),
+					function,
+				}),
+			}
+		} else {
+			match unit_type {
+				UnitType::Area => {
+					items.push(MenuItem {
+						layout: MenuItemLayout::Static(MenuItem::string_layout(
+							unit.to_str().to_string() + "²",
+						)),
+						function: MenuItemFunction::ConversionAction(
+							Function::AddUnitSquared(*unit),
+							Function::AddInvUnitSquared(*unit),
+							Function::ConvertToUnit(*unit),
+						),
+					});
+				}
+				UnitType::Volume => {
+					items.push(MenuItem {
+						layout: MenuItemLayout::Static(MenuItem::string_layout_small(
+							unit.to_str().to_string() + "³",
+						)),
+						function: MenuItemFunction::ConversionAction(
+							Function::AddUnitCubed(*unit),
+							Function::AddInvUnitCubed(*unit),
+							Function::ConvertToUnit(*unit),
+						),
+					});
+				}
+				_ => unreachable!(),
+			}
+		}
 	}
 
-	Menu::new_with_bottom("Angle (×,÷ Assign; x≷y Convert)", items, value_layout())
-}
-
-fn area_unit_menu() -> Menu {
-	let mut items = Vec::new();
-	for unit in &[AreaUnit::Acres, AreaUnit::Hectares] {
-		items.push(MenuItem {
-			layout: MenuItemLayout::Static(MenuItem::static_string_layout(unit.to_str())),
-			function: MenuItemFunction::ConversionAction(
-				Function::AddUnit(Unit::Area(*unit)),
-				Function::AddInvUnit(Unit::Area(*unit)),
-				Function::ConvertToUnit(Unit::Area(*unit)),
-			),
-		});
-	}
-
-	for unit in &[
-		DistanceUnit::Meters,
-		DistanceUnit::Millimeters,
-		DistanceUnit::Centimeters,
-		DistanceUnit::Kilometers,
-		DistanceUnit::Inches,
-		DistanceUnit::Feet,
-		DistanceUnit::Yards,
-		DistanceUnit::Miles,
-	] {
-		items.push(MenuItem {
-			layout: MenuItemLayout::Static(MenuItem::string_layout(
-				unit.to_str().to_string() + "²",
-			)),
-			function: MenuItemFunction::ConversionAction(
-				Function::AddUnitSquared(Unit::Distance(*unit)),
-				Function::AddInvUnitSquared(Unit::Distance(*unit)),
-				Function::ConvertToUnit(Unit::Distance(*unit)),
-			),
-		});
-	}
-
-	let mut menu = Menu::new_with_bottom("Area (×,÷ Assign; x≷y Convert)", items, value_layout());
-	menu.set_columns(3);
+	let columns = core::cmp::min((items.len() + 3) / 4, 4);
+	let mut menu = Menu::new_with_bottom(
+		&(unit_type.to_str().to_string() + " (×,÷ Assign; x≷y Convert)"),
+		items,
+		value_layout(),
+	);
+	menu.set_columns(columns);
 	menu
 }
 
-fn distance_unit_menu() -> Menu {
+pub fn unit_catalog_menu(title: &str, func: &dyn Fn(UnitType) -> Function) -> Menu {
 	let mut items = Vec::new();
-	for unit in &[
-		DistanceUnit::Meters,
-		DistanceUnit::Nanometers,
-		DistanceUnit::Micrometers,
-		DistanceUnit::Millimeters,
-		DistanceUnit::Centimeters,
-		DistanceUnit::Kilometers,
-		DistanceUnit::Inches,
-		DistanceUnit::Feet,
-		DistanceUnit::Yards,
-		DistanceUnit::Miles,
-		DistanceUnit::NauticalMiles,
-		DistanceUnit::AstronomicalUnits,
+	for item in &[
+		("Angle", UnitType::Angle),
+		("Area", UnitType::Area),
+		("Distance", UnitType::Distance),
+		("Energy", UnitType::Energy),
+		("Force", UnitType::Force),
+		("Mass", UnitType::Mass),
+		("Power", UnitType::Power),
+		("Pressure", UnitType::Pressure),
+		("Temperature", UnitType::Temperature),
+		("Time", UnitType::Time),
+		("Volume", UnitType::Volume),
 	] {
 		items.push(MenuItem {
-			layout: MenuItemLayout::Static(MenuItem::static_string_layout(unit.to_str())),
-			function: MenuItemFunction::ConversionAction(
-				Function::AddUnit(Unit::Distance(*unit)),
-				Function::AddInvUnit(Unit::Distance(*unit)),
-				Function::ConvertToUnit(Unit::Distance(*unit)),
-			),
+			layout: MenuItemLayout::Static(MenuItem::static_string_layout(item.0)),
+			function: MenuItemFunction::InMenuAction(func(item.1)),
 		});
 	}
-
-	let mut menu =
-		Menu::new_with_bottom("Distance (×,÷ Assign; x≷y Convert)", items, value_layout());
-	menu.set_columns(3);
-	menu
-}
-
-fn energy_unit_menu() -> Menu {
-	let mut items = Vec::new();
-	for unit in &[
-		EnergyUnit::Joules,
-		EnergyUnit::Millijoules,
-		EnergyUnit::Kilojoules,
-		EnergyUnit::Megajoules,
-		EnergyUnit::Calories,
-		EnergyUnit::Kilocalories,
-		EnergyUnit::BTU,
-		EnergyUnit::FootPounds,
-		EnergyUnit::FootPoundals,
-		EnergyUnit::WattHours,
-		EnergyUnit::KilowattHours,
-		EnergyUnit::Erg,
-	] {
-		items.push(MenuItem {
-			layout: MenuItemLayout::Static(MenuItem::static_string_layout(unit.to_str())),
-			function: MenuItemFunction::ConversionAction(
-				Function::AddUnit(Unit::Energy(*unit)),
-				Function::AddInvUnit(Unit::Energy(*unit)),
-				Function::ConvertToUnit(Unit::Energy(*unit)),
-			),
-		});
-	}
-
-	let mut menu = Menu::new_with_bottom("Energy (×,÷ Assign; x≷y Convert)", items, value_layout());
-	menu.set_columns(3);
-	menu
-}
-
-fn force_unit_menu() -> Menu {
-	let mut items = Vec::new();
-	for unit in &[
-		ForceUnit::Newton,
-		ForceUnit::Kilonewton,
-		ForceUnit::Dyne,
-		ForceUnit::KilogramForce,
-		ForceUnit::PoundForce,
-		ForceUnit::Poundal,
-		ForceUnit::Kip,
-	] {
-		items.push(MenuItem {
-			layout: MenuItemLayout::Static(MenuItem::static_string_layout(unit.to_str())),
-			function: MenuItemFunction::ConversionAction(
-				Function::AddUnit(Unit::Force(*unit)),
-				Function::AddInvUnit(Unit::Force(*unit)),
-				Function::ConvertToUnit(Unit::Force(*unit)),
-			),
-		});
-	}
-
-	let mut menu = Menu::new_with_bottom("Force (×,÷ Assign; x≷y Convert)", items, value_layout());
+	let mut menu = Menu::new(title, items);
 	menu.set_columns(2);
 	menu
 }
 
-fn mass_unit_menu() -> Menu {
+pub fn unit_catalog_menu_of_type(
+	unit_type: UnitType,
+	prefix: &str,
+	raw_func: &dyn Fn(Unit) -> Function,
+	squared_func: &dyn Fn(Unit) -> Function,
+	cubed_func: &dyn Fn(Unit) -> Function,
+) -> Menu {
 	let mut items = Vec::new();
-	for unit in &[
-		MassUnit::Kilograms,
-		MassUnit::Grams,
-		MassUnit::Milligrams,
-		MassUnit::MetricTons,
-		MassUnit::Pounds,
-		MassUnit::Ounces,
-		MassUnit::Stones,
-		MassUnit::Tons,
-		MassUnit::UKTons,
-	] {
-		items.push(MenuItem {
-			layout: MenuItemLayout::Static(MenuItem::static_string_layout(unit.to_str())),
-			function: MenuItemFunction::ConversionAction(
-				Function::AddUnit(Unit::Mass(*unit)),
-				Function::AddInvUnit(Unit::Mass(*unit)),
-				Function::ConvertToUnit(Unit::Mass(*unit)),
-			),
-		});
+	for unit in unit_type.units() {
+		if unit.unit_type() == unit_type {
+			let function = MenuItemFunction::Action(raw_func(*unit));
+			match unit_type {
+				UnitType::Volume => items.push(MenuItem {
+					layout: MenuItemLayout::Static(MenuItem::string_layout_small(
+						prefix.to_string() + unit.to_str(),
+					)),
+					function,
+				}),
+				_ => items.push(MenuItem {
+					layout: MenuItemLayout::Static(MenuItem::string_layout(
+						prefix.to_string() + unit.to_str(),
+					)),
+					function,
+				}),
+			}
+		} else {
+			match unit_type {
+				UnitType::Area => {
+					items.push(MenuItem {
+						layout: MenuItemLayout::Static(MenuItem::string_layout(
+							prefix.to_string() + unit.to_str() + "²",
+						)),
+						function: MenuItemFunction::Action(squared_func(*unit)),
+					});
+				}
+				UnitType::Volume => {
+					items.push(MenuItem {
+						layout: MenuItemLayout::Static(MenuItem::string_layout_small(
+							prefix.to_string() + unit.to_str() + "³",
+						)),
+						function: MenuItemFunction::Action(cubed_func(*unit)),
+					});
+				}
+				_ => unreachable!(),
+			}
+		}
 	}
 
-	let mut menu = Menu::new_with_bottom("Mass (×,÷ Assign; x≷y Convert)", items, value_layout());
-	menu.set_columns(3);
-	menu
-}
-
-fn power_unit_menu() -> Menu {
-	let mut items = Vec::new();
-	for unit in &[
-		PowerUnit::Watts,
-		PowerUnit::Milliwatts,
-		PowerUnit::Kilowatts,
-		PowerUnit::Megawatts,
-		PowerUnit::Gigawatts,
-		PowerUnit::MechanicalHorsepower,
-		PowerUnit::MetricHorsepower,
-		PowerUnit::ElectricalHorsepower,
-		PowerUnit::TonsOfRefrigeration,
-	] {
-		items.push(MenuItem {
-			layout: MenuItemLayout::Static(MenuItem::static_string_layout(unit.to_str())),
-			function: MenuItemFunction::ConversionAction(
-				Function::AddUnit(Unit::Power(*unit)),
-				Function::AddInvUnit(Unit::Power(*unit)),
-				Function::ConvertToUnit(Unit::Power(*unit)),
-			),
-		});
-	}
-
-	let mut menu = Menu::new_with_bottom("Power (×,÷ Assign; x≷y Convert)", items, value_layout());
-	menu.set_columns(3);
-	menu
-}
-
-fn pressure_unit_menu() -> Menu {
-	let mut items = Vec::new();
-	for unit in &[
-		PressureUnit::Pascals,
-		PressureUnit::Kilopascals,
-		PressureUnit::Bars,
-		PressureUnit::Millibars,
-		PressureUnit::Atmospheres,
-		PressureUnit::InchesOfMercury,
-		PressureUnit::MillimetersOfMercury,
-		PressureUnit::InchesOfWater,
-		PressureUnit::MillimetersOfWater,
-		PressureUnit::PoundsPerSquareInch,
-		PressureUnit::Torr,
-	] {
-		items.push(MenuItem {
-			layout: MenuItemLayout::Static(MenuItem::static_string_layout(unit.to_str())),
-			function: MenuItemFunction::ConversionAction(
-				Function::AddUnit(Unit::Pressure(*unit)),
-				Function::AddInvUnit(Unit::Pressure(*unit)),
-				Function::ConvertToUnit(Unit::Pressure(*unit)),
-			),
-		});
-	}
-
-	let mut menu =
-		Menu::new_with_bottom("Pressure (×,÷ Assign; x≷y Convert)", items, value_layout());
-	menu.set_columns(3);
-	menu
-}
-
-fn temperature_unit_menu() -> Menu {
-	let mut items = Vec::new();
-	for unit in &[
-		TemperatureUnit::Celsius,
-		TemperatureUnit::Fahrenheit,
-		TemperatureUnit::Kelvin,
-		TemperatureUnit::Rankine,
-	] {
-		items.push(MenuItem {
-			layout: MenuItemLayout::Static(MenuItem::static_string_layout(unit.to_str())),
-			function: MenuItemFunction::ConversionAction(
-				Function::AddUnit(Unit::Temperature(*unit)),
-				Function::AddInvUnit(Unit::Temperature(*unit)),
-				Function::ConvertToUnit(Unit::Temperature(*unit)),
-			),
-		});
-	}
-
-	Menu::new_with_bottom("Temp (×,÷ Assign; x≷y Convert)", items, value_layout())
-}
-
-fn time_unit_menu() -> Menu {
-	let mut items = Vec::new();
-	for unit in &[
-		TimeUnit::Seconds,
-		TimeUnit::Nanoseconds,
-		TimeUnit::Microseconds,
-		TimeUnit::Milliseconds,
-		TimeUnit::Minutes,
-		TimeUnit::Hours,
-		TimeUnit::Days,
-		TimeUnit::Weeks,
-		TimeUnit::Months,
-		TimeUnit::Years,
-	] {
-		items.push(MenuItem {
-			layout: MenuItemLayout::Static(MenuItem::static_string_layout(unit.to_str())),
-			function: MenuItemFunction::ConversionAction(
-				Function::AddUnit(Unit::Time(*unit)),
-				Function::AddInvUnit(Unit::Time(*unit)),
-				Function::ConvertToUnit(Unit::Time(*unit)),
-			),
-		});
-	}
-
-	let mut menu = Menu::new_with_bottom("Time (×,÷ Assign; x≷y Convert)", items, value_layout());
-	menu.set_columns(3);
-	menu
-}
-
-fn volume_unit_menu() -> Menu {
-	let mut items = Vec::new();
-	for unit in &[
-		VolumeUnit::Litre,
-		VolumeUnit::Millilitre,
-		VolumeUnit::Gallons,
-		VolumeUnit::Quarts,
-		VolumeUnit::Pints,
-		VolumeUnit::Cups,
-		VolumeUnit::FluidOunces,
-		VolumeUnit::ImperialGallons,
-		VolumeUnit::ImperialQuarts,
-		VolumeUnit::ImperialPints,
-		VolumeUnit::ImperialOunces,
-		VolumeUnit::Tablespoons,
-		VolumeUnit::Teaspoons,
-		VolumeUnit::UKTablespoons,
-		VolumeUnit::UKTeaspoons,
-	] {
-		items.push(MenuItem {
-			layout: MenuItemLayout::Static(MenuItem::static_string_layout_small(unit.to_str())),
-			function: MenuItemFunction::ConversionAction(
-				Function::AddUnit(Unit::Volume(*unit)),
-				Function::AddInvUnit(Unit::Volume(*unit)),
-				Function::ConvertToUnit(Unit::Volume(*unit)),
-			),
-		});
-	}
-
-	for unit in &[
-		DistanceUnit::Meters,
-		DistanceUnit::Centimeters,
-		DistanceUnit::Inches,
-		DistanceUnit::Feet,
-	] {
-		items.push(MenuItem {
-			layout: MenuItemLayout::Static(MenuItem::string_layout_small(
-				unit.to_str().to_string() + "³",
-			)),
-			function: MenuItemFunction::ConversionAction(
-				Function::AddUnitCubed(Unit::Distance(*unit)),
-				Function::AddInvUnitCubed(Unit::Distance(*unit)),
-				Function::ConvertToUnit(Unit::Distance(*unit)),
-			),
-		});
-	}
-
-	let mut menu = Menu::new_with_bottom("Volume (×,÷ Assign; x≷y Convert)", items, value_layout());
-	menu.set_columns(4);
+	let columns = (items.len() + 7) / 8;
+	let mut menu = Menu::new(unit_type.to_str(), items);
+	menu.set_columns(columns);
 	menu
 }

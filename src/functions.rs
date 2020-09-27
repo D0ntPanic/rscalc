@@ -11,7 +11,8 @@ use crate::screen::{Color, Rect, Screen};
 use crate::state::{State, StatusBarLeftDisplayType};
 use crate::time::Now;
 use crate::unit::{
-	unit_menu_of_type, AngleUnit, CompositeUnit, DistanceUnit, TimeUnit, Unit, UnitType,
+	unit_catalog_menu, unit_catalog_menu_of_type, unit_menu_of_type, AngleUnit, CompositeUnit,
+	DistanceUnit, TimeUnit, Unit, UnitType,
 };
 use crate::value::Value;
 use alloc::borrow::Cow;
@@ -68,8 +69,20 @@ pub enum Function {
 	Octal,
 	Decimal,
 	CatalogPage(CatalogPage),
+	AddUnitCatalogMenu,
+	AddUnitCatalogPage(UnitType),
+	AddInvUnitCatalogMenu,
+	AddInvUnitCatalogPage(UnitType),
+	ConvertUnitCatalogMenu,
+	ConvertUnitCatalogPage(UnitType),
 	AssignCatalogMenu(usize),
 	AssignCatalogPage(usize, CatalogPage),
+	AssignAddUnitCatalogMenu(usize),
+	AssignAddUnitCatalogPage(usize, UnitType),
+	AssignAddInvUnitCatalogMenu(usize),
+	AssignAddInvUnitCatalogPage(usize, UnitType),
+	AssignConvertUnitCatalogMenu(usize),
+	AssignConvertUnitCatalogPage(usize, UnitType),
 	AssignCatalogFunction(usize, Box<Function>),
 	RemoveCustomAssign(usize),
 	SpeedOfLight,
@@ -306,8 +319,24 @@ impl Function {
 				}
 			}
 			Function::CatalogPage(page) => page.to_str().to_string(),
+			Function::AddUnitCatalogMenu => "Unit".to_string(),
+			Function::AddUnitCatalogPage(unit_type) => unit_type.to_str().to_string(),
+			Function::AddInvUnitCatalogMenu => "/Unit".to_string(),
+			Function::AddInvUnitCatalogPage(unit_type) => "/".to_string() + unit_type.to_str(),
+			Function::ConvertUnitCatalogMenu => "▸Unit".to_string(),
+			Function::ConvertUnitCatalogPage(unit_type) => "▸".to_string() + unit_type.to_str(),
 			Function::AssignCatalogMenu(_) => "Catalog".to_string(),
 			Function::AssignCatalogPage(_, page) => page.to_str().to_string(),
+			Function::AssignAddUnitCatalogMenu(_) => "Unit".to_string(),
+			Function::AssignAddUnitCatalogPage(_, unit_type) => unit_type.to_str().to_string(),
+			Function::AssignAddInvUnitCatalogMenu(_) => "/Unit".to_string(),
+			Function::AssignAddInvUnitCatalogPage(_, unit_type) => {
+				"/".to_string() + unit_type.to_str()
+			}
+			Function::AssignConvertUnitCatalogMenu(_) => "▸Unit".to_string(),
+			Function::AssignConvertUnitCatalogPage(_, unit_type) => {
+				"▸".to_string() + unit_type.to_str()
+			}
 			Function::AssignCatalogFunction(_, func) => func.to_string(state),
 			Function::RemoveCustomAssign(_) => "(None)".to_string(),
 			Function::SpeedOfLight => "c".to_string(),
@@ -588,15 +617,149 @@ impl Function {
 				state.stack.end_edit();
 			}
 			Function::CatalogPage(page) => {
-				state.show_menu(page.menu(|page| Function::CatalogPage(page), |func| func));
+				state.show_menu(page.menu(&|page| Function::CatalogPage(page), &|func| func));
+			}
+			Function::AddUnitCatalogMenu => {
+				state.show_menu(unit_catalog_menu("Assign Unit", &|unit_type| {
+					Function::AddUnitCatalogPage(unit_type)
+				}));
+			}
+			Function::AddUnitCatalogPage(unit_type) => {
+				state.show_menu(unit_catalog_menu_of_type(
+					*unit_type,
+					"",
+					&|unit| Function::AddUnit(unit),
+					&|unit| Function::AddUnitSquared(unit),
+					&|unit| Function::AddUnitCubed(unit),
+				));
+			}
+			Function::AddInvUnitCatalogMenu => {
+				state.show_menu(unit_catalog_menu("Assign Inverse Unit", &|unit_type| {
+					Function::AddInvUnitCatalogPage(unit_type)
+				}));
+			}
+			Function::AddInvUnitCatalogPage(unit_type) => {
+				state.show_menu(unit_catalog_menu_of_type(
+					*unit_type,
+					"/",
+					&|unit| Function::AddInvUnit(unit),
+					&|unit| Function::AddInvUnitSquared(unit),
+					&|unit| Function::AddInvUnitCubed(unit),
+				));
+			}
+			Function::ConvertUnitCatalogMenu => {
+				state.show_menu(unit_catalog_menu("Convert Unit", &|unit_type| {
+					Function::ConvertUnitCatalogPage(unit_type)
+				}));
+			}
+			Function::ConvertUnitCatalogPage(unit_type) => {
+				state.show_menu(unit_catalog_menu_of_type(
+					*unit_type,
+					"▸",
+					&|unit| Function::ConvertToUnit(unit),
+					&|unit| Function::ConvertToUnit(unit),
+					&|unit| Function::ConvertToUnit(unit),
+				));
 			}
 			Function::AssignCatalogMenu(idx) => {
-				state.show_menu(catalog_menu(|page| Function::AssignCatalogPage(*idx, page)));
+				state.show_menu(catalog_menu(&|page| {
+					Function::AssignCatalogPage(*idx, page)
+				}));
 			}
 			Function::AssignCatalogPage(idx, page) => {
 				state.show_menu(page.menu(
-					|page| Function::AssignCatalogPage(*idx, page),
-					|func| Function::AssignCatalogFunction(*idx, Box::new(func)),
+					&|page| Function::AssignCatalogPage(*idx, page),
+					&|func| match func {
+						Function::AddUnitCatalogMenu => Function::AssignAddUnitCatalogMenu(*idx),
+						Function::AddInvUnitCatalogMenu => {
+							Function::AssignAddInvUnitCatalogMenu(*idx)
+						}
+						Function::ConvertUnitCatalogMenu => {
+							Function::AssignConvertUnitCatalogMenu(*idx)
+						}
+						_ => Function::AssignCatalogFunction(*idx, Box::new(func)),
+					},
+				));
+			}
+			Function::AssignAddUnitCatalogMenu(idx) => {
+				state.show_menu(unit_catalog_menu("Assign Unit", &|unit_type| {
+					Function::AssignAddUnitCatalogPage(*idx, unit_type)
+				}));
+			}
+			Function::AssignAddUnitCatalogPage(idx, unit_type) => {
+				state.show_menu(unit_catalog_menu_of_type(
+					*unit_type,
+					"",
+					&|unit| {
+						Function::AssignCatalogFunction(*idx, Box::new(Function::AddUnit(unit)))
+					},
+					&|unit| {
+						Function::AssignCatalogFunction(
+							*idx,
+							Box::new(Function::AddUnitSquared(unit)),
+						)
+					},
+					&|unit| {
+						Function::AssignCatalogFunction(
+							*idx,
+							Box::new(Function::AddUnitCubed(unit)),
+						)
+					},
+				));
+			}
+			Function::AssignAddInvUnitCatalogMenu(idx) => {
+				state.show_menu(unit_catalog_menu("Assign Inverse Unit", &|unit_type| {
+					Function::AssignAddInvUnitCatalogPage(*idx, unit_type)
+				}));
+			}
+			Function::AssignAddInvUnitCatalogPage(idx, unit_type) => {
+				state.show_menu(unit_catalog_menu_of_type(
+					*unit_type,
+					"/",
+					&|unit| {
+						Function::AssignCatalogFunction(*idx, Box::new(Function::AddInvUnit(unit)))
+					},
+					&|unit| {
+						Function::AssignCatalogFunction(
+							*idx,
+							Box::new(Function::AddInvUnitSquared(unit)),
+						)
+					},
+					&|unit| {
+						Function::AssignCatalogFunction(
+							*idx,
+							Box::new(Function::AddInvUnitCubed(unit)),
+						)
+					},
+				));
+			}
+			Function::AssignConvertUnitCatalogMenu(idx) => {
+				state.show_menu(unit_catalog_menu("Convert Unit", &|unit_type| {
+					Function::AssignConvertUnitCatalogPage(*idx, unit_type)
+				}));
+			}
+			Function::AssignConvertUnitCatalogPage(idx, unit_type) => {
+				state.show_menu(unit_catalog_menu_of_type(
+					*unit_type,
+					"▸",
+					&|unit| {
+						Function::AssignCatalogFunction(
+							*idx,
+							Box::new(Function::ConvertToUnit(unit)),
+						)
+					},
+					&|unit| {
+						Function::AssignCatalogFunction(
+							*idx,
+							Box::new(Function::ConvertToUnit(unit)),
+						)
+					},
+					&|unit| {
+						Function::AssignCatalogFunction(
+							*idx,
+							Box::new(Function::ConvertToUnit(unit)),
+						)
+					},
 				));
 			}
 			Function::AssignCatalogFunction(idx, func) => {

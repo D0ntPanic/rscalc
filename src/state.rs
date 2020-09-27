@@ -464,7 +464,7 @@ impl State {
 						self.function_keys.show_toplevel_menu(FunctionMenu::Custom);
 					}
 					InputEvent::Catalog => {
-						self.show_menu(catalog_menu(|page| Function::CatalogPage(page)));
+						self.show_menu(catalog_menu(&|page| Function::CatalogPage(page)));
 					}
 					InputEvent::FunctionKey(func, _) => {
 						if let Some(func) = self.function_keys.function(func) {
