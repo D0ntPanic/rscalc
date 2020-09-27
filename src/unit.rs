@@ -1600,7 +1600,7 @@ impl StorageObject for CompositeUnit {
 	fn serialize<Ref: StorageRefSerializer, Out: SerializeOutput>(
 		&self,
 		output: &mut Out,
-		_: &Ref,
+		_: &mut Ref,
 	) -> Result<()> {
 		output.write_u32(self.units.len() as u32)?;
 		for (_, unit) in &self.units {

@@ -11,9 +11,10 @@ use crate::screen::{Color, Font, Rect, Screen};
 use crate::stack::{Stack, MAX_STACK_INDEX_DIGITS};
 use crate::storage::{available_bytes, store};
 use crate::time::{Now, SimpleDateTimeFormat, SimpleDateTimeToString};
-use crate::undo::pop_undo_action;
+use crate::undo::{clear_undo_buffer, pop_undo_action};
 use crate::unit::{unit_menu, AngleUnit};
 use crate::value::{Value, ValueRef};
+use crate::vector::Vector;
 use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -420,11 +421,15 @@ impl State {
 					InputEvent::Complex => {
 						let top = self.entry(0)?;
 						if let Value::Complex(value) = top {
+							// If a complex number is on the top of the stack, break it into
+							// real and imaginary parts.
 							let mut items = Vec::new();
 							items.push(store(Value::Number(value.real_part().clone()))?);
 							items.push(store(Value::Number(value.imaginary_part().clone()))?);
 							self.stack.replace_top_with_multiple(items)?;
 						} else {
+							// Take the real and imaginary components on the top two entries
+							// on the stack and create a complex number.
 							let real = self.entry(1)?;
 							let imaginary = top;
 							self.replace_entries(
@@ -438,6 +443,55 @@ impl State {
 						}
 						self.input_mode.alpha = AlphaMode::Normal;
 					}
+					InputEvent::SigmaPlus => {
+						let top = self.entry(0)?;
+						if let Value::Vector(existing_vector) = top {
+							// Top entry is a vector. Check entry above it.
+							let prev_value = self.entry(1)?;
+							if let Value::Vector(prev_vector) = prev_value {
+								// Top two entries are vectors. Merge the vectors.
+								let mut new_vector = prev_vector.clone();
+								new_vector.extend_with(&existing_vector)?;
+								self.stack.replace_entries(2, Value::Vector(new_vector))?;
+							} else {
+								// Fold the second entry into the vector.
+								let mut new_vector = existing_vector.clone();
+								new_vector.insert(0, prev_value)?;
+								self.stack.replace_entries(2, Value::Vector(new_vector))?;
+							}
+						} else {
+							// Create a vector containing the value on the top of the stack.
+							let mut vector = Vector::new()?;
+							vector.push(top)?;
+							self.stack.set_top(Value::Vector(vector))?;
+						}
+						self.input_mode.alpha = AlphaMode::Normal;
+					}
+					InputEvent::SigmaMinus => {
+						let top = self.entry(0)?;
+						if let Value::Vector(vector) = top {
+							// Top entry is a vector. Break apart the vector.
+							let mut values: Vec<ValueRef> = Vec::new();
+							for i in 0..vector.len() {
+								values.push(vector.get_ref(i)?);
+							}
+							self.stack.replace_top_with_multiple(values)?;
+						} else {
+							// Batch create a vector from the entries on the stack. If there
+							// is a vector or matrix on the stack, stop there.
+							let mut vector = Vector::new()?;
+							for i in 0..self.stack.len() {
+								let value = self.entry(i)?;
+								if value.is_vector_or_matrix() {
+									break;
+								}
+								vector.insert(0, value)?;
+							}
+							self.stack
+								.replace_entries(vector.len(), Value::Vector(vector))?;
+						}
+					}
+					InputEvent::Print => clear_undo_buffer(),
 					InputEvent::Clear => {
 						self.stack.clear();
 						self.input_mode.alpha = AlphaMode::Normal;

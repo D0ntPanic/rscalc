@@ -13,6 +13,7 @@ pub enum Error {
 	InvalidStackIndex,
 	ValueNotDefined,
 	ValueOutOfRange,
+	IndexOutOfRange,
 	FloatRequiresDecimalMode,
 	RequiresSizedIntegerMode,
 	InvalidDate,
@@ -20,6 +21,7 @@ pub enum Error {
 	CorruptData,
 	StackOverflow,
 	UndoBufferEmpty,
+	VectorTooLarge,
 }
 
 impl Error {
@@ -35,6 +37,7 @@ impl Error {
 			Error::InvalidStackIndex => "Invalid stack index",
 			Error::ValueNotDefined => "Value not defined",
 			Error::ValueOutOfRange => "Value out of range",
+			Error::IndexOutOfRange => "Index out of range",
 			Error::FloatRequiresDecimalMode => "Requires decimal mode",
 			Error::RequiresSizedIntegerMode => "Requires sized int mode",
 			Error::InvalidDate => "Invalid date",
@@ -42,6 +45,7 @@ impl Error {
 			Error::CorruptData => "Corrupt data",
 			Error::StackOverflow => "Stack overflow",
 			Error::UndoBufferEmpty => "Undo buffer empty",
+			Error::VectorTooLarge => "Vector too large",
 		}
 	}
 }

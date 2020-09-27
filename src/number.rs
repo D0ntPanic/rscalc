@@ -1260,7 +1260,7 @@ impl StorageObject for Number {
 	fn serialize<Ref: StorageRefSerializer, Out: SerializeOutput>(
 		&self,
 		output: &mut Out,
-		_: &Ref,
+		_: &mut Ref,
 	) -> Result<()> {
 		match self {
 			Number::Integer(int) => {

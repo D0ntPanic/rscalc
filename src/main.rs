@@ -44,6 +44,7 @@ mod time;
 mod undo;
 mod unit;
 mod value;
+mod vector;
 
 use input::{InputQueue, KeyEvent};
 use screen::Screen;

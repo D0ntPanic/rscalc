@@ -90,6 +90,8 @@ pub fn char_to_idx(ch: char) -> Option<usize> {
 		'ˣ' => Some(0xa3),
 		'₂' => Some(0xa4),
 		'ℹ' => Some(0xa5),
+		'⟪' => Some(0xa6),
+		'⟫' => Some(0xa7),
 		_ => None,
 	}
 }

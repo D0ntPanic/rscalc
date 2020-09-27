@@ -6,13 +6,14 @@ use crate::layout::Layout;
 use crate::number::{Number, NumberFormat, NumberFormatMode, ToNumber, MAX_SHORT_DISPLAY_BITS};
 use crate::screen::Color;
 use crate::storage::{
-	DeserializeInput, SerializeOutput, StorageObject, StorageRef, StorageRefSerializer,
+	store, DeserializeInput, SerializeOutput, StorageObject, StorageRef, StorageRefSerializer,
 };
 use crate::time::{SimpleDateTimeFormat, SimpleDateTimeToString};
 use crate::unit::{AngleUnit, CompositeUnit, TimeUnit, Unit};
+use crate::vector::Vector;
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 use core::convert::TryFrom;
@@ -27,18 +28,32 @@ pub enum Value {
 	DateTime(NaiveDateTime),
 	Date(NaiveDate),
 	Time(NaiveTime),
+	Vector(Vector),
 }
 
 pub type ValueRef = StorageRef<Value>;
 
 impl Value {
+	/// Deep copies a value onto the non-reclaimable heap. This is used when pulling values out
+	/// of reclaimable memory.
+	pub fn deep_copy_value(value: ValueRef) -> Result<ValueRef> {
+		let mut value = value.get()?;
+		match &mut value {
+			Value::Vector(vector) => vector.deep_copy_values()?,
+			_ => (),
+		};
+		store(value)
+	}
+
 	pub fn real_number(&self) -> Result<&Number> {
 		match self {
 			Value::Number(num) => Ok(num),
 			Value::NumberWithUnit(num, _) => Ok(num),
-			Value::Complex(_) | Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
-				Err(Error::NotARealNumber)
-			}
+			Value::Complex(_)
+			| Value::DateTime(_)
+			| Value::Date(_)
+			| Value::Time(_)
+			| Value::Vector(_) => Err(Error::NotARealNumber),
 		}
 	}
 
@@ -47,7 +62,9 @@ impl Value {
 			Value::Number(num) => Ok(Cow::Owned(ComplexNumber::from_real(num.clone()))),
 			Value::NumberWithUnit(num, _) => Ok(Cow::Owned(ComplexNumber::from_real(num.clone()))),
 			Value::Complex(value) => Ok(Cow::Borrowed(value)),
-			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => Err(Error::DataTypeMismatch),
+			Value::DateTime(_) | Value::Date(_) | Value::Time(_) | Value::Vector(_) => {
+				Err(Error::DataTypeMismatch)
+			}
 		}
 	}
 
@@ -55,9 +72,11 @@ impl Value {
 		match self {
 			Value::Number(num) => num.to_int(),
 			Value::NumberWithUnit(num, _) => num.to_int(),
-			Value::Complex(_) | Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
-				Err(Error::NotARealNumber)
-			}
+			Value::Complex(_)
+			| Value::DateTime(_)
+			| Value::Date(_)
+			| Value::Time(_)
+			| Value::Vector(_) => Err(Error::NotARealNumber),
 		}
 	}
 
@@ -72,9 +91,11 @@ impl Value {
 				Number::Integer(num.to_int()?.into_owned()),
 				unit.clone(),
 			))),
-			Value::Complex(_) | Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
-				Err(Error::NotARealNumber)
-			}
+			Value::Complex(_)
+			| Value::DateTime(_)
+			| Value::Date(_)
+			| Value::Time(_)
+			| Value::Vector(_) => Err(Error::NotARealNumber),
 		}
 	}
 
@@ -86,6 +107,9 @@ impl Value {
 			Value::DateTime(dt) => dt.simple_format(&SimpleDateTimeFormat::full()),
 			Value::Date(date) => date.simple_format(&SimpleDateTimeFormat::date()),
 			Value::Time(time) => time.simple_format(&SimpleDateTimeFormat::time()),
+			Value::Vector(vector) => {
+				"⟪".to_string() + &vector.len().to_number().to_string() + " elem vector⟫"
+			}
 		}
 	}
 
@@ -94,7 +118,16 @@ impl Value {
 			Value::Number(num) => format.format_number(num),
 			Value::NumberWithUnit(num, _) => format.format_number(num),
 			Value::Complex(num) => num.format(format),
-			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => self.to_string(),
+			Value::DateTime(_) | Value::Date(_) | Value::Time(_) | Value::Vector(_) => {
+				self.to_string()
+			}
+		}
+	}
+
+	pub fn is_vector_or_matrix(&self) -> bool {
+		match self {
+			Value::Vector(_) => true,
+			_ => false,
 		}
 	}
 
@@ -337,9 +370,11 @@ impl Value {
 					Ok(Value::NumberWithUnit(new_num, new_unit))
 				}
 			}
-			Value::Complex(_) | Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
-				Err(Error::NotARealNumber)
-			}
+			Value::Complex(_)
+			| Value::DateTime(_)
+			| Value::Date(_)
+			| Value::Time(_)
+			| Value::Vector(_) => Err(Error::NotARealNumber),
 		}
 	}
 
@@ -358,9 +393,11 @@ impl Value {
 					Ok(Value::NumberWithUnit(new_num, new_unit))
 				}
 			}
-			Value::Complex(_) | Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
-				Err(Error::NotARealNumber)
-			}
+			Value::Complex(_)
+			| Value::DateTime(_)
+			| Value::Date(_)
+			| Value::Time(_)
+			| Value::Vector(_) => Err(Error::NotARealNumber),
 		}
 	}
 
@@ -376,9 +413,11 @@ impl Value {
 				}
 			}
 			Value::Number(_) => Err(Error::IncompatibleUnits),
-			Value::Complex(_) | Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
-				Err(Error::NotARealNumber)
-			}
+			Value::Complex(_)
+			| Value::DateTime(_)
+			| Value::Date(_)
+			| Value::Time(_)
+			| Value::Vector(_) => Err(Error::NotARealNumber),
 		}
 	}
 
@@ -422,6 +461,7 @@ impl Value {
 				Value::DateTime(right) => self.datetime_add_secs(right, left),
 				Value::Date(right) => self.date_add_days(right, left),
 				Value::Time(right) => self.time_add_secs(right, left),
+				Value::Vector(_) => Err(Error::DataTypeMismatch),
 			},
 			Value::NumberWithUnit(left, left_unit) => match rhs {
 				Value::Number(right) => Ok(Value::NumberWithUnit(left + right, left_unit.clone())),
@@ -453,6 +493,7 @@ impl Value {
 						&CompositeUnit::single_unit(TimeUnit::Seconds.into()),
 					)?,
 				),
+				Value::Vector(_) => Err(Error::DataTypeMismatch),
 			},
 			Value::Complex(left) => match rhs {
 				Value::Number(right) => {
@@ -508,6 +549,7 @@ impl Value {
 				))),
 				_ => Err(Error::DataTypeMismatch),
 			},
+			Value::Vector(_) => Err(Error::DataTypeMismatch),
 		}
 	}
 
@@ -521,7 +563,7 @@ impl Value {
 				Value::Complex(right) => {
 					Self::check_complex(&ComplexNumber::from_real(left.clone()) - right)
 				}
-				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
+				Value::DateTime(_) | Value::Date(_) | Value::Time(_) | Value::Vector(_) => {
 					Err(Error::DataTypeMismatch)
 				}
 			},
@@ -534,7 +576,7 @@ impl Value {
 				Value::Complex(right) => {
 					Self::check_complex(&ComplexNumber::from_real(left.clone()) - right)
 				}
-				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
+				Value::DateTime(_) | Value::Date(_) | Value::Time(_) | Value::Vector(_) => {
 					Err(Error::DataTypeMismatch)
 				}
 			},
@@ -611,6 +653,7 @@ impl Value {
 				}
 				_ => Err(Error::DataTypeMismatch),
 			},
+			Value::Vector(_) => Err(Error::DataTypeMismatch),
 		}
 	}
 
@@ -624,7 +667,7 @@ impl Value {
 				Value::Complex(right) => {
 					Self::check_complex(&ComplexNumber::from_real(left.clone()) * right)
 				}
-				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
+				Value::DateTime(_) | Value::Date(_) | Value::Time(_) | Value::Vector(_) => {
 					Err(Error::DataTypeMismatch)
 				}
 			},
@@ -638,7 +681,7 @@ impl Value {
 				Value::Complex(right) => {
 					Self::check_complex(&ComplexNumber::from_real(left.clone()) * right)
 				}
-				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
+				Value::DateTime(_) | Value::Date(_) | Value::Time(_) | Value::Vector(_) => {
 					Err(Error::DataTypeMismatch)
 				}
 			},
@@ -650,11 +693,13 @@ impl Value {
 					Self::check_complex(left * &ComplexNumber::from_real(right.clone()))
 				}
 				Value::Complex(right) => Self::check_complex(left * right),
-				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
+				Value::DateTime(_) | Value::Date(_) | Value::Time(_) | Value::Vector(_) => {
 					Err(Error::DataTypeMismatch)
 				}
 			},
-			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => Err(Error::DataTypeMismatch),
+			Value::DateTime(_) | Value::Date(_) | Value::Time(_) | Value::Vector(_) => {
+				Err(Error::DataTypeMismatch)
+			}
 		}
 	}
 
@@ -668,7 +713,7 @@ impl Value {
 				Value::Complex(right) => {
 					Self::check_complex(&ComplexNumber::from_real(left.clone()) / right)
 				}
-				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
+				Value::DateTime(_) | Value::Date(_) | Value::Time(_) | Value::Vector(_) => {
 					Err(Error::DataTypeMismatch)
 				}
 			},
@@ -682,7 +727,7 @@ impl Value {
 				Value::Complex(right) => {
 					Self::check_complex(&ComplexNumber::from_real(left.clone()) / right)
 				}
-				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
+				Value::DateTime(_) | Value::Date(_) | Value::Time(_) | Value::Vector(_) => {
 					Err(Error::DataTypeMismatch)
 				}
 			},
@@ -694,11 +739,13 @@ impl Value {
 					Self::check_complex(left / &ComplexNumber::from_real(right.clone()))
 				}
 				Value::Complex(right) => Self::check_complex(left / right),
-				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
+				Value::DateTime(_) | Value::Date(_) | Value::Time(_) | Value::Vector(_) => {
 					Err(Error::DataTypeMismatch)
 				}
 			},
-			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => Err(Error::DataTypeMismatch),
+			Value::DateTime(_) | Value::Date(_) | Value::Time(_) | Value::Vector(_) => {
+				Err(Error::DataTypeMismatch)
+			}
 		}
 	}
 
@@ -1355,12 +1402,13 @@ const VALUE_SERIALIZE_TYPE_COMPLEX: u8 = 2;
 const VALUE_SERIALIZE_TYPE_DATETIME: u8 = 3;
 const VALUE_SERIALIZE_TYPE_DATE: u8 = 4;
 const VALUE_SERIALIZE_TYPE_TIME: u8 = 5;
+const VALUE_SERIALIZE_TYPE_VECTOR: u8 = 6;
 
 impl StorageObject for Value {
 	fn serialize<Ref: StorageRefSerializer, Out: SerializeOutput>(
 		&self,
 		output: &mut Out,
-		storage_refs: &Ref,
+		storage_refs: &mut Ref,
 	) -> Result<()> {
 		match self {
 			Value::Number(num) => {
@@ -1399,6 +1447,10 @@ impl StorageObject for Value {
 				output.write_u8(time.minute() as u8)?;
 				output.write_u8(time.second() as u8)?;
 				output.write_u32(time.nanosecond())?;
+			}
+			Value::Vector(vector) => {
+				output.write_u8(VALUE_SERIALIZE_TYPE_VECTOR)?;
+				vector.serialize(output, storage_refs)?;
 			}
 		}
 		Ok(())
@@ -1450,6 +1502,10 @@ impl StorageObject for Value {
 				let time = NaiveTime::from_hms_nano_opt(hour, minute, second, nanosecond)
 					.ok_or(Error::CorruptData)?;
 				Ok(Value::Time(time))
+			}
+			VALUE_SERIALIZE_TYPE_VECTOR => {
+				let vector = Vector::deserialize(input, storage_refs)?;
+				Ok(Value::Vector(vector))
 			}
 			_ => Err(Error::CorruptData),
 		}
