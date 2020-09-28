@@ -121,6 +121,12 @@ pub enum Function {
 	Asinh,
 	Acosh,
 	Atanh,
+	Sum,
+	Mean,
+	DotProduct,
+	CrossProduct,
+	Magnitude,
+	Normalize,
 }
 
 impl Function {
@@ -393,6 +399,12 @@ impl Function {
 			Function::Asinh => "asinh".to_string(),
 			Function::Acosh => "acosh".to_string(),
 			Function::Atanh => "atanh".to_string(),
+			Function::Sum => "sum".to_string(),
+			Function::Mean => "mean".to_string(),
+			Function::DotProduct => "dot".to_string(),
+			Function::CrossProduct => "cross".to_string(),
+			Function::Magnitude => "mag".to_string(),
+			Function::Normalize => "norm".to_string(),
 		}
 	}
 
@@ -904,6 +916,60 @@ impl Function {
 			Function::Asinh => state.set_top(state.top().asinh()?)?,
 			Function::Acosh => state.set_top(state.top().acosh()?)?,
 			Function::Atanh => state.set_top(state.top().atanh()?)?,
+			Function::Sum => {
+				if let Value::Vector(vector) = state.top() {
+					state.set_top(vector.sum()?)?;
+				} else {
+					return Err(Error::DataTypeMismatch);
+				}
+			}
+			Function::Mean => {
+				if let Value::Vector(vector) = state.top() {
+					state.set_top(vector.mean()?)?;
+				} else {
+					return Err(Error::DataTypeMismatch);
+				}
+			}
+			Function::DotProduct => {
+				let a = state.entry(1)?;
+				let b = state.entry(0)?;
+				if let Value::Vector(a_vector) = a {
+					if let Value::Vector(b_vector) = b {
+						state.replace_entries(2, a_vector.dot(&b_vector)?)?;
+					} else {
+						return Err(Error::DataTypeMismatch);
+					}
+				} else {
+					return Err(Error::DataTypeMismatch);
+				}
+			}
+			Function::CrossProduct => {
+				let a = state.entry(1)?;
+				let b = state.entry(0)?;
+				if let Value::Vector(a_vector) = a {
+					if let Value::Vector(b_vector) = b {
+						state.replace_entries(2, Value::Vector(a_vector.cross(&b_vector)?))?;
+					} else {
+						return Err(Error::DataTypeMismatch);
+					}
+				} else {
+					return Err(Error::DataTypeMismatch);
+				}
+			}
+			Function::Magnitude => {
+				if let Value::Vector(vector) = state.top() {
+					state.set_top(vector.magnitude()?)?;
+				} else {
+					return Err(Error::DataTypeMismatch);
+				}
+			}
+			Function::Normalize => {
+				if let Value::Vector(vector) = state.top() {
+					state.set_top(Value::Vector(vector.normalize()?))?;
+				} else {
+					return Err(Error::DataTypeMismatch);
+				}
+			}
 		}
 		Ok(())
 	}
@@ -918,6 +984,8 @@ pub enum FunctionMenu {
 	SignedInteger,
 	UnsignedInteger,
 	Logic,
+	Stats,
+	Matrix,
 }
 
 impl FunctionMenu {
@@ -979,6 +1047,14 @@ impl FunctionMenu {
 				Some(Function::ShiftRight),
 				Some(Function::RotateLeft),
 				Some(Function::RotateRight),
+			]
+			.to_vec(),
+			FunctionMenu::Stats => [Some(Function::Sum), Some(Function::Mean)].to_vec(),
+			FunctionMenu::Matrix => [
+				Some(Function::DotProduct),
+				Some(Function::CrossProduct),
+				Some(Function::Magnitude),
+				Some(Function::Normalize),
 			]
 			.to_vec(),
 		}

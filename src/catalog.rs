@@ -6,18 +6,22 @@ use alloc::vec::Vec;
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum CatalogPage {
 	Constants,
+	Stats,
 	Time,
 	Transcendental,
 	Units,
+	Vector,
 }
 
 impl CatalogPage {
 	pub fn to_str(&self) -> &'static str {
 		match self {
 			CatalogPage::Constants => "Constants",
+			CatalogPage::Stats => "Statistics",
 			CatalogPage::Time => "Time",
 			CatalogPage::Transcendental => "Transcendental",
 			CatalogPage::Units => "Units",
+			CatalogPage::Vector => "Vector",
 		}
 	}
 
@@ -28,9 +32,11 @@ impl CatalogPage {
 	) -> Menu {
 		match self {
 			CatalogPage::Constants => constant_catalog_menu(func),
+			CatalogPage::Stats => stats_catalog_menu(func),
 			CatalogPage::Time => time_catalog_menu(func),
 			CatalogPage::Transcendental => transcendental_catalog_menu(func),
 			CatalogPage::Units => main_unit_catalog_menu(func),
+			CatalogPage::Vector => vector_catalog_menu(func),
 		}
 	}
 }
@@ -62,9 +68,11 @@ pub fn catalog_menu(func: &dyn Fn(CatalogPage) -> Function) -> Menu {
 		"Catalog",
 		create_parent_items(&[
 			("Constants", func(CatalogPage::Constants)),
+			("Statistics", func(CatalogPage::Stats)),
 			("Time", func(CatalogPage::Time)),
 			("Transcendental", func(CatalogPage::Transcendental)),
 			("Units", func(CatalogPage::Units)),
+			("Vector", func(CatalogPage::Vector)),
 		]),
 	)
 }
@@ -73,6 +81,13 @@ fn constant_catalog_menu(func: &dyn Fn(Function) -> Function) -> Menu {
 	Menu::new(
 		"Constants",
 		create_action_items(&[("c - Speed of Light", func(Function::SpeedOfLight))]),
+	)
+}
+
+fn stats_catalog_menu(func: &dyn Fn(Function) -> Function) -> Menu {
+	Menu::new(
+		"Statistics",
+		create_action_items(&[("sum", func(Function::Sum)), ("mean", func(Function::Mean))]),
 	)
 }
 
@@ -120,6 +135,18 @@ fn main_unit_catalog_menu(func: &dyn Fn(Function) -> Function) -> Menu {
 			("Assign Unit", func(Function::AddUnitCatalogMenu)),
 			("Assign Inverse Unit", func(Function::AddInvUnitCatalogMenu)),
 			("Convert Unit", func(Function::ConvertUnitCatalogMenu)),
+		]),
+	)
+}
+
+fn vector_catalog_menu(func: &dyn Fn(Function) -> Function) -> Menu {
+	Menu::new(
+		"Vector",
+		create_action_items(&[
+			("dot", func(Function::DotProduct)),
+			("cross", func(Function::CrossProduct)),
+			("magnitude", func(Function::Magnitude)),
+			("normalize", func(Function::Normalize)),
 		]),
 	)
 }

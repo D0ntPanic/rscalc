@@ -508,6 +508,12 @@ impl State {
 					InputEvent::Logic => {
 						self.function_keys.show_toplevel_menu(FunctionMenu::Logic);
 					}
+					InputEvent::Stat => {
+						self.function_keys.show_toplevel_menu(FunctionMenu::Stats);
+					}
+					InputEvent::Matrix => {
+						self.function_keys.show_toplevel_menu(FunctionMenu::Matrix);
+					}
 					InputEvent::Convert => {
 						self.show_menu(unit_menu());
 					}

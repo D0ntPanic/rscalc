@@ -1,5 +1,7 @@
 use crate::number::{Number, NumberFormat, NumberFormatMode, MAX_SHORT_DISPLAY_BITS};
 use crate::screen::{Color, Font, Rect, Screen};
+use crate::value::Value;
+use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -275,6 +277,238 @@ impl Layout {
 			Some((layout, false))
 		} else {
 			None
+		}
+	}
+
+	pub fn single_line_numerical_value_layout(
+		value: &Value,
+		format: &NumberFormat,
+		int_font: &'static Font,
+		frac_font: &'static Font,
+		max_width: i32,
+		sign_spacing: bool,
+	) -> Option<Layout> {
+		match value {
+			Value::Number(value) | Value::NumberWithUnit(value, _) => {
+				Layout::single_line_number_layout(
+					value,
+					format,
+					int_font,
+					frac_font,
+					Color::ContentText,
+					max_width,
+				)
+			}
+			Value::Complex(value) => {
+				// Complex number, try to render the full representation of both real and
+				// imaginary parts.
+				let format = format.decimal_format();
+				if let Some(real_layout) = Layout::single_line_number_layout(
+					value.real_part(),
+					&format,
+					int_font,
+					frac_font,
+					Color::ContentText,
+					max_width,
+				) {
+					let (sign_text, imaginary_part) = if sign_spacing {
+						if value.imaginary_part().is_negative() {
+							(" - ", Cow::Owned(-value.imaginary_part()))
+						} else {
+							(" + ", Cow::Borrowed(value.imaginary_part()))
+						}
+					} else {
+						if value.imaginary_part().is_negative() {
+							("-", Cow::Owned(-value.imaginary_part()))
+						} else {
+							("+", Cow::Borrowed(value.imaginary_part()))
+						}
+					};
+
+					if let Some(imaginary_layout) = Layout::single_line_number_layout(
+						&*imaginary_part,
+						&format,
+						int_font,
+						frac_font,
+						Color::ContentText,
+						max_width,
+					) {
+						// Both parts have a representation, construct final layout
+						let mut horizontal_items = Vec::new();
+						horizontal_items.push(real_layout);
+						horizontal_items.push(Layout::StaticText(
+							sign_text,
+							int_font,
+							Color::ContentText,
+						));
+						horizontal_items.push(imaginary_layout);
+						horizontal_items.push(Layout::StaticText(
+							"ℹ",
+							int_font,
+							Color::ContentText,
+						));
+						let layout = Layout::Horizontal(horizontal_items);
+						if layout.width() <= max_width {
+							return Some(layout);
+						}
+					}
+				}
+
+				// Try to render the floating point representation on a single line
+				let string = value.format(&format);
+				Layout::single_line_string_layout(
+					&string,
+					int_font,
+					Color::ContentText,
+					max_width,
+					false,
+				)
+			}
+			_ => None,
+		}
+	}
+
+	pub fn single_line_simple_value_layout(
+		value: &Value,
+		format: &NumberFormat,
+		font: &'static Font,
+		max_width: i32,
+	) -> Layout {
+		match value {
+			Value::Number(value) | Value::NumberWithUnit(value, _) => {
+				// Render real numbers as a decimal of a precision that will fit
+				Layout::single_line_decimal_layout(
+					&value.to_decimal(),
+					format,
+					"",
+					"",
+					font,
+					Color::ContentText,
+					max_width,
+				)
+			}
+			Value::Complex(value) => {
+				// Render complex number as two lines, one with the decimal real part, and
+				// one with the decimal imaginary part.
+				let format = format.decimal_format();
+				let (sign_text, imaginary_part) = if value.imaginary_part().is_negative() {
+					("-", Cow::Owned(-value.imaginary_part()))
+				} else {
+					("+", Cow::Borrowed(value.imaginary_part()))
+				};
+				let real_layout = Layout::single_line_decimal_layout(
+					&value.real_part().to_decimal(),
+					&format,
+					"",
+					"",
+					font,
+					Color::ContentText,
+					(max_width - font.width(sign_text)) / 2,
+				);
+				let imaginary_layout = Layout::single_line_decimal_layout(
+					&imaginary_part.to_decimal(),
+					&format,
+					sign_text,
+					"ℹ",
+					font,
+					Color::ContentText,
+					(max_width - font.width(sign_text)) / 2,
+				);
+
+				let mut horizontal_layout_items = Vec::new();
+				horizontal_layout_items.push(real_layout);
+				horizontal_layout_items.push(imaginary_layout);
+				Layout::Horizontal(horizontal_layout_items)
+			}
+			_ => {
+				// Other type of value, just display as a string
+				// TODO: Use truncatable rendering here so that it will never fail
+				let string = value.to_string();
+				if let Some(layout) = Layout::single_line_string_layout(
+					&string,
+					font,
+					Color::ContentText,
+					max_width,
+					false,
+				) {
+					layout
+				} else {
+					Layout::StaticText("⟪Render error⟫", font, Color::ContentText)
+				}
+			}
+		}
+	}
+
+	pub fn double_line_simple_value_layout(
+		value: &Value,
+		format: &NumberFormat,
+		default_font: &'static Font,
+		small_font: &'static Font,
+		max_width: i32,
+	) -> Layout {
+		match value {
+			Value::Number(value) | Value::NumberWithUnit(value, _) => {
+				// Render real numbers as a decimal of a precision that will fit
+				Layout::single_line_decimal_layout(
+					&value.to_decimal(),
+					format,
+					"",
+					"",
+					default_font,
+					Color::ContentText,
+					max_width,
+				)
+			}
+			Value::Complex(value) => {
+				// Render complex number as two lines, one with the decimal real part, and
+				// one with the decimal imaginary part.
+				let format = format.decimal_format();
+				let (sign_text, imaginary_part) = if value.imaginary_part().is_negative() {
+					("- ", Cow::Owned(-value.imaginary_part()))
+				} else {
+					("+ ", Cow::Borrowed(value.imaginary_part()))
+				};
+				let real_layout = Layout::single_line_decimal_layout(
+					&value.real_part().to_decimal(),
+					&format,
+					"",
+					"",
+					small_font,
+					Color::ContentText,
+					max_width,
+				);
+				let imaginary_layout = Layout::single_line_decimal_layout(
+					&imaginary_part.to_decimal(),
+					&format,
+					sign_text,
+					"ℹ",
+					small_font,
+					Color::ContentText,
+					max_width,
+				);
+
+				let mut vertical_layout_items = Vec::new();
+				vertical_layout_items.push(real_layout);
+				vertical_layout_items.push(imaginary_layout);
+				Layout::Vertical(vertical_layout_items)
+			}
+			_ => {
+				// Other type of value, just display as a string
+				// TODO: Use truncatable rendering here so that it will never fail
+				let string = value.to_string();
+				if let Some(layout) = Layout::double_line_string_layout(
+					&string,
+					default_font,
+					small_font,
+					Color::ContentText,
+					max_width,
+					false,
+				) {
+					layout
+				} else {
+					Layout::StaticText("⟪Render error⟫", default_font, Color::ContentText)
+				}
+			}
 		}
 	}
 

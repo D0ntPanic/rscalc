@@ -549,7 +549,20 @@ impl Value {
 				))),
 				_ => Err(Error::DataTypeMismatch),
 			},
-			Value::Vector(_) => Err(Error::DataTypeMismatch),
+			Value::Vector(left) => match rhs {
+				Value::Vector(right) => {
+					if left.len() != right.len() {
+						return Err(Error::DimensionMismatch);
+					}
+					let mut result = left.clone();
+					for i in 0..left.len() {
+						let elem = (left.get(i)? + right.get(i)?)?;
+						result.set(i, elem)?;
+					}
+					Ok(Value::Vector(result))
+				}
+				_ => Err(Error::DataTypeMismatch),
+			},
 		}
 	}
 
@@ -653,7 +666,34 @@ impl Value {
 				}
 				_ => Err(Error::DataTypeMismatch),
 			},
-			Value::Vector(_) => Err(Error::DataTypeMismatch),
+			Value::Vector(left) => match rhs {
+				Value::Vector(right) => {
+					if left.len() != right.len() {
+						return Err(Error::DimensionMismatch);
+					}
+					let mut result = left.clone();
+					for i in 0..left.len() {
+						let elem = (left.get(i)? - right.get(i)?)?;
+						result.set(i, elem)?;
+					}
+					Ok(Value::Vector(result))
+				}
+				_ => Err(Error::DataTypeMismatch),
+			},
+		}
+	}
+
+	fn value_neg(&self) -> Result<Value> {
+		match self {
+			Value::Vector(vector) => {
+				let mut result = vector.clone();
+				for i in 0..vector.len() {
+					let elem = (-vector.get(i)?)?;
+					result.set(i, elem)?;
+				}
+				Ok(Value::Vector(result))
+			}
+			_ => &Value::Number(0.to_number()) - self,
 		}
 	}
 
@@ -667,7 +707,15 @@ impl Value {
 				Value::Complex(right) => {
 					Self::check_complex(&ComplexNumber::from_real(left.clone()) * right)
 				}
-				Value::DateTime(_) | Value::Date(_) | Value::Time(_) | Value::Vector(_) => {
+				Value::Vector(right) => {
+					let mut result = right.clone();
+					for i in 0..right.len() {
+						let elem = (self * &right.get(i)?)?;
+						result.set(i, elem)?;
+					}
+					Ok(Value::Vector(result))
+				}
+				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
 					Err(Error::DataTypeMismatch)
 				}
 			},
@@ -681,7 +729,15 @@ impl Value {
 				Value::Complex(right) => {
 					Self::check_complex(&ComplexNumber::from_real(left.clone()) * right)
 				}
-				Value::DateTime(_) | Value::Date(_) | Value::Time(_) | Value::Vector(_) => {
+				Value::Vector(right) => {
+					let mut result = right.clone();
+					for i in 0..right.len() {
+						let elem = (self * &right.get(i)?)?;
+						result.set(i, elem)?;
+					}
+					Ok(Value::Vector(result))
+				}
+				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
 					Err(Error::DataTypeMismatch)
 				}
 			},
@@ -697,9 +753,26 @@ impl Value {
 					Err(Error::DataTypeMismatch)
 				}
 			},
-			Value::DateTime(_) | Value::Date(_) | Value::Time(_) | Value::Vector(_) => {
-				Err(Error::DataTypeMismatch)
-			}
+			Value::Vector(left) => match rhs {
+				Value::Number(_) | Value::NumberWithUnit(_, _) => {
+					let mut result = left.clone();
+					for i in 0..left.len() {
+						let elem = (&left.get(i)? * rhs)?;
+						result.set(i, elem)?;
+					}
+					Ok(Value::Vector(result))
+				}
+				Value::Vector(right) => {
+					if left.len() != 1 || right.len() != 1 {
+						return Err(Error::DimensionMismatch);
+					}
+					let mut result = Vector::new()?;
+					result.push((left.get(0)? * right.get(0)?)?)?;
+					Ok(Value::Vector(result))
+				}
+				_ => Err(Error::DataTypeMismatch),
+			},
+			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => Err(Error::DataTypeMismatch),
 		}
 	}
 
@@ -743,9 +816,18 @@ impl Value {
 					Err(Error::DataTypeMismatch)
 				}
 			},
-			Value::DateTime(_) | Value::Date(_) | Value::Time(_) | Value::Vector(_) => {
-				Err(Error::DataTypeMismatch)
-			}
+			Value::Vector(left) => match rhs {
+				Value::Number(_) | Value::NumberWithUnit(_, _) => {
+					let mut result = left.clone();
+					for i in 0..left.len() {
+						let elem = (&left.get(i)? / rhs)?;
+						result.set(i, elem)?;
+					}
+					Ok(Value::Vector(result))
+				}
+				_ => Err(Error::DataTypeMismatch),
+			},
+			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => Err(Error::DataTypeMismatch),
 		}
 	}
 
@@ -1081,73 +1163,46 @@ impl Value {
 					return layout;
 				}
 			}
-			Value::Complex(value) => {
-				// Complex number, try to render the full representation of both real and
-				// imaginary parts.
-				let format = format.decimal_format();
-				if let Some(real_layout) = Layout::single_line_number_layout(
-					value.real_part(),
-					&format,
-					&SANS_24,
-					&SANS_20,
-					Color::ContentText,
-					max_width,
+			Value::Complex(_) => {
+				if let Some(mut layout) = Layout::single_line_numerical_value_layout(
+					self, format, &SANS_24, &SANS_20, max_width, true,
 				) {
-					let (sign_text, imaginary_part) = if value.imaginary_part().is_negative() {
-						(" - ", Cow::Owned(-value.imaginary_part()))
-					} else {
-						(" + ", Cow::Borrowed(value.imaginary_part()))
-					};
-
-					if let Some(imaginary_layout) = Layout::single_line_number_layout(
-						&*imaginary_part,
-						&format,
-						&SANS_24,
-						&SANS_20,
-						Color::ContentText,
-						max_width,
-					) {
-						// Both parts have a representation, construct final layout
-						let mut horizontal_items = Vec::new();
-						horizontal_items.push(real_layout);
-						horizontal_items.push(Layout::StaticText(
-							sign_text,
-							&SANS_24,
-							Color::ContentText,
-						));
-						horizontal_items.push(imaginary_layout);
-						horizontal_items.push(Layout::StaticText(
-							"ℹ",
-							&SANS_24,
-							Color::ContentText,
-						));
-						let mut layout = Layout::Horizontal(horizontal_items);
-
-						if layout.width() <= max_width {
-							// Layout fits. Check to see if floating point alternate
-							// representation is enabled
-							if let Some(alt_layout) =
-								self.alternate_float_layout(&format, max_width)
-							{
-								let mut alt_layout_items = Vec::new();
-								alt_layout_items.push(layout);
-								alt_layout_items.push(alt_layout);
-								layout = Layout::Vertical(alt_layout_items);
-							}
-							return layout;
-						}
+					// Layout fits. Check to see if floating point alternate
+					// representation is enabled
+					if let Some(alt_layout) = self.alternate_float_layout(&format, max_width) {
+						let mut alt_layout_items = Vec::new();
+						alt_layout_items.push(layout);
+						alt_layout_items.push(alt_layout);
+						layout = Layout::Vertical(alt_layout_items);
 					}
+					return layout;
+				}
+			}
+			Value::Vector(vector) => {
+				// Vector, try to represent full form of vector entries in a single line. This is the
+				// preferred form because it can show rationals.
+				if let Some(layout) =
+					vector.single_line_full_layout(format, &SANS_24, &SANS_20, max_width)
+				{
+					return layout;
 				}
 
-				// Try to render the floating point representation on a single line
-				let string = value.format(&format);
-				if let Some(layout) = Layout::single_line_string_layout(
-					&string,
-					&SANS_24,
-					Color::ContentText,
-					max_width,
-					false,
-				) {
+				// Try a three line layout with full precision decimal form
+				if let Some(layout) = vector.multi_line_layout(format, &SANS_20, max_width, 3) {
+					return layout;
+				}
+
+				// Try a three line layout with partial precision decimal form
+				if let Some(layout) =
+					vector.multi_line_layout(&format.with_max_precision(6), &SANS_20, max_width, 3)
+				{
+					return layout;
+				}
+
+				// Try a four line layout with smaller font
+				if let Some(layout) =
+					vector.multi_line_layout(&format.with_max_precision(6), &SANS_16, max_width, 4)
+				{
 					return layout;
 				}
 			}
@@ -1155,79 +1210,17 @@ impl Value {
 		}
 
 		// Generate simple layout that will always fit
-		match self {
-			Value::Number(value) | Value::NumberWithUnit(value, _) => {
-				// Render real numbers as a decimal of a precision that will fit
-				let layout = Layout::single_line_decimal_layout(
-					&value.to_decimal(),
-					format,
-					"",
-					"",
-					&SANS_24,
-					Color::ContentText,
-					max_width,
-				);
+		let layout =
+			Layout::double_line_simple_value_layout(self, format, &SANS_24, &SANS_20, max_width);
 
-				// If units are present, add them to the layout
-				if let Some(unit_layout) = unit_layout {
-					let mut horizontal_items = Vec::new();
-					horizontal_items.push(layout);
-					horizontal_items.push(unit_layout);
-					Layout::Horizontal(horizontal_items)
-				} else {
-					layout
-				}
-			}
-			Value::Complex(value) => {
-				// Render complex number as two lines, one with the decimal real part, and
-				// one with the decimal imaginary part.
-				let format = format.decimal_format();
-				let (sign_text, imaginary_part) = if value.imaginary_part().is_negative() {
-					("- ", Cow::Owned(-value.imaginary_part()))
-				} else {
-					("+ ", Cow::Borrowed(value.imaginary_part()))
-				};
-				let real_layout = Layout::single_line_decimal_layout(
-					&value.real_part().to_decimal(),
-					&format,
-					"",
-					"",
-					&SANS_20,
-					Color::ContentText,
-					max_width,
-				);
-				let imaginary_layout = Layout::single_line_decimal_layout(
-					&imaginary_part.to_decimal(),
-					&format,
-					sign_text,
-					"ℹ",
-					&SANS_20,
-					Color::ContentText,
-					max_width,
-				);
-
-				let mut vertical_layout_items = Vec::new();
-				vertical_layout_items.push(real_layout);
-				vertical_layout_items.push(imaginary_layout);
-				Layout::Vertical(vertical_layout_items)
-			}
-			_ => {
-				// Other type of value, just display as a string
-				// TODO: Use truncatable rendering here so that it will never fail
-				let string = self.to_string();
-				if let Some(layout) = Layout::double_line_string_layout(
-					&string,
-					&SANS_24,
-					&SANS_20,
-					Color::ContentText,
-					max_width,
-					false,
-				) {
-					layout
-				} else {
-					Layout::StaticText("<Render error>", &SANS_24, Color::ContentText)
-				}
-			}
+		// If units are present, add them to the layout
+		if let Some(unit_layout) = unit_layout {
+			let mut horizontal_items = Vec::new();
+			horizontal_items.push(layout);
+			horizontal_items.push(unit_layout);
+			Layout::Horizontal(horizontal_items)
+		} else {
+			layout
 		}
 	}
 }
@@ -1384,7 +1377,7 @@ impl core::ops::Neg for Value {
 	type Output = Result<Value>;
 
 	fn neg(self) -> Self::Output {
-		Value::Number(0.into()).value_sub(&self)
+		self.value_neg()
 	}
 }
 
@@ -1392,7 +1385,7 @@ impl core::ops::Neg for &Value {
 	type Output = Result<Value>;
 
 	fn neg(self) -> Self::Output {
-		Value::Number(0.into()).value_sub(self)
+		self.value_neg()
 	}
 }
 

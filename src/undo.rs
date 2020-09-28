@@ -147,32 +147,10 @@ impl UndoBuffer {
 	}
 
 	fn pop(&mut self) -> Result<UndoAction> {
-		// When popping entries off the stack, store any values back onto the non-reclaimable
-		// storage so that it gets accounted for properly.
-		match self.entries.pop() {
-			Some(entry) => Ok(match entry.get()? {
-				UndoAction::Pop(value) => UndoAction::Pop(Value::deep_copy_value(value)?),
-				UndoAction::Replace(mut values) => {
-					for value in &mut values {
-						*value = Value::deep_copy_value(value.clone())?;
-					}
-					UndoAction::Replace(values)
-				}
-				UndoAction::Clear(mut values) => {
-					for value in &mut values {
-						*value = Value::deep_copy_value(value.clone())?;
-					}
-					UndoAction::Clear(values)
-				}
-				UndoAction::SetStackEntry(idx, value) => {
-					UndoAction::SetStackEntry(idx, Value::deep_copy_value(value)?)
-				}
-				UndoAction::ReplaceTopWithMultiple(count, value) => {
-					UndoAction::ReplaceTopWithMultiple(count, Value::deep_copy_value(value)?)
-				}
-				entry => entry,
-			}),
-			None => Err(Error::UndoBufferEmpty),
+		if let Some(action) = self.entries.pop() {
+			action.get()
+		} else {
+			Err(Error::UndoBufferEmpty)
 		}
 	}
 
@@ -201,7 +179,32 @@ pub fn push_undo_action(action: UndoAction) {
 }
 
 pub fn pop_undo_action() -> Result<UndoAction> {
-	UNDO_BUFFER.lock().pop()
+	let entry = UNDO_BUFFER.lock().pop()?;
+
+	// When popping entries off the stack, store any values back onto the non-reclaimable
+	// storage so that it gets accounted for properly.
+	Ok(match entry {
+		UndoAction::Pop(value) => UndoAction::Pop(Value::deep_copy_value(value)?),
+		UndoAction::Replace(mut values) => {
+			for value in &mut values {
+				*value = Value::deep_copy_value(value.clone())?;
+			}
+			UndoAction::Replace(values)
+		}
+		UndoAction::Clear(mut values) => {
+			for value in &mut values {
+				*value = Value::deep_copy_value(value.clone())?;
+			}
+			UndoAction::Clear(values)
+		}
+		UndoAction::SetStackEntry(idx, value) => {
+			UndoAction::SetStackEntry(idx, Value::deep_copy_value(value)?)
+		}
+		UndoAction::ReplaceTopWithMultiple(count, value) => {
+			UndoAction::ReplaceTopWithMultiple(count, Value::deep_copy_value(value)?)
+		}
+		entry => entry,
+	})
 }
 
 pub fn prune_undo_buffer() -> bool {

@@ -1,9 +1,13 @@
 use crate::error::{Error, Result};
+use crate::layout::Layout;
+use crate::number::{NumberFormat, ToNumber};
+use crate::screen::{Color, Font};
 use crate::storage::{
 	store, DeserializeInput, SerializeOutput, StorageObject, StorageRef, StorageRefArray,
 	StorageRefSerializer,
 };
 use crate::value::{Value, ValueRef};
+use alloc::vec::Vec;
 
 const MAX_CAPACITY: usize = 1000;
 const EXTRA_CAPACITY: usize = 4;
@@ -143,6 +147,176 @@ impl Vector {
 			}
 		}
 		Ok(())
+	}
+
+	pub fn sum(&self) -> Result<Value> {
+		if self.len() == 0 {
+			return Err(Error::NotEnoughValues);
+		}
+		let mut result = self.get(0)?;
+		for i in 1..self.len() {
+			result = (result + self.get(i)?)?;
+		}
+		Ok(result)
+	}
+
+	pub fn mean(&self) -> Result<Value> {
+		self.sum()? / Value::Number(self.len().to_number())
+	}
+
+	pub fn magnitude(&self) -> Result<Value> {
+		self.dot(self)?.sqrt()
+	}
+
+	pub fn normalize(&self) -> Result<Vector> {
+		if self.len() == 0 {
+			return Err(Error::NotEnoughValues);
+		}
+		let magnitude = self.magnitude()?;
+		let mut result = self.clone();
+		for i in 0..self.len() {
+			let value = (&self.get(i)? / &magnitude)?;
+			result.set(i, value)?;
+		}
+		Ok(result)
+	}
+
+	fn mul_members(a: &Vector, a_idx: usize, b: &Vector, b_idx: usize) -> Result<Value> {
+		a.get(a_idx)? * b.get(b_idx)?
+	}
+
+	pub fn dot(&self, other: &Vector) -> Result<Value> {
+		if self.len() == 0 {
+			return Err(Error::NotEnoughValues);
+		}
+		if self.len() != other.len() {
+			return Err(Error::DimensionMismatch);
+		}
+		let mut result = Value::Number(0.into());
+		for i in 0..self.len() {
+			result = (result + Self::mul_members(self, i, other, i)?)?;
+		}
+		Ok(result)
+	}
+
+	pub fn cross(&self, other: &Vector) -> Result<Vector> {
+		if self.len() != 3 || other.len() != 3 {
+			return Err(Error::DimensionMismatch);
+		}
+		let mut result = Vector::new()?;
+		result.push(
+			(Self::mul_members(self, 1, other, 2)? - Self::mul_members(self, 2, other, 1)?)?,
+		)?;
+		result.push(
+			(Self::mul_members(self, 2, other, 0)? - Self::mul_members(self, 0, other, 2)?)?,
+		)?;
+		result.push(
+			(Self::mul_members(self, 0, other, 1)? - Self::mul_members(self, 1, other, 0)?)?,
+		)?;
+		Ok(result)
+	}
+
+	pub fn single_line_full_layout(
+		&self,
+		format: &NumberFormat,
+		default_font: &'static Font,
+		small_font: &'static Font,
+		max_width: i32,
+	) -> Option<Layout> {
+		let mut horizontal_items = Vec::new();
+		let left_paren = Layout::StaticText("⦗", default_font, Color::ContentText);
+		let right_paren = Layout::StaticText("⦘", default_font, Color::ContentText);
+		let mut width = left_paren.width() + right_paren.width();
+		horizontal_items.push(left_paren);
+
+		for i in 0..self.len() {
+			if i > 0 {
+				let spacing = Layout::HorizontalSpace(24);
+				width += spacing.width();
+				horizontal_items.push(spacing);
+			}
+
+			if width >= max_width {
+				return None;
+			}
+
+			let value = if let Ok(value) = self.get(i) {
+				value
+			} else {
+				return None;
+			};
+
+			if let Some(layout) = Layout::single_line_numerical_value_layout(
+				&value,
+				format,
+				default_font,
+				small_font,
+				max_width - width,
+				false,
+			) {
+				width += layout.width();
+				horizontal_items.push(layout);
+			} else {
+				return None;
+			};
+		}
+
+		horizontal_items.push(right_paren);
+		Some(Layout::Horizontal(horizontal_items))
+	}
+
+	pub fn multi_line_layout(
+		&self,
+		format: &NumberFormat,
+		font: &'static Font,
+		max_width: i32,
+		max_lines: usize,
+	) -> Option<Layout> {
+		let mut vertical_items = Vec::new();
+		let mut horizontal_items = Vec::new();
+		let left_paren = Layout::StaticText("⦗", font, Color::ContentText);
+		let right_paren = Layout::StaticText("⦘", font, Color::ContentText);
+		let mut width = left_paren.width() + right_paren.width();
+		horizontal_items.push(right_paren);
+
+		for i in (0..self.len()).rev() {
+			if (i + 1) < self.len() && horizontal_items.len() > 0 {
+				let spacing = Layout::HorizontalSpace(20);
+				width += spacing.width();
+				horizontal_items.push(spacing);
+			}
+
+			let value = if let Ok(value) = self.get(i) {
+				value
+			} else {
+				return None;
+			};
+
+			let layout = Layout::single_line_simple_value_layout(
+				&value,
+				format,
+				font,
+				max_width - left_paren.width(),
+			);
+			let layout_width = layout.width();
+			if width + layout_width > max_width {
+				vertical_items.push(Layout::Horizontal(
+					horizontal_items.drain(..).rev().collect(),
+				));
+				if vertical_items.len() >= max_lines {
+					return None;
+				}
+				width = left_paren.width();
+			}
+			width += layout.width();
+			horizontal_items.push(layout);
+		}
+
+		horizontal_items.push(left_paren);
+		vertical_items.push(Layout::Horizontal(
+			horizontal_items.drain(..).rev().collect(),
+		));
+		Some(Layout::Vertical(vertical_items.drain(..).rev().collect()))
 	}
 }
 
