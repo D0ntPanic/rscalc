@@ -3,7 +3,7 @@
 all: calc.pgm calc
 
 target/thumbv7em-none-eabihf/release/calc:
-	cargo build --target thumbv7em-none-eabihf --release --no-default-features --features dm42
+	cargo build --target thumbv7em-none-eabihf -Z build-std=core,alloc --release --no-default-features --features dm42
 
 calc.pgm: target/thumbv7em-none-eabihf/release/calc
 	arm-none-eabi-objcopy --remove-section .qspi -O binary target/thumbv7em-none-eabihf/release/calc calc.bin
