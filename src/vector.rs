@@ -59,19 +59,7 @@ impl Vector {
 		if value.is_vector_or_matrix() {
 			return Err(Error::DataTypeMismatch);
 		}
-		self.array.set(idx, store(value)?)?;
-		Ok(())
-	}
-
-	/// Sets a reference to a value directly. Do not call with a reference to a vector
-	/// or matrix, as this can cause circular references and crash. This is not checked,
-	/// so is marked unsafe.
-	unsafe fn set_ref(&mut self, idx: usize, value: ValueRef) -> Result<()> {
-		if idx >= self.len {
-			return Err(Error::IndexOutOfRange);
-		}
-		self.array.set(idx, value)?;
-		Ok(())
+		self.array.set(idx, store(value)?)
 	}
 
 	pub fn insert(&mut self, idx: usize, value: Value) -> Result<()> {
@@ -140,11 +128,10 @@ impl Vector {
 	/// when pulling values out of reclaimable memory.
 	pub fn deep_copy_values(&mut self) -> Result<()> {
 		for i in 0..self.len {
-			let value = Value::deep_copy_value(self.get_ref(i)?)?;
-			unsafe {
-				// Assume values that are already in the vector are safe for the vector
-				self.set_ref(i, value)?;
-			}
+			let value = Value::deep_copy_value(self.array.get(i)?)?;
+
+			// Assume values that are already in the vector are safe for the vector
+			self.array.set(i, value)?;
 		}
 		Ok(())
 	}

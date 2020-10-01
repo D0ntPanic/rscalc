@@ -3,6 +3,7 @@ use crate::edit::NumberEditor;
 use crate::error::{Error, Result};
 use crate::font::{SANS_13, SANS_16, SANS_20, SANS_24};
 use crate::layout::Layout;
+use crate::matrix::Matrix;
 use crate::number::{Number, NumberFormat, NumberFormatMode, ToNumber, MAX_SHORT_DISPLAY_BITS};
 use crate::screen::Color;
 use crate::storage::{
@@ -29,6 +30,7 @@ pub enum Value {
 	Date(NaiveDate),
 	Time(NaiveTime),
 	Vector(Vector),
+	Matrix(Matrix),
 }
 
 pub type ValueRef = StorageRef<Value>;
@@ -40,6 +42,7 @@ impl Value {
 		let mut value = value.get()?;
 		match &mut value {
 			Value::Vector(vector) => vector.deep_copy_values()?,
+			Value::Matrix(matrix) => matrix.deep_copy_values()?,
 			_ => (),
 		};
 		store(value)
@@ -49,11 +52,7 @@ impl Value {
 		match self {
 			Value::Number(num) => Ok(num),
 			Value::NumberWithUnit(num, _) => Ok(num),
-			Value::Complex(_)
-			| Value::DateTime(_)
-			| Value::Date(_)
-			| Value::Time(_)
-			| Value::Vector(_) => Err(Error::NotARealNumber),
+			_ => Err(Error::NotARealNumber),
 		}
 	}
 
@@ -62,9 +61,7 @@ impl Value {
 			Value::Number(num) => Ok(Cow::Owned(ComplexNumber::from_real(num.clone()))),
 			Value::NumberWithUnit(num, _) => Ok(Cow::Owned(ComplexNumber::from_real(num.clone()))),
 			Value::Complex(value) => Ok(Cow::Borrowed(value)),
-			Value::DateTime(_) | Value::Date(_) | Value::Time(_) | Value::Vector(_) => {
-				Err(Error::DataTypeMismatch)
-			}
+			_ => Err(Error::DataTypeMismatch),
 		}
 	}
 
@@ -72,11 +69,7 @@ impl Value {
 		match self {
 			Value::Number(num) => num.to_int(),
 			Value::NumberWithUnit(num, _) => num.to_int(),
-			Value::Complex(_)
-			| Value::DateTime(_)
-			| Value::Date(_)
-			| Value::Time(_)
-			| Value::Vector(_) => Err(Error::NotARealNumber),
+			_ => Err(Error::NotARealNumber),
 		}
 	}
 
@@ -91,11 +84,7 @@ impl Value {
 				Number::Integer(num.to_int()?.into_owned()),
 				unit.clone(),
 			))),
-			Value::Complex(_)
-			| Value::DateTime(_)
-			| Value::Date(_)
-			| Value::Time(_)
-			| Value::Vector(_) => Err(Error::NotARealNumber),
+			_ => Err(Error::NotARealNumber),
 		}
 	}
 
@@ -110,6 +99,12 @@ impl Value {
 			Value::Vector(vector) => {
 				"⟪".to_string() + &vector.len().to_number().to_string() + " elem vector⟫"
 			}
+			Value::Matrix(matrix) => {
+				"⟪".to_string()
+					+ &matrix.rows().to_number().to_string()
+					+ "×" + &matrix.cols().to_number().to_string()
+					+ " matrix⟫"
+			}
 		}
 	}
 
@@ -118,15 +113,13 @@ impl Value {
 			Value::Number(num) => format.format_number(num),
 			Value::NumberWithUnit(num, _) => format.format_number(num),
 			Value::Complex(num) => num.format(format),
-			Value::DateTime(_) | Value::Date(_) | Value::Time(_) | Value::Vector(_) => {
-				self.to_string()
-			}
+			_ => self.to_string(),
 		}
 	}
 
 	pub fn is_vector_or_matrix(&self) -> bool {
 		match self {
-			Value::Vector(_) => true,
+			Value::Vector(_) | Value::Matrix(_) => true,
 			_ => false,
 		}
 	}
@@ -370,11 +363,7 @@ impl Value {
 					Ok(Value::NumberWithUnit(new_num, new_unit))
 				}
 			}
-			Value::Complex(_)
-			| Value::DateTime(_)
-			| Value::Date(_)
-			| Value::Time(_)
-			| Value::Vector(_) => Err(Error::NotARealNumber),
+			_ => Err(Error::NotARealNumber),
 		}
 	}
 
@@ -393,11 +382,7 @@ impl Value {
 					Ok(Value::NumberWithUnit(new_num, new_unit))
 				}
 			}
-			Value::Complex(_)
-			| Value::DateTime(_)
-			| Value::Date(_)
-			| Value::Time(_)
-			| Value::Vector(_) => Err(Error::NotARealNumber),
+			_ => Err(Error::NotARealNumber),
 		}
 	}
 
@@ -413,11 +398,7 @@ impl Value {
 				}
 			}
 			Value::Number(_) => Err(Error::IncompatibleUnits),
-			Value::Complex(_)
-			| Value::DateTime(_)
-			| Value::Date(_)
-			| Value::Time(_)
-			| Value::Vector(_) => Err(Error::NotARealNumber),
+			_ => Err(Error::NotARealNumber),
 		}
 	}
 
@@ -461,7 +442,7 @@ impl Value {
 				Value::DateTime(right) => self.datetime_add_secs(right, left),
 				Value::Date(right) => self.date_add_days(right, left),
 				Value::Time(right) => self.time_add_secs(right, left),
-				Value::Vector(_) => Err(Error::DataTypeMismatch),
+				_ => Err(Error::DataTypeMismatch),
 			},
 			Value::NumberWithUnit(left, left_unit) => match rhs {
 				Value::Number(right) => Ok(Value::NumberWithUnit(left + right, left_unit.clone())),
@@ -493,7 +474,7 @@ impl Value {
 						&CompositeUnit::single_unit(TimeUnit::Seconds.into()),
 					)?,
 				),
-				Value::Vector(_) => Err(Error::DataTypeMismatch),
+				_ => Err(Error::DataTypeMismatch),
 			},
 			Value::Complex(left) => match rhs {
 				Value::Number(right) => {
@@ -563,6 +544,22 @@ impl Value {
 				}
 				_ => Err(Error::DataTypeMismatch),
 			},
+			Value::Matrix(left) => match rhs {
+				Value::Matrix(right) => {
+					if left.rows() != right.rows() || left.cols() != right.cols() {
+						return Err(Error::DimensionMismatch);
+					}
+					let mut result = left.clone();
+					for row in 0..left.rows() {
+						for col in 0..left.cols() {
+							let elem = (left.get(row, col)? + right.get(row, col)?)?;
+							result.set(row, col, elem)?;
+						}
+					}
+					Ok(Value::Matrix(result))
+				}
+				_ => Err(Error::DataTypeMismatch),
+			},
 		}
 	}
 
@@ -576,9 +573,7 @@ impl Value {
 				Value::Complex(right) => {
 					Self::check_complex(&ComplexNumber::from_real(left.clone()) - right)
 				}
-				Value::DateTime(_) | Value::Date(_) | Value::Time(_) | Value::Vector(_) => {
-					Err(Error::DataTypeMismatch)
-				}
+				_ => Err(Error::DataTypeMismatch),
 			},
 			Value::NumberWithUnit(left, left_unit) => match rhs {
 				Value::Number(right) => Ok(Value::NumberWithUnit(left - right, left_unit.clone())),
@@ -589,9 +584,7 @@ impl Value {
 				Value::Complex(right) => {
 					Self::check_complex(&ComplexNumber::from_real(left.clone()) - right)
 				}
-				Value::DateTime(_) | Value::Date(_) | Value::Time(_) | Value::Vector(_) => {
-					Err(Error::DataTypeMismatch)
-				}
+				_ => Err(Error::DataTypeMismatch),
 			},
 			Value::Complex(left) => match rhs {
 				Value::Number(right) => {
@@ -680,6 +673,22 @@ impl Value {
 				}
 				_ => Err(Error::DataTypeMismatch),
 			},
+			Value::Matrix(left) => match rhs {
+				Value::Matrix(right) => {
+					if left.rows() != right.rows() || left.cols() != right.cols() {
+						return Err(Error::DimensionMismatch);
+					}
+					let mut result = left.clone();
+					for row in 0..left.rows() {
+						for col in 0..left.cols() {
+							let elem = (left.get(row, col)? - right.get(row, col)?)?;
+							result.set(row, col, elem)?;
+						}
+					}
+					Ok(Value::Matrix(result))
+				}
+				_ => Err(Error::DataTypeMismatch),
+			},
 		}
 	}
 
@@ -692,6 +701,16 @@ impl Value {
 					result.set(i, elem)?;
 				}
 				Ok(Value::Vector(result))
+			}
+			Value::Matrix(matrix) => {
+				let mut result = matrix.clone();
+				for row in 0..matrix.rows() {
+					for col in 0..matrix.cols() {
+						let elem = (-matrix.get(row, col)?)?;
+						result.set(row, col, elem)?;
+					}
+				}
+				Ok(Value::Matrix(result))
 			}
 			_ => &Value::Number(0.to_number()) - self,
 		}
@@ -715,9 +734,17 @@ impl Value {
 					}
 					Ok(Value::Vector(result))
 				}
-				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
-					Err(Error::DataTypeMismatch)
+				Value::Matrix(right) => {
+					let mut result = right.clone();
+					for row in 0..right.rows() {
+						for col in 0..right.cols() {
+							let elem = (self * &right.get(row, col)?)?;
+							result.set(row, col, elem)?;
+						}
+					}
+					Ok(Value::Matrix(result))
 				}
+				_ => Err(Error::DataTypeMismatch),
 			},
 			Value::NumberWithUnit(left, left_unit) => match rhs {
 				Value::Number(right) => Ok(Value::NumberWithUnit(left * right, left_unit.clone())),
@@ -737,9 +764,17 @@ impl Value {
 					}
 					Ok(Value::Vector(result))
 				}
-				Value::DateTime(_) | Value::Date(_) | Value::Time(_) => {
-					Err(Error::DataTypeMismatch)
+				Value::Matrix(right) => {
+					let mut result = right.clone();
+					for row in 0..right.rows() {
+						for col in 0..right.cols() {
+							let elem = (self * &right.get(row, col)?)?;
+							result.set(row, col, elem)?;
+						}
+					}
+					Ok(Value::Matrix(result))
 				}
+				_ => Err(Error::DataTypeMismatch),
 			},
 			Value::Complex(left) => match rhs {
 				Value::Number(right) => {
@@ -749,9 +784,7 @@ impl Value {
 					Self::check_complex(left * &ComplexNumber::from_real(right.clone()))
 				}
 				Value::Complex(right) => Self::check_complex(left * right),
-				Value::DateTime(_) | Value::Date(_) | Value::Time(_) | Value::Vector(_) => {
-					Err(Error::DataTypeMismatch)
-				}
+				_ => Err(Error::DataTypeMismatch),
 			},
 			Value::Vector(left) => match rhs {
 				Value::Number(_) | Value::NumberWithUnit(_, _) => {
@@ -770,9 +803,65 @@ impl Value {
 					result.push((left.get(0)? * right.get(0)?)?)?;
 					Ok(Value::Vector(result))
 				}
+				Value::Matrix(right) => {
+					if left.len() != right.rows() {
+						return Err(Error::DimensionMismatch);
+					}
+					let mut result = Vector::new()?;
+					for col in 0..right.cols() {
+						let mut sum = Value::Number(0.into());
+						for i in 0..left.len() {
+							sum = (sum + (left.get(i)? * right.get(i, col)?)?)?;
+						}
+						result.push(sum)?;
+					}
+					Ok(Value::Vector(result))
+				}
 				_ => Err(Error::DataTypeMismatch),
 			},
-			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => Err(Error::DataTypeMismatch),
+			Value::Matrix(left) => match rhs {
+				Value::Number(_) | Value::NumberWithUnit(_, _) => {
+					let mut result = left.clone();
+					for row in 0..left.rows() {
+						for col in 0..left.cols() {
+							let elem = (&left.get(row, col)? * rhs)?;
+							result.set(row, col, elem)?;
+						}
+					}
+					Ok(Value::Matrix(result))
+				}
+				Value::Matrix(right) => {
+					if left.cols() != right.rows() {
+						return Err(Error::DimensionMismatch);
+					}
+					let mut result = Matrix::new(left.rows(), right.cols())?;
+					for row in 0..left.rows() {
+						for col in 0..right.cols() {
+							let mut sum = Value::Number(0.into());
+							for i in 0..left.cols() {
+								sum = (sum + (left.get(row, i)? * right.get(i, col)?)?)?;
+							}
+							result.set(row, col, sum)?;
+						}
+					}
+					Ok(Value::Matrix(result))
+				}
+				Value::Vector(right) => {
+					if left.cols() != 1 {
+						return Err(Error::DimensionMismatch);
+					}
+					let mut result = Matrix::new(left.rows(), right.len())?;
+					for row in 0..left.rows() {
+						for col in 0..right.len() {
+							let value = (left.get(row, 0)? * right.get(col)?)?;
+							result.set(row, col, value)?;
+						}
+					}
+					Ok(Value::Matrix(result))
+				}
+				_ => Err(Error::DataTypeMismatch),
+			},
+			_ => Err(Error::DataTypeMismatch),
 		}
 	}
 
@@ -786,9 +875,7 @@ impl Value {
 				Value::Complex(right) => {
 					Self::check_complex(&ComplexNumber::from_real(left.clone()) / right)
 				}
-				Value::DateTime(_) | Value::Date(_) | Value::Time(_) | Value::Vector(_) => {
-					Err(Error::DataTypeMismatch)
-				}
+				_ => Err(Error::DataTypeMismatch),
 			},
 			Value::NumberWithUnit(left, left_unit) => match rhs {
 				Value::Number(right) => Ok(Value::NumberWithUnit(left / right, left_unit.clone())),
@@ -800,9 +887,7 @@ impl Value {
 				Value::Complex(right) => {
 					Self::check_complex(&ComplexNumber::from_real(left.clone()) / right)
 				}
-				Value::DateTime(_) | Value::Date(_) | Value::Time(_) | Value::Vector(_) => {
-					Err(Error::DataTypeMismatch)
-				}
+				_ => Err(Error::DataTypeMismatch),
 			},
 			Value::Complex(left) => match rhs {
 				Value::Number(right) => {
@@ -812,9 +897,7 @@ impl Value {
 					Self::check_complex(left / &ComplexNumber::from_real(right.clone()))
 				}
 				Value::Complex(right) => Self::check_complex(left / right),
-				Value::DateTime(_) | Value::Date(_) | Value::Time(_) | Value::Vector(_) => {
-					Err(Error::DataTypeMismatch)
-				}
+				_ => Err(Error::DataTypeMismatch),
 			},
 			Value::Vector(left) => match rhs {
 				Value::Number(_) | Value::NumberWithUnit(_, _) => {
@@ -827,7 +910,20 @@ impl Value {
 				}
 				_ => Err(Error::DataTypeMismatch),
 			},
-			Value::DateTime(_) | Value::Date(_) | Value::Time(_) => Err(Error::DataTypeMismatch),
+			Value::Matrix(left) => match rhs {
+				Value::Number(_) | Value::NumberWithUnit(_, _) => {
+					let mut result = left.clone();
+					for row in 0..left.rows() {
+						for col in 0..left.cols() {
+							let elem = (&left.get(row, col)? / rhs)?;
+							result.set(row, col, elem)?;
+						}
+					}
+					Ok(Value::Matrix(result))
+				}
+				_ => Err(Error::DataTypeMismatch),
+			},
+			_ => Err(Error::DataTypeMismatch),
 		}
 	}
 
@@ -1206,6 +1302,34 @@ impl Value {
 					return layout;
 				}
 			}
+			Value::Matrix(matrix) => {
+				// Matrix, try to display all elements of a matrix of 4x4 or smaller.
+				let largest_axis = core::cmp::max(matrix.rows(), matrix.cols());
+				if largest_axis <= 4 {
+					let mut max_font_size: i32 = if largest_axis == 1 {
+						3
+					} else if largest_axis <= 3 {
+						2
+					} else {
+						1
+					};
+
+					while max_font_size >= 0 {
+						let font = match max_font_size {
+							3 => &SANS_24,
+							2 => &SANS_20,
+							1 => &SANS_16,
+							0 => &SANS_13,
+							_ => unreachable!(),
+						};
+
+						if let Some(layout) = matrix.layout(format, font, max_width) {
+							return layout;
+						}
+						max_font_size -= 1;
+					}
+				}
+			}
 			_ => (),
 		}
 
@@ -1396,6 +1520,7 @@ const VALUE_SERIALIZE_TYPE_DATETIME: u8 = 3;
 const VALUE_SERIALIZE_TYPE_DATE: u8 = 4;
 const VALUE_SERIALIZE_TYPE_TIME: u8 = 5;
 const VALUE_SERIALIZE_TYPE_VECTOR: u8 = 6;
+const VALUE_SERIALIZE_TYPE_MATRIX: u8 = 7;
 
 impl StorageObject for Value {
 	fn serialize<Ref: StorageRefSerializer, Out: SerializeOutput>(
@@ -1443,6 +1568,10 @@ impl StorageObject for Value {
 			}
 			Value::Vector(vector) => {
 				output.write_u8(VALUE_SERIALIZE_TYPE_VECTOR)?;
+				vector.serialize(output, storage_refs)?;
+			}
+			Value::Matrix(vector) => {
+				output.write_u8(VALUE_SERIALIZE_TYPE_MATRIX)?;
 				vector.serialize(output, storage_refs)?;
 			}
 		}
@@ -1499,6 +1628,10 @@ impl StorageObject for Value {
 			VALUE_SERIALIZE_TYPE_VECTOR => {
 				let vector = Vector::deserialize(input, storage_refs)?;
 				Ok(Value::Vector(vector))
+			}
+			VALUE_SERIALIZE_TYPE_MATRIX => {
+				let matrix = Matrix::deserialize(input, storage_refs)?;
+				Ok(Value::Matrix(matrix))
 			}
 			_ => Err(Error::CorruptData),
 		}

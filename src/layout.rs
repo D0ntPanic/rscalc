@@ -25,6 +25,8 @@ pub enum Layout {
 	UsageGraphUsedLegend,
 	UsageGraphReclaimableLegend,
 	UsageGraphFreeLegend,
+	LeftMatrixBracket,
+	RightMatrixBracket,
 }
 
 impl Layout {
@@ -535,6 +537,13 @@ impl Layout {
 		}
 	}
 
+	pub fn full_height(&self) -> bool {
+		match self {
+			Layout::LeftMatrixBracket | Layout::RightMatrixBracket => true,
+			_ => false,
+		}
+	}
+
 	pub fn width(&self) -> i32 {
 		match self {
 			Layout::Text(string, font, _) => font.width(string),
@@ -554,6 +563,7 @@ impl Layout {
 			Layout::UsageGraphUsedLegend
 			| Layout::UsageGraphReclaimableLegend
 			| Layout::UsageGraphFreeLegend => 11,
+			Layout::LeftMatrixBracket | Layout::RightMatrixBracket => 10,
 		}
 	}
 
@@ -576,6 +586,7 @@ impl Layout {
 			Layout::UsageGraphUsedLegend
 			| Layout::UsageGraphReclaimableLegend
 			| Layout::UsageGraphFreeLegend => 11,
+			Layout::LeftMatrixBracket | Layout::RightMatrixBracket => 16,
 		}
 	}
 
@@ -597,10 +608,13 @@ impl Layout {
 		// Determine the size of the layout and render it right jusitified
 		// and centered vertically.
 		let mut width = self.width();
+		let mut height = self.height();
 		if self.full_width() {
 			width = rect.w;
 		}
-		let height = self.height();
+		if self.full_height() {
+			height = rect.h;
+		}
 		let mut rect = Rect {
 			x: rect.x + rect.w - width,
 			y: rect.y + (rect.h - height) / 2,
@@ -891,6 +905,64 @@ impl Layout {
 						h: rect.h - 2,
 					},
 					Color::ContentBackground,
+				);
+			}
+			Layout::LeftMatrixBracket => {
+				screen.fill(
+					Rect {
+						x: rect.x,
+						y: rect.y + 1,
+						w: 2,
+						h: rect.h - 2,
+					},
+					Color::ContentText,
+				);
+				screen.fill(
+					Rect {
+						x: rect.x,
+						y: rect.y + 1,
+						w: rect.w - 4,
+						h: 2,
+					},
+					Color::ContentText,
+				);
+				screen.fill(
+					Rect {
+						x: rect.x,
+						y: rect.y + rect.h - 3,
+						w: rect.w - 4,
+						h: 2,
+					},
+					Color::ContentText,
+				);
+			}
+			Layout::RightMatrixBracket => {
+				screen.fill(
+					Rect {
+						x: rect.x + rect.w - 2,
+						y: rect.y + 1,
+						w: 2,
+						h: rect.h - 2,
+					},
+					Color::ContentText,
+				);
+				screen.fill(
+					Rect {
+						x: rect.x + 4,
+						y: rect.y + 1,
+						w: rect.w - 4,
+						h: 2,
+					},
+					Color::ContentText,
+				);
+				screen.fill(
+					Rect {
+						x: rect.x + 4,
+						y: rect.y + rect.h - 3,
+						w: rect.w - 4,
+						h: 2,
+					},
+					Color::ContentText,
 				);
 			}
 		}

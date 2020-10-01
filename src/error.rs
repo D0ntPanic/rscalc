@@ -22,6 +22,7 @@ pub enum Error {
 	StackOverflow,
 	UndoBufferEmpty,
 	VectorTooLarge,
+	MatrixTooLarge,
 	DimensionMismatch,
 }
 
@@ -47,6 +48,7 @@ impl Error {
 			Error::StackOverflow => "Stack overflow",
 			Error::UndoBufferEmpty => "Undo buffer empty",
 			Error::VectorTooLarge => "Vector too large",
+			Error::MatrixTooLarge => "Matrix too large",
 			Error::DimensionMismatch => "Dimension mismatch",
 		}
 	}

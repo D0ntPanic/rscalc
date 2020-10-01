@@ -476,6 +476,15 @@ impl State {
 								values.push(vector.get_ref(i)?);
 							}
 							self.stack.replace_top_with_multiple(values)?;
+						} else if let Value::Matrix(matrix) = top {
+							// Top entry is a matrix. Break apart the matrix.
+							let mut values: Vec<ValueRef> = Vec::new();
+							for row in 0..matrix.rows() {
+								for col in 0..matrix.cols() {
+									values.push(matrix.get_ref(row, col)?);
+								}
+							}
+							self.stack.replace_top_with_multiple(values)?;
 						} else {
 							// Batch create a vector from the entries on the stack. If there
 							// is a vector or matrix on the stack, stop there.
@@ -486,6 +495,9 @@ impl State {
 									break;
 								}
 								vector.insert(0, value)?;
+							}
+							if vector.len() == 0 {
+								return Err(Error::DataTypeMismatch);
 							}
 							self.stack
 								.replace_entries(vector.len(), Value::Vector(vector))?;

@@ -2,6 +2,7 @@ use crate::catalog::{assign_menu, catalog_menu, CatalogPage};
 use crate::error::{Error, Result};
 use crate::font::SANS_13;
 use crate::input::InputEvent;
+use crate::matrix::Matrix;
 use crate::menu::settings_menu;
 use crate::number::{
 	IntegerMode, Number, NumberDecimalPointMode, NumberFormat, NumberFormatMode, ToNumber,
@@ -15,6 +16,7 @@ use crate::unit::{
 	DistanceUnit, TimeUnit, Unit, UnitType,
 };
 use crate::value::Value;
+use crate::vector::Vector;
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::string::{String, ToString};
@@ -127,6 +129,12 @@ pub enum Function {
 	CrossProduct,
 	Magnitude,
 	Normalize,
+	NewMatrix,
+	ToMatrix,
+	RowsToMatrix,
+	ColsToMatrix,
+	IdentityMatrix,
+	Transpose,
 }
 
 impl Function {
@@ -405,6 +413,12 @@ impl Function {
 			Function::CrossProduct => "cross".to_string(),
 			Function::Magnitude => "mag".to_string(),
 			Function::Normalize => "norm".to_string(),
+			Function::NewMatrix => "New".to_string(),
+			Function::ToMatrix => "▸Mat".to_string(),
+			Function::RowsToMatrix => "R▸Mat".to_string(),
+			Function::ColsToMatrix => "C▸Mat".to_string(),
+			Function::IdentityMatrix => "ident".to_string(),
+			Function::Transpose => "transp".to_string(),
 		}
 	}
 
@@ -970,6 +984,216 @@ impl Function {
 					return Err(Error::DataTypeMismatch);
 				}
 			}
+			Function::NewMatrix => state.function_keys().show_menu(FunctionMenu::NewMatrix),
+			Function::ToMatrix => {
+				// Get the desired size of the matrix and create it
+				let rows = usize::try_from(&*state.entry(1)?.to_int()?)?;
+				let cols = usize::try_from(&*state.entry(0)?.to_int()?)?;
+				if rows == 0 || cols == 0 {
+					return Err(Error::ValueOutOfRange);
+				}
+				let mut result = Matrix::new(rows, cols)?;
+
+				// Find the stack entry containing the start of the elements. Elements can
+				// be placed as values on the stack or in vectors, or a mix of both.
+				let mut remaining_size = rows * cols;
+				let mut start_entry = 2;
+				while remaining_size > 0 {
+					match state.entry(start_entry)? {
+						Value::Vector(vector) => {
+							if vector.len() > remaining_size {
+								return Err(Error::DimensionMismatch);
+							}
+							remaining_size -= vector.len();
+						}
+						Value::Matrix(_) => {
+							return Err(Error::DataTypeMismatch);
+						}
+						_ => remaining_size -= 1,
+					}
+					if remaining_size == 0 {
+						break;
+					}
+					start_entry += 1;
+				}
+
+				// Place the elements into the matrix
+				let mut row = 0;
+				let mut col = 0;
+				for entry in (2..=start_entry).rev() {
+					match state.entry(entry)? {
+						Value::Vector(vector) => {
+							for i in 0..vector.len() {
+								result.set(row, col, vector.get(i)?)?;
+								col += 1;
+								if col >= cols {
+									row += 1;
+									col = 0;
+								}
+							}
+						}
+						entry => {
+							result.set(row, col, entry)?;
+							col += 1;
+							if col >= cols {
+								row += 1;
+								col = 0;
+							}
+						}
+					}
+				}
+
+				if rows == 1 {
+					// Matrix of one row is always stored as a vector
+					let mut vector = Vector::new()?;
+					for col in 0..cols {
+						vector.push(result.get(0, col)?)?;
+					}
+					state.replace_entries(start_entry + 1, Value::Vector(vector))?;
+				} else {
+					state.replace_entries(start_entry + 1, Value::Matrix(result))?;
+				}
+			}
+			Function::RowsToMatrix => {
+				// Get the number of rows off the stack
+				let rows = usize::try_from(&*state.entry(0)?.to_int()?)?;
+				if rows == 0 {
+					return Err(Error::ValueOutOfRange);
+				}
+
+				// Determine the number of columns based on the vectors on the stack
+				let mut cols = None;
+				for row in 0..rows {
+					match state.entry(rows - row)? {
+						Value::Vector(vector) => {
+							if let Some(existing_cols) = cols {
+								if vector.len() != existing_cols {
+									return Err(Error::DimensionMismatch);
+								}
+							}
+							cols = Some(vector.len());
+						}
+						_ => return Err(Error::DataTypeMismatch),
+					}
+				}
+				let cols = cols.unwrap();
+
+				if rows == 1 {
+					// Matrix of one row is always stored as a vector, just put the vector
+					// on the top of the stack by popping the row count after validating
+					// that it is a valid vector.
+					let value = state.entry(1)?;
+					state.replace_entries(2, value)?;
+				} else {
+					// Create the matrix from the stack data
+					let mut result = Matrix::new(rows, cols)?;
+					for row in 0..rows {
+						match state.entry(rows - row)? {
+							Value::Vector(vector) => {
+								for col in 0..cols {
+									result.set(row, col, vector.get(col)?)?;
+								}
+							}
+							_ => return Err(Error::DataTypeMismatch),
+						}
+					}
+
+					state.replace_entries(rows + 1, Value::Matrix(result))?;
+				}
+			}
+			Function::ColsToMatrix => {
+				// Get the number of columns off the stack
+				let cols = usize::try_from(&*state.entry(0)?.to_int()?)?;
+				if cols == 0 {
+					return Err(Error::ValueOutOfRange);
+				}
+
+				// Determine the number of columns based on the vectors on the stack
+				let mut rows = None;
+				for col in 0..cols {
+					match state.entry(cols - col)? {
+						Value::Vector(vector) => {
+							if let Some(existing_rows) = rows {
+								if vector.len() != existing_rows {
+									return Err(Error::DimensionMismatch);
+								}
+							}
+							rows = Some(vector.len());
+						}
+						_ => return Err(Error::DataTypeMismatch),
+					}
+				}
+				let rows = rows.unwrap();
+
+				// Create the matrix from the stack data
+				let mut result = Matrix::new(rows, cols)?;
+				for col in 0..cols {
+					match state.entry(cols - col)? {
+						Value::Vector(vector) => {
+							for row in 0..rows {
+								result.set(row, col, vector.get(row)?)?;
+							}
+						}
+						_ => return Err(Error::DataTypeMismatch),
+					}
+				}
+
+				if rows == 1 {
+					// Matrix of one row is always stored as a vector
+					let mut vector = Vector::new()?;
+					for col in 0..cols {
+						vector.push(result.get(0, col)?)?;
+					}
+					state.replace_entries(cols + 1, Value::Vector(vector))?;
+				} else {
+					state.replace_entries(cols + 1, Value::Matrix(result))?;
+				}
+			}
+			Function::IdentityMatrix => {
+				let size = usize::try_from(&*state.top().to_int()?)?;
+				if size == 0 {
+					return Err(Error::ValueOutOfRange);
+				} else if size == 1 {
+					let mut result = Vector::new()?;
+					result.push(1.into())?;
+					state.set_top(Value::Vector(result))?;
+				} else {
+					let mut result = Matrix::new(size, size)?;
+					for i in 0..size {
+						result.set(i, i, 1.into())?;
+					}
+					state.set_top(Value::Matrix(result))?;
+				}
+			}
+			Function::Transpose => match state.top() {
+				Value::Vector(vector) => {
+					if vector.len() != 1 {
+						let mut result = Matrix::new(vector.len(), 1)?;
+						for i in 0..vector.len() {
+							result.set(i, 0, vector.get(i)?)?;
+						}
+						state.set_top(Value::Matrix(result))?;
+					}
+				}
+				Value::Matrix(matrix) => {
+					if matrix.cols() == 1 {
+						let mut result = Vector::new()?;
+						for i in 0..matrix.rows() {
+							result.push(matrix.get(i, 0)?)?;
+						}
+						state.set_top(Value::Vector(result))?;
+					} else {
+						let mut result = Matrix::new(matrix.cols(), matrix.rows())?;
+						for row in 0..matrix.cols() {
+							for col in 0..matrix.rows() {
+								result.set(row, col, matrix.get(col, row)?)?;
+							}
+						}
+						state.set_top(Value::Matrix(result))?;
+					}
+				}
+				_ => return Err(Error::DataTypeMismatch),
+			},
 		}
 		Ok(())
 	}
@@ -986,6 +1210,7 @@ pub enum FunctionMenu {
 	Logic,
 	Stats,
 	Matrix,
+	NewMatrix,
 }
 
 impl FunctionMenu {
@@ -1051,10 +1276,19 @@ impl FunctionMenu {
 			.to_vec(),
 			FunctionMenu::Stats => [Some(Function::Sum), Some(Function::Mean)].to_vec(),
 			FunctionMenu::Matrix => [
+				Some(Function::NewMatrix),
+				Some(Function::Transpose),
 				Some(Function::DotProduct),
 				Some(Function::CrossProduct),
 				Some(Function::Magnitude),
 				Some(Function::Normalize),
+			]
+			.to_vec(),
+			FunctionMenu::NewMatrix => [
+				Some(Function::ToMatrix),
+				Some(Function::RowsToMatrix),
+				Some(Function::ColsToMatrix),
+				Some(Function::IdentityMatrix),
 			]
 			.to_vec(),
 		}

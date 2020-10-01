@@ -34,6 +34,7 @@ mod font;
 mod functions;
 mod input;
 mod layout;
+mod matrix;
 mod menu;
 mod number;
 mod screen;
