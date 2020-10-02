@@ -12,10 +12,5 @@ fn main() {
         println!("cargo:rerun-if-changed=dmcp/ff_ifc.h");
         println!("cargo:rerun-if-changed=dmcp/lft_ifc.h");
         println!("cargo:rerun-if-changed=dmcp/qspi_crc.h");
-        println!("cargo:rustc-link-search=native=intel_dfp/lib/dm42");
-        println!("cargo:rustc-link-lib=static=bid");
-    } else {
-        println!("cargo:rustc-link-search=native=intel_dfp/lib/linux/x86_64");
-        println!("cargo:rustc-link-lib=static=bid");
     }
 }

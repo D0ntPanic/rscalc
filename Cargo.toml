@@ -3,44 +3,17 @@ name = "calc"
 version = "0.1.0"
 edition = "2018"
 
-[dependencies.gtk]
-version = "0.9"
-optional = true
-
-[dependencies.gdk-pixbuf]
-version = "0.9"
-optional = true
-
-[dependencies.glib]
-version = "0.10"
-optional = true
-
-[dependencies.intel_dfp]
-path = "intel_dfp"
-default-features = false
-
-[dependencies.num-bigint]
-version = "0.3"
-default-features = false
-features = []
-
-[dependencies.num-integer]
-version = "0.1"
-default-features = false
-
-[dependencies.chrono]
-version = "0.4"
-default-features = false
-
-[dependencies.lazy_static]
-version = "1.4"
-features = ["spin_no_std"]
-
-[dependencies.spin]
-version = "0.5"
-
-[dependencies.linked_list_allocator]
-version = "0.8"
+[dependencies]
+gtk = { version = "0.9", optional = true }
+gdk-pixbuf = { version = "0.9", optional = true }
+glib = { version = "0.10", optional = true }
+intel_dfp = { path = "intel_dfp", default-features = false }
+num-bigint = { version = "0.3", default-features = false, features = [] }
+num-integer = { version = "0.1", default-features = false }
+chrono = { version = "0.4", default-features = false }
+lazy_static = { version = "1.4", features = ["spin_no_std"] }
+spin = { version = "0.5" }
+linked_list_allocator = { version = "0.8" }
 
 [build-dependencies]
 cc = "1.0"
