@@ -1,15 +1,15 @@
-.PHONY: all target/thumbv7em-none-eabihf/release/calc
+.PHONY: all target/thumbv7em-none-eabihf/release/rscalc
 
-all: calc.pgm calc
+all: rscalc.pgm rscalc
 
-target/thumbv7em-none-eabihf/release/calc:
+target/thumbv7em-none-eabihf/release/rscalc:
 	cargo build --target thumbv7em-none-eabihf -Z build-std=core,alloc --release --no-default-features --features dm42
 
-calc.pgm: target/thumbv7em-none-eabihf/release/calc
-	arm-none-eabi-objcopy --remove-section .qspi -O binary target/thumbv7em-none-eabihf/release/calc calc.bin
-	arm-none-eabi-objcopy --only-section .qspi -O binary target/thumbv7em-none-eabihf/release/calc calc_qspi.bin
+rscalc.pgm: target/thumbv7em-none-eabihf/release/rscalc
+	arm-none-eabi-objcopy --remove-section .qspi -O binary target/thumbv7em-none-eabihf/release/rscalc rscalc.bin
+	arm-none-eabi-objcopy --only-section .qspi -O binary target/thumbv7em-none-eabihf/release/rscalc rscalc_qspi.bin
 	dmcp/check_qspi_crc
-	dmcp/add_pgm_chsum calc.bin calc.pgm
+	dmcp/add_pgm_chsum rscalc.bin rscalc.pgm
 
-calc:
+rscalc:
 	cargo build

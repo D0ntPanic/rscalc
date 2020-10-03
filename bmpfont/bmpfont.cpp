@@ -1,3 +1,7 @@
+// This program is a simple Qt application to output the bitmap fonts used by the
+// embedded version of rscalc. It is not required by the build but is provided so
+// that the font can be updated or replaced.
+
 #include <stdio.h>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QMainWindow>

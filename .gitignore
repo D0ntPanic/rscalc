@@ -1,8 +1,8 @@
 Cargo.lock
 target/
-calc.bin
-calc.pgm
-calc_qspi.bin
+rscalc.bin
+rscalc.pgm
+rscalc_qspi.bin
 .vscode
 CMakeCache.txt
 CMakeFiles

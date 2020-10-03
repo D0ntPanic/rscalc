@@ -43,8 +43,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef __PGM_MAIN_H__
 #define __PGM_MAIN_H__
 
-#define PROGRAM_NAME    "Test"
-#define PROGRAM_VERSION "1.0"
+#define PROGRAM_NAME "rscalc"
+#define PROGRAM_VERSION "0.1.0"
 
 #define DBG_PRINT
 
