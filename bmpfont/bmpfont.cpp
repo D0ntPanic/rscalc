@@ -25,7 +25,7 @@ std::vector<std::string> chars = {
 	"←", "↑", "→", "↓", "↵", "⬏", "α", "β", "Γ", "γ", "Δ", "δ", "ϵ", "ϝ", "ζ", "η",
 	"Θ", "θ", "ι", "κ", "Λ", "λ", "μ", "ν", "Ξ", "ξ", "Π", "π", "ρ", "Σ", "σ", "τ",
 	"υ", "Φ", "ϕ", "χ", "Ψ", "ψ", "Ω", "ω", "…", "▪", "◂", "▴", "▸", "▾", "≠", "≷",
-	"∡", "²", "³", "ˣ", "₂", "ℹ", "⟪", "⟫", "⦗", "⦘"};
+	"∡", "²", "³", "ˣ", "₂", "ℹ", "⟪", "⟫", "⦗", "⦘", "‒", "⋘", "⋙"};
 
 class MainWidget : public QWidget
 {
@@ -120,7 +120,7 @@ private:
 
 		FILE *fp = fopen(filename.c_str(), "w");
 		fprintf(fp, "#[allow(dead_code)]\n");
-		fprintf(fp, "pub const FONT: crate::screen::Font = crate::screen::Font {\n");
+		fprintf(fp, "pub const FONT: crate::screen::BitmapFont = crate::screen::BitmapFont {\n");
 		fprintf(fp, "    height: %d,\n", charHeight);
 		fprintf(fp, "    chars: &[\n");
 		for (auto &ch : chars)

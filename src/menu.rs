@@ -1,23 +1,26 @@
-use crate::font::{SANS_13, SANS_16};
 use crate::functions::Function;
-use crate::layout::Layout;
-use crate::number::Number;
-use crate::screen::{Color, Rect, Screen};
+use crate::screen::{RenderMode, Screen};
 use crate::state::{State, StatusBarLeftDisplayType};
-use crate::storage::{available_bytes, free_bytes, reclaimable_bytes, used_bytes};
-use alloc::borrow::Cow;
-use alloc::boxed::Box;
-use alloc::string::{String, ToString};
-use alloc::vec::Vec;
 use core::cell::RefCell;
+use rscalc_layout::font::Font;
+use rscalc_layout::layout::{Layout, LayoutRenderer, Rect, TokenType};
+use rscalc_math::format::AlternateFormatMode;
+use rscalc_math::number::Number;
+use rscalc_math::storage::{available_bytes, free_bytes, reclaimable_bytes, used_bytes};
+
+#[cfg(not(feature = "dm42"))]
+use std::borrow::Cow;
 
 #[cfg(feature = "dm42")]
-use crate::dm42::time_24_hour;
-#[cfg(not(feature = "dm42"))]
-use crate::time::time_24_hour;
+use alloc::borrow::Cow;
+#[cfg(feature = "dm42")]
+use alloc::boxed::Box;
+#[cfg(feature = "dm42")]
+use alloc::string::{String, ToString};
+#[cfg(feature = "dm42")]
+use alloc::vec::Vec;
 
 #[derive(PartialEq, Eq, Clone)]
-#[allow(dead_code)]
 pub enum MenuItemFunction {
 	Action(Function),
 	InMenuAction(Function),
@@ -37,26 +40,30 @@ pub struct MenuItem {
 
 impl MenuItem {
 	pub fn string_layout(text: String) -> Layout {
-		Layout::LeftAlign(Box::new(Layout::Text(text, &SANS_16, Color::ContentText)))
+		Layout::LeftAlign(Box::new(Layout::Text(text, Font::Small, TokenType::Text)))
 	}
 
 	pub fn string_layout_small(text: String) -> Layout {
-		Layout::LeftAlign(Box::new(Layout::Text(text, &SANS_13, Color::ContentText)))
+		Layout::LeftAlign(Box::new(Layout::Text(
+			text,
+			Font::Smallest,
+			TokenType::Text,
+		)))
 	}
 
 	pub fn static_string_layout(text: &'static str) -> Layout {
 		Layout::LeftAlign(Box::new(Layout::StaticText(
 			text,
-			&SANS_16,
-			Color::ContentText,
+			Font::Small,
+			TokenType::Text,
 		)))
 	}
 
 	pub fn static_string_layout_small(text: &'static str) -> Layout {
 		Layout::LeftAlign(Box::new(Layout::StaticText(
 			text,
-			&SANS_13,
-			Color::ContentText,
+			Font::Smallest,
+			TokenType::Text,
 		)))
 	}
 }
@@ -159,28 +166,35 @@ impl Menu {
 			// On initial render, clear screen and draw title
 			screen.clear();
 
-			screen.fill(
-				Rect {
-					x: 0,
-					y: 0,
-					w: screen.width(),
-					h: SANS_16.height,
-				},
-				Color::StatusBarBackground,
+			let screen_rect = screen.screen_rect();
+			let mut renderer = screen.renderer(RenderMode::StatusBar);
+			renderer.erase(&Rect {
+				x: 0,
+				y: 0,
+				w: screen_rect.w,
+				h: renderer.metrics().height(Font::Small),
+			});
+			renderer.draw_text(
+				4,
+				0,
+				&self.title,
+				Font::Small,
+				TokenType::Text,
+				&screen_rect,
 			);
-			SANS_16.draw(screen, 4, 0, &self.title, Color::StatusBarText);
 
 			// Draw bottom layout if present
 			if let Some(bottom) = &self.bottom {
 				let bottom = bottom(state, screen);
-				let height = bottom.height();
+				let height = bottom.height(screen.metrics());
 				let rect = Rect {
 					x: 4,
 					y: screen.height() - height,
 					w: screen.width() - 8,
 					h: height,
 				};
-				bottom.render(screen, rect.clone(), &rect, None);
+				let mut renderer = screen.renderer(RenderMode::Normal);
+				bottom.render(&mut renderer, rect.clone(), &rect);
 			}
 		}
 
@@ -189,7 +203,7 @@ impl Menu {
 
 		let mut i = 0;
 		let mut row = 0;
-		let top = SANS_16.height + 3;
+		let top = screen.metrics().height(Font::Small) + 3;
 		let mut x = 0;
 		let mut y = top;
 
@@ -199,8 +213,15 @@ impl Menu {
 				MenuItemLayout::Dynamic(func) => Cow::Owned(func(state, screen)),
 			};
 
+			let screen_rect = screen.screen_rect();
+			let mut renderer = screen.renderer(if i == self.selection {
+				RenderMode::Selected
+			} else {
+				RenderMode::Normal
+			});
+
 			// Get height of item
-			let height = layout.height();
+			let height = layout.height(renderer.metrics());
 
 			// Render item if it has been updated
 			if initial_render
@@ -219,32 +240,22 @@ impl Menu {
 				} + ". ";
 
 				// Render item background
-				screen.fill(
-					Rect {
-						x: x,
-						y,
-						w: col_width,
-						h: height,
-					},
-					if i == self.selection {
-						Color::SelectionBackground
-					} else {
-						Color::ContentBackground
-					},
-				);
+				renderer.erase(&Rect {
+					x: x,
+					y,
+					w: col_width,
+					h: height,
+				});
 
 				// Render item label
-				let label_width = SANS_16.width(&label);
-				SANS_16.draw(
-					screen,
+				let label_width = renderer.metrics().width(Font::Small, &label);
+				renderer.draw_text(
 					x + 4,
-					y + (height / 2) - (SANS_16.height / 2),
+					y + (height / 2) - (renderer.metrics().height(Font::Small) / 2),
 					&label,
-					if i == self.selection {
-						Color::SelectionText
-					} else {
-						Color::ContentText
-					},
+					Font::Small,
+					TokenType::Label,
+					&screen_rect,
 				);
 
 				// Render item contents
@@ -254,16 +265,7 @@ impl Menu {
 					w: col_width - (label_width + 4),
 					h: height,
 				};
-				layout.render(
-					screen,
-					rect.clone(),
-					&rect,
-					if i == self.selection {
-						Some(Color::SelectionText)
-					} else {
-						None
-					},
-				);
+				layout.render(&mut renderer, rect.clone(), &rect);
 			}
 
 			i += 1;
@@ -310,8 +312,8 @@ pub fn setup_menu() -> Menu {
 				"Memory: ".to_string()
 					+ &Number::Integer(available_bytes().into()).to_string()
 					+ " bytes available",
-				&SANS_16,
-				Color::ContentText,
+				Font::Small,
+				TokenType::Text,
 			))));
 
 			// Add memory usage graph
@@ -324,15 +326,19 @@ pub fn setup_menu() -> Menu {
 			// Add legend for the graph
 			let mut legend_items = Vec::new();
 			legend_items.push(Layout::UsageGraphUsedLegend);
-			legend_items.push(Layout::StaticText(" Used   ", &SANS_13, Color::ContentText));
+			legend_items.push(Layout::StaticText(
+				" Used   ",
+				Font::Smallest,
+				TokenType::Text,
+			));
 			legend_items.push(Layout::UsageGraphReclaimableLegend);
 			legend_items.push(Layout::StaticText(
 				" Reclaimable   ",
-				&SANS_13,
-				Color::ContentText,
+				Font::Smallest,
+				TokenType::Text,
 			));
 			legend_items.push(Layout::UsageGraphFreeLegend);
-			legend_items.push(Layout::StaticText(" Free", &SANS_13, Color::ContentText));
+			legend_items.push(Layout::StaticText(" Free", Font::Smallest, TokenType::Text));
 			bottom_items.push(Layout::LeftAlign(Box::new(Layout::Horizontal(
 				legend_items,
 			))));
@@ -342,8 +348,8 @@ pub fn setup_menu() -> Menu {
 			bottom_items.push(Layout::LeftAlign(Box::new(Layout::Text(
 				Number::Integer(crate::dm42::sys_free_mem().into()).to_string()
 					+ " bytes temporary memory",
-				&SANS_13,
-				Color::ContentText,
+				Font::Smallest,
+				TokenType::Text,
 			))));
 
 			Layout::Vertical(bottom_items)
@@ -369,12 +375,88 @@ pub fn settings_menu() -> Menu {
 	});
 
 	items.push(MenuItem {
-		layout: MenuItemLayout::Dynamic(Box::new(|_state, _screen| {
+		layout: MenuItemLayout::Dynamic(Box::new(|state, _screen| {
 			MenuItem::string_layout(
-				"24-hour Clock   ".to_string() + if time_24_hour() { "[On]" } else { "[Off]" },
+				"24-hour Clock   ".to_string()
+					+ if state.context().format().time_24_hour {
+						"[On]"
+					} else {
+						"[Off]"
+					},
 			)
 		})),
 		function: MenuItemFunction::InMenuAction(Function::Time24HourToggle),
+	});
+
+	items.push(MenuItem {
+		layout: MenuItemLayout::Dynamic(Box::new(|state, _screen| {
+			MenuItem::string_layout(
+				"Stack Labels   ".to_string()
+					+ if state.context().format().stack_xyz {
+						"[x,y,z,4]"
+					} else {
+						"[1,2,3,4]"
+					},
+			)
+		})),
+		function: MenuItemFunction::InMenuAction(Function::StackLabelXYZToggle),
+	});
+
+	items.push(MenuItem {
+		layout: MenuItemLayout::Dynamic(Box::new(|state, _screen| {
+			MenuItem::string_layout(
+				"Show Empty Soft Keys   ".to_string()
+					+ if state.function_keys().show_empty() {
+						"[On]"
+					} else {
+						"[Off]"
+					},
+			)
+		})),
+		function: MenuItemFunction::InMenuAction(Function::ShowEmptySoftKeyToggle),
+	});
+
+	items.push(MenuItem {
+		layout: MenuItemLayout::Dynamic(Box::new(|state, _screen| {
+			MenuItem::string_layout(
+				"Show Status Bar   ".to_string()
+					+ if state.status_bar_enabled() {
+						"[On]"
+					} else {
+						"[Off]"
+					},
+			)
+		})),
+		function: MenuItemFunction::InMenuAction(Function::StatusBarToggle),
+	});
+
+	items.push(MenuItem {
+		layout: MenuItemLayout::Dynamic(Box::new(|state, _screen| {
+			MenuItem::string_layout(
+				"Font Size   ".to_string()
+					+ match state.base_font() {
+						Font::Smallest => "[Smallest]",
+						Font::Small => "[Small]",
+						Font::Medium => "[Medium]",
+						Font::Large => "[Large]",
+					},
+			)
+		})),
+		function: MenuItemFunction::InMenuAction(Function::FontSizeToggle),
+	});
+
+	items.push(MenuItem {
+		layout: MenuItemLayout::Dynamic(Box::new(|state, _screen| {
+			MenuItem::string_layout(
+				"Alternate Display   ".to_string()
+					+ match state.context().format().alt_mode {
+						AlternateFormatMode::Smart => "[Smart]",
+						AlternateFormatMode::Bottom => "[Bottom]",
+						AlternateFormatMode::Left => "[Left]",
+					},
+			)
+		})),
+		function: MenuItemFunction::InMenuAction(Function::AlternateFormatModeToggle),
 	});
 
 	// Return the menu object

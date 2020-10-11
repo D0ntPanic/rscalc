@@ -1,10 +1,10 @@
 use crate::calc_main;
 use crate::font;
 use crate::input::{InputQueue, Key, KeyEvent};
-use crate::screen::{Color, Rect, Screen};
+use crate::screen::{Color, RenderMode, Screen, ScreenLayoutRenderer};
 use alloc::alloc::Layout;
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use core::alloc::GlobalAlloc;
+use rscalc_layout::layout::Rect;
 use spin::Mutex;
 
 struct Heap;
@@ -38,9 +38,11 @@ extern "C" {
 #[panic_handler]
 fn panic_handler(_info: &core::panic::PanicInfo) -> ! {
 	let mut screen = DM42Screen;
+	let screen_rect = screen.screen_rect();
 	screen.clear();
 	font::SANS_24.draw(
 		&mut screen,
+		&screen_rect,
 		2,
 		2,
 		"Internal error - Panic",
@@ -48,6 +50,7 @@ fn panic_handler(_info: &core::panic::PanicInfo) -> ! {
 	);
 	font::SANS_16.draw(
 		&mut screen,
+		&screen_rect,
 		2,
 		2 + font::SANS_24.height,
 		"Press a key to restart...",
@@ -63,10 +66,19 @@ fn panic_handler(_info: &core::panic::PanicInfo) -> ! {
 #[alloc_error_handler]
 fn alloc_error_handler(_layout: Layout) -> ! {
 	let mut screen = DM42Screen;
+	let screen_rect = screen.screen_rect();
 	screen.clear();
-	font::SANS_24.draw(&mut screen, 2, 2, "Out of memory", Color::ContentText);
+	font::SANS_24.draw(
+		&mut screen,
+		&screen_rect,
+		2,
+		2,
+		"Out of memory",
+		Color::ContentText,
+	);
 	font::SANS_16.draw(
 		&mut screen,
+		&screen_rect,
 		2,
 		2 + font::SANS_24.height,
 		"Unhandled memory allocation error.",
@@ -74,6 +86,7 @@ fn alloc_error_handler(_layout: Layout) -> ! {
 	);
 	font::SANS_16.draw(
 		&mut screen,
+		&screen_rect,
 		2,
 		2 + font::SANS_24.height + font::SANS_16.height * 2,
 		"Press a key to restart...",
@@ -89,10 +102,19 @@ fn alloc_error_handler(_layout: Layout) -> ! {
 #[no_mangle]
 pub fn __aeabi_unwind_cpp_pr0() -> ! {
 	let mut screen = DM42Screen;
+	let screen_rect = screen.screen_rect();
 	screen.clear();
-	font::SANS_24.draw(&mut screen, 2, 2, "Internal error", Color::ContentText);
+	font::SANS_24.draw(
+		&mut screen,
+		&screen_rect,
+		2,
+		2,
+		"Internal error",
+		Color::ContentText,
+	);
 	font::SANS_16.draw(
 		&mut screen,
+		&screen_rect,
 		2,
 		2 + font::SANS_24.height,
 		"Unhandled C++ exception.",
@@ -100,6 +122,7 @@ pub fn __aeabi_unwind_cpp_pr0() -> ! {
 	);
 	font::SANS_16.draw(
 		&mut screen,
+		&screen_rect,
 		2,
 		2 + font::SANS_24.height + font::SANS_16.height * 2,
 		"Press a key to restart...",
@@ -137,22 +160,6 @@ unsafe impl GlobalAlloc for Heap {
 		let free: extern "C" fn(ptr: *mut u8) -> *mut u8 = core::mem::transmute(func_ptr);
 		free(ptr);
 	}
-}
-
-#[repr(C)]
-struct dt_t {
-	year: u16,
-	month: u8,
-	day: u8,
-}
-
-#[repr(C)]
-struct tm_t {
-	hour: u8,
-	min: u8,
-	sec: u8,
-	csec: u8,
-	dow: u8,
 }
 
 #[allow(non_snake_case)]
@@ -236,27 +243,6 @@ fn lcd_get_buf_cleared() -> bool {
 		let func_ptr: usize = LIBRARY_BASE + 88;
 		let func: extern "C" fn() -> i32 = core::mem::transmute(func_ptr);
 		func() != 0
-	}
-}
-
-pub fn rtc_read() -> NaiveDateTime {
-	unsafe {
-		*CLOCK_CHANGED.lock() = false;
-		let func_ptr: usize = LIBRARY_BASE + 204;
-		let func: extern "C" fn(time: *mut tm_t, date: *mut dt_t) = core::mem::transmute(func_ptr);
-		let mut date = core::mem::MaybeUninit::<dt_t>::uninit();
-		let mut time = core::mem::MaybeUninit::<tm_t>::uninit();
-		func(time.as_mut_ptr(), date.as_mut_ptr());
-		let date = date.assume_init();
-		let time = time.assume_init();
-		let date = NaiveDate::from_ymd(date.year as i32, date.month as u32, date.day as u32);
-		let time = NaiveTime::from_hms_milli(
-			time.hour as u32,
-			time.min as u32,
-			time.sec as u32,
-			time.csec as u32 * 10,
-		);
-		NaiveDateTime::new(date, time)
 	}
 }
 
@@ -413,8 +399,13 @@ impl Screen for DM42Screen {
 		lcd_refresh_dma();
 	}
 
-	fn fill(&mut self, rect: Rect, color: Color) {
-		let rect = rect.clipped_to_screen(self);
+	fn fill(&mut self, rect: &Rect, color: Color) {
+		let rect = rect.clipped_to(&Rect {
+			x: 0,
+			y: 0,
+			w: WIDTH,
+			h: HEIGHT,
+		});
 		if rect.w == 0 || rect.h == 0 {
 			return;
 		}
@@ -441,6 +432,10 @@ impl Screen for DM42Screen {
 		} else {
 			bitblt24(x as u32, width as u32, y as u32, bits, BLT_ANDN, BLT_NONE);
 		}
+	}
+
+	fn renderer(&mut self, render_mode: RenderMode) -> ScreenLayoutRenderer {
+		ScreenLayoutRenderer::new(self, render_mode)
 	}
 }
 

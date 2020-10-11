@@ -3,22 +3,12 @@
 #![cfg_attr(feature = "dm42", no_std)]
 #![cfg_attr(feature = "dm42", no_main)]
 
+#[cfg(feature = "dm42")]
 extern crate alloc;
-extern crate intel_dfp;
-extern crate linked_list_allocator;
-extern crate num_bigint;
-extern crate num_integer;
-extern crate spin;
 
+#[cfg(feature = "dm42")]
 #[macro_use]
 extern crate lazy_static;
-
-#[cfg(not(feature = "dm42"))]
-extern crate chrono;
-#[cfg(not(feature = "dm42"))]
-extern crate glib;
-#[cfg(not(feature = "dm42"))]
-extern crate gtk;
 
 #[cfg(feature = "dm42")]
 mod dm42;
@@ -27,25 +17,14 @@ mod dm42;
 mod simulated;
 
 mod catalog;
-mod complex;
 mod edit;
-mod error;
 mod font;
 mod functions;
 mod input;
-mod layout;
-mod matrix;
 mod menu;
-mod number;
 mod screen;
-mod stack;
 mod state;
-mod storage;
-mod time;
-mod undo;
 mod unit;
-mod value;
-mod vector;
 
 use input::{InputQueue, KeyEvent};
 use screen::Screen;

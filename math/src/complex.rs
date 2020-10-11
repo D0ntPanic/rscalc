@@ -1,6 +1,9 @@
-use crate::number::{Number, NumberFormat, ToNumber};
-use alloc::string::String;
+use crate::format::Format;
+use crate::number::{Number, ToNumber};
 use intel_dfp::Decimal;
+
+#[cfg(not(feature = "std"))]
+use alloc::string::String;
 
 // Maximum integer size before it is converted into a floating point number.
 pub const MAX_COMPLEX_INTEGER_BITS: u64 = 1024;
@@ -95,13 +98,15 @@ impl ComplexNumber {
 		}
 	}
 
-	pub fn format(&self, format: &NumberFormat) -> String {
+	pub fn format(&self, format: &Format) -> String {
 		if self.imaginary.is_negative() {
-			format.format_number(&self.real)
-				+ " - " + &format.format_number(&-&self.imaginary)
+			format.format_number(&self.real).to_string()
+				+ " - " + format.format_number(&-&self.imaginary).to_str()
 				+ "ℹ"
 		} else {
-			format.format_number(&self.real) + " + " + &format.format_number(&self.imaginary) + "ℹ"
+			format.format_number(&self.real).to_string()
+				+ " + " + format.format_number(&self.imaginary).to_str()
+				+ "ℹ"
 		}
 	}
 

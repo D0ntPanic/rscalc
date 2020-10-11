@@ -1,0 +1,17 @@
+[package]
+name = "rscalc_layout"
+version = "0.1.0"
+authors = ["Rusty Wagner <rusty.wagner@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+intel_dfp = { path = "../intel_dfp", default-features = false }
+num-bigint = { version = "0.3", default-features = false, features = [] }
+num-integer = { version = "0.1", default-features = false }
+rscalc_math = { path = "../math", default-features = false }
+
+[features]
+default = ["intel_dfp/std", "rscalc_math/std", "std"]
+dm42 = ["rscalc_math/dm42"]
+limited_heap = ["rscalc_math/limited_heap"]
+std = []

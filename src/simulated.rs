@@ -1,9 +1,10 @@
 use crate::calc_main;
 use crate::input::{InputQueue, Key, KeyEvent};
-use crate::screen::{Color, Rect, Screen};
+use crate::screen::{Color, RenderMode, Screen, ScreenLayoutRenderer};
 use gdk_pixbuf::{Colorspace, Pixbuf};
 use glib::source::{timeout_add_local, Continue};
 use gtk::*;
+use rscalc_layout::layout::Rect;
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -265,8 +266,8 @@ impl Screen for VirtualDM42Screen {
 		self.refresh.lock().unwrap().screen = Some(self.clone());
 	}
 
-	fn fill(&mut self, rect: Rect, color: Color) {
-		let rect = rect.clipped_to_screen(self);
+	fn fill(&mut self, rect: &Rect, color: Color) {
+		let rect = rect.clipped_to(&self.screen_rect());
 		let color = color.to_bw();
 		for y in rect.y..rect.y + rect.h {
 			for x in rect.x..rect.x + rect.w {
@@ -282,6 +283,10 @@ impl Screen for VirtualDM42Screen {
 				self.set_pixel(x + i as i32, y, color);
 			}
 		}
+	}
+
+	fn renderer(&mut self, render_mode: RenderMode) -> ScreenLayoutRenderer {
+		ScreenLayoutRenderer::new(self, render_mode)
 	}
 }
 

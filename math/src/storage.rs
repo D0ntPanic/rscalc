@@ -1,12 +1,15 @@
 use crate::error::{Error, Result};
 use crate::undo::prune_undo_buffer;
-use alloc::boxed::Box;
-use alloc::vec::Vec;
 use core::alloc::Layout;
 use core::marker::PhantomData;
 use core::ptr::NonNull;
 use linked_list_allocator::Heap;
 use spin::Mutex;
+
+#[cfg(not(feature = "std"))]
+use alloc::boxed::Box;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 
 const STORAGE_SIZE: usize = 65536;
 type OffsetType = u16;
@@ -223,56 +226,48 @@ impl<'a> DeserializeInput<'a> {
 		Ok(())
 	}
 
-	#[allow(dead_code)]
 	pub fn read_u8(&mut self) -> Result<u8> {
 		let mut buffer = [0; 1];
 		self.read(&mut buffer)?;
 		Ok(buffer[0])
 	}
 
-	#[allow(dead_code)]
 	pub fn read_i8(&mut self) -> Result<i8> {
 		let mut buffer = [0; 1];
 		self.read(&mut buffer)?;
 		Ok(buffer[0] as i8)
 	}
 
-	#[allow(dead_code)]
 	pub fn read_u16(&mut self) -> Result<u16> {
 		let mut buffer = [0; 2];
 		self.read(&mut buffer)?;
 		Ok(u16::from_le_bytes(buffer))
 	}
 
-	#[allow(dead_code)]
 	pub fn read_i16(&mut self) -> Result<i16> {
 		let mut buffer = [0; 2];
 		self.read(&mut buffer)?;
 		Ok(i16::from_le_bytes(buffer))
 	}
 
-	#[allow(dead_code)]
 	pub fn read_u32(&mut self) -> Result<u32> {
 		let mut buffer = [0; 4];
 		self.read(&mut buffer)?;
 		Ok(u32::from_le_bytes(buffer))
 	}
 
-	#[allow(dead_code)]
 	pub fn read_i32(&mut self) -> Result<i32> {
 		let mut buffer = [0; 4];
 		self.read(&mut buffer)?;
 		Ok(i32::from_le_bytes(buffer))
 	}
 
-	#[allow(dead_code)]
 	pub fn read_u64(&mut self) -> Result<u64> {
 		let mut buffer = [0; 8];
 		self.read(&mut buffer)?;
 		Ok(u64::from_le_bytes(buffer))
 	}
 
-	#[allow(dead_code)]
 	pub fn read_i64(&mut self) -> Result<i64> {
 		let mut buffer = [0; 8];
 		self.read(&mut buffer)?;
@@ -858,7 +853,12 @@ impl StorageRefSerializer for ReclaimableStorageRefSerializer {
 lazy_static! {
 	static ref HEAP: Mutex<Heap> = unsafe {
 		let layout = Layout::from_size_align(STORAGE_SIZE, 16).unwrap();
+
+		#[cfg(feature = "std")]
+		let backing_mem = std::alloc::alloc(layout);
+		#[cfg(not(feature = "std"))]
 		let backing_mem = alloc::alloc::alloc(layout);
+
 		Mutex::new(Heap::new(backing_mem as usize, STORAGE_SIZE))
 	};
 	static ref RECLAIMABLE: Mutex<usize> = Mutex::new(0);

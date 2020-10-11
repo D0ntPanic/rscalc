@@ -1,28 +1,44 @@
 use crate::catalog::{assign_menu, catalog_menu};
-use crate::complex::ComplexNumber;
-use crate::error::{Error, Result};
-use crate::font::{SANS_13, SANS_16, SANS_24};
+use crate::edit::NumberEditor;
 use crate::functions::{Function, FunctionKeyState, FunctionMenu};
 use crate::input::{AlphaMode, InputEvent, InputMode, InputQueue};
-use crate::layout::Layout;
 use crate::menu::{setup_menu, Menu, MenuItemFunction};
-use crate::number::{IntegerMode, Number, NumberFormat, ToNumber};
-use crate::screen::{Color, Font, Rect, Screen};
-use crate::stack::{Stack, MAX_STACK_INDEX_DIGITS};
-use crate::storage::{available_bytes, store};
-use crate::time::{Now, SimpleDateTimeFormat, SimpleDateTimeToString};
-use crate::undo::{clear_undo_buffer, pop_undo_action};
-use crate::unit::{unit_menu, AngleUnit};
-use crate::value::{Value, ValueRef};
-use crate::vector::Vector;
-use alloc::collections::BTreeMap;
-use alloc::string::{String, ToString};
-use alloc::vec::Vec;
+use crate::screen::{RenderMode, Screen};
+use crate::unit::unit_menu;
 use chrono::NaiveDateTime;
-use intel_dfp::Decimal;
+use rscalc_layout::decimal::DecimalLayout;
+use rscalc_layout::font::Font;
+use rscalc_layout::layout::{Layout, LayoutRenderer, Rect, TokenType};
+use rscalc_layout::stack::StackRenderer;
+use rscalc_layout::string::StringLayout;
+use rscalc_layout::value::{AlternateLayoutType, ValueLayout};
+use rscalc_math::constant::Constant;
+use rscalc_math::context::{Context, Location};
+use rscalc_math::error::{Error, Result};
+use rscalc_math::format::{Format, IntegerMode};
+use rscalc_math::number::ToNumber;
+use rscalc_math::storage::available_bytes;
+use rscalc_math::time::{Now, SimpleDateTimeFormat, SimpleDateTimeToString};
+use rscalc_math::unit::AngleUnit;
+use rscalc_math::value::Value;
+
+#[cfg(not(feature = "dm42"))]
+use std::cell::RefCell;
+#[cfg(not(feature = "dm42"))]
+use std::rc::Rc;
 
 #[cfg(feature = "dm42")]
 use crate::dm42::{read_power_voltage, show_system_setup_menu, usb_powered};
+#[cfg(feature = "dm42")]
+use alloc::boxed::Box;
+#[cfg(feature = "dm42")]
+use alloc::rc::Rc;
+#[cfg(feature = "dm42")]
+use alloc::string::{String, ToString};
+#[cfg(feature = "dm42")]
+use alloc::vec::Vec;
+#[cfg(feature = "dm42")]
+use core::cell::RefCell;
 
 const MAX_MEMORY_INDEX_DIGITS: usize = 2;
 
@@ -38,13 +54,6 @@ struct CachedStatusBarState {
 	left_string: String,
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub enum Location {
-	Integer(usize),
-	StackOffset(usize),
-	Variable(char),
-}
-
 #[derive(Clone)]
 struct LocationEntryState {
 	name: &'static str,
@@ -55,6 +64,7 @@ struct LocationEntryState {
 #[derive(PartialEq, Eq, Clone, Copy)]
 enum InputState {
 	Normal,
+	NumberInput,
 	Recall,
 	Store,
 	Menu,
@@ -67,21 +77,21 @@ pub enum StatusBarLeftDisplayType {
 }
 
 pub struct State {
-	pub stack: Stack,
+	context: Context,
 	input_mode: InputMode,
-	format: NumberFormat,
 	function_keys: FunctionKeyState,
-	default_integer_format: IntegerMode,
-	prev_decimal_integer_mode: IntegerMode,
-	angle_mode: AngleUnit,
 	status_bar_left_display: StatusBarLeftDisplayType,
-	memory: BTreeMap<Location, ValueRef>,
 	input_state: InputState,
 	location_entry: LocationEntryState,
 	error: Option<Error>,
 	menus: Vec<Menu>,
+	editor: Option<NumberEditor>,
+	status_bar_enabled: bool,
+	base_font: Font,
+	stack_renderer: Rc<RefCell<StackRenderer>>,
 	cached_status_bar_state: CachedStatusBarState,
 	force_refresh: bool,
+	force_render_on_status_update: bool,
 }
 
 pub enum InputResult {
@@ -115,78 +125,69 @@ impl LocationEntryState {
 	}
 }
 
+#[cfg(not(feature = "dm42"))]
+fn clock_minute_updated() -> bool {
+	true
+}
+
+#[cfg(feature = "dm42")]
+fn clock_minute_updated() -> bool {
+	crate::dm42::rtc_updated()
+}
+
 impl State {
 	pub fn new() -> Self {
+		let mut context = Context::new_with_undo();
+		let stack_renderer = StackRenderer::new(context.stack_mut());
+
 		let input_mode = InputMode {
 			alpha: AlphaMode::Normal,
 			shift: false,
 		};
-		let format = NumberFormat::new();
 
 		let cached_status_bar_state = CachedStatusBarState {
 			alpha: input_mode.alpha,
 			shift: input_mode.shift,
-			integer_radix: format.integer_radix,
-			integer_mode: format.integer_mode,
-			angle_mode: AngleUnit::Degrees,
+			integer_radix: context.format().integer_radix,
+			integer_mode: context.format().integer_mode,
+			angle_mode: *context.angle_mode(),
 			multiple_pages: false,
-			left_string: State::time_string(),
+			left_string: State::time_string(context.format().time_24_hour),
 		};
 
 		State {
-			stack: Stack::new(),
+			context,
 			input_mode,
-			format,
 			function_keys: FunctionKeyState::new(),
-			default_integer_format: IntegerMode::BigInteger,
-			prev_decimal_integer_mode: IntegerMode::Float,
-			angle_mode: AngleUnit::Degrees,
 			status_bar_left_display: StatusBarLeftDisplayType::CurrentTime,
-			memory: BTreeMap::new(),
 			input_state: InputState::Normal,
 			location_entry: LocationEntryState::new(""),
 			error: None,
 			menus: Vec::new(),
+			editor: None,
+			status_bar_enabled: true,
+			base_font: Font::Large,
+			stack_renderer,
 			cached_status_bar_state,
 			force_refresh: true,
+			force_render_on_status_update: false,
 		}
 	}
 
-	pub fn format(&self) -> &NumberFormat {
-		&self.format
+	pub fn context(&self) -> &Context {
+		&self.context
 	}
 
-	pub fn format_mut(&mut self) -> &mut NumberFormat {
-		self.stack.invalidate_rendering();
-		&mut self.format
+	pub fn context_mut(&mut self) -> &mut Context {
+		&mut self.context
 	}
 
-	pub fn function_keys(&mut self) -> &mut FunctionKeyState {
+	pub fn function_keys(&self) -> &FunctionKeyState {
+		&self.function_keys
+	}
+
+	pub fn function_keys_mut(&mut self) -> &mut FunctionKeyState {
 		&mut self.function_keys
-	}
-
-	pub fn default_integer_format(&self) -> &IntegerMode {
-		&self.default_integer_format
-	}
-
-	pub fn set_default_integer_format(&mut self, mode: IntegerMode) {
-		self.default_integer_format = mode;
-	}
-
-	pub fn prev_decimal_integer_mode(&self) -> &IntegerMode {
-		&self.prev_decimal_integer_mode
-	}
-
-	pub fn set_prev_decimal_integer_mode(&mut self, mode: IntegerMode) {
-		self.prev_decimal_integer_mode = mode;
-	}
-
-	pub fn angle_mode(&self) -> &AngleUnit {
-		&self.angle_mode
-	}
-
-	pub fn set_angle_mode(&mut self, unit: AngleUnit) {
-		self.angle_mode = unit;
 	}
 
 	pub fn status_bar_left_display(&self) -> &StatusBarLeftDisplayType {
@@ -205,74 +206,468 @@ impl State {
 		self.function_keys.set_custom_function(idx, func);
 	}
 
+	pub fn status_bar_enabled(&self) -> bool {
+		self.status_bar_enabled
+	}
+
+	pub fn set_status_bar_enabled(&mut self, value: bool) {
+		self.status_bar_enabled = value;
+		self.force_refresh = true;
+	}
+
+	pub fn base_font(&self) -> Font {
+		self.base_font
+	}
+
+	pub fn set_base_font(&mut self, font: Font) {
+		self.base_font = font;
+		self.force_refresh = true;
+		self.stack_renderer.borrow_mut().invalidate_rendering();
+	}
+
 	pub fn show_error(&mut self, error: Error) {
 		self.error = Some(error);
 		self.input_state = InputState::Normal;
 		self.input_mode.alpha = AlphaMode::Normal;
-		self.stack.end_edit();
 	}
 
 	pub fn hide_error(&mut self) {
 		self.error = None;
 	}
 
-	fn time_string() -> String {
-		NaiveDateTime::now().simple_format(&SimpleDateTimeFormat::status_bar())
-	}
-
-	pub fn top<'a>(&'a self) -> Value {
-		Stack::value_for_integer_mode(&self.format.integer_mode, self.stack.top())
-	}
-
-	pub fn entry<'a>(&'a self, idx: usize) -> Result<Value> {
-		Ok(Stack::value_for_integer_mode(
-			&self.format.integer_mode,
-			self.stack.entry(idx)?,
-		))
-	}
-
-	pub fn replace_entries(&mut self, count: usize, value: Value) -> Result<()> {
-		let value = Stack::value_for_integer_mode(&self.format.integer_mode, value);
-		self.stack.replace_entries(count, value)?;
-		Ok(())
-	}
-
-	pub fn set_top(&mut self, value: Value) -> Result<()> {
-		let value = Stack::value_for_integer_mode(&self.format.integer_mode, value);
-		self.stack.set_top(value)
-	}
-
-	pub fn set_entry(&mut self, offset: usize, value: Value) -> Result<()> {
-		let value = Stack::value_for_integer_mode(&self.format.integer_mode, value);
-		self.stack.set_entry(offset, value)?;
-		Ok(())
-	}
-
-	pub fn read<'a>(&'a self, location: &Location) -> Result<Value> {
-		match location {
-			Location::StackOffset(offset) => self.entry(*offset),
-			location => {
-				if let Some(value) = self.memory.get(location) {
-					Ok(value.get()?)
-				} else {
-					Err(Error::ValueNotDefined)
-				}
-			}
+	fn time_string(time_24_hour: bool) -> String {
+		match NaiveDateTime::now() {
+			Ok(now) => now.simple_format(&SimpleDateTimeFormat::status_bar(time_24_hour)),
+			Err(_) => "Unknown time".to_string(),
 		}
-	}
-
-	pub fn write(&mut self, location: Location, value: Value) -> Result<()> {
-		match location {
-			Location::StackOffset(offset) => self.set_entry(offset, value)?,
-			location => {
-				self.memory.insert(location, store(value)?);
-			}
-		}
-		Ok(())
 	}
 
 	pub fn undo(&mut self) -> Result<()> {
-		self.stack.undo(pop_undo_action()?)
+		self.context.undo()
+	}
+
+	pub fn end_edit(&mut self) -> Result<()> {
+		if let Some(editor) = &self.editor {
+			let value = editor.number();
+			self.editor = None;
+			self.input_state = InputState::Normal;
+			self.context.push(Value::Number(value))?;
+		}
+		self.input_mode.alpha = AlphaMode::Normal;
+		Ok(())
+	}
+
+	fn handle_common_input(
+		&mut self,
+		input: InputEvent,
+		screen: &dyn Screen,
+	) -> Result<InputResult> {
+		match input {
+			InputEvent::Add => {
+				self.end_edit()?;
+				self.context.add()?;
+			}
+			InputEvent::Sub => {
+				self.end_edit()?;
+				self.context.sub()?;
+			}
+			InputEvent::Mul => {
+				self.end_edit()?;
+				self.context.mul()?;
+			}
+			InputEvent::Div => {
+				self.end_edit()?;
+				self.context.div()?;
+			}
+			InputEvent::Recip => {
+				self.end_edit()?;
+				self.context.recip()?;
+			}
+			InputEvent::Pow => {
+				self.end_edit()?;
+				self.context.pow()?;
+			}
+			InputEvent::Sqrt => {
+				self.end_edit()?;
+				self.context.sqrt()?;
+			}
+			InputEvent::Square => {
+				self.end_edit()?;
+				self.context.square()?;
+			}
+			InputEvent::Log => {
+				self.end_edit()?;
+				self.context.log()?;
+			}
+			InputEvent::TenX => {
+				self.end_edit()?;
+				self.context.exp10()?;
+			}
+			InputEvent::Ln => {
+				self.end_edit()?;
+				self.context.ln()?;
+			}
+			InputEvent::EX => {
+				self.end_edit()?;
+				self.context.exp()?;
+			}
+			InputEvent::Percent => {
+				self.end_edit()?;
+				self.context.percent()?;
+			}
+			InputEvent::Pi => {
+				self.end_edit()?;
+				self.context.push_constant(Constant::Pi)?;
+			}
+			InputEvent::Sin => {
+				self.end_edit()?;
+				self.context.sin()?;
+			}
+			InputEvent::Cos => {
+				self.end_edit()?;
+				self.context.cos()?;
+			}
+			InputEvent::Tan => {
+				self.end_edit()?;
+				self.context.tan()?;
+			}
+			InputEvent::Asin => {
+				self.end_edit()?;
+				self.context.asin()?;
+			}
+			InputEvent::Acos => {
+				self.end_edit()?;
+				self.context.acos()?;
+			}
+			InputEvent::Atan => {
+				self.end_edit()?;
+				self.context.atan()?;
+			}
+			InputEvent::RotateDown => {
+				self.end_edit()?;
+				self.context.rotate_down();
+			}
+			InputEvent::Swap => {
+				self.end_edit()?;
+				self.context.swap(0, 1)?;
+			}
+			InputEvent::Rcl => {
+				self.end_edit()?;
+				self.input_state = InputState::Recall;
+				self.location_entry = LocationEntryState::new("Rcl");
+			}
+			InputEvent::Sto => {
+				self.end_edit()?;
+				self.input_state = InputState::Store;
+				self.location_entry = LocationEntryState::new("Sto");
+			}
+			InputEvent::Complex => {
+				self.end_edit()?;
+				self.context.complex()?;
+			}
+			InputEvent::SigmaPlus => {
+				self.end_edit()?;
+				self.context.add_to_vector()?;
+			}
+			InputEvent::SigmaMinus => {
+				self.end_edit()?;
+				self.context.decompose()?;
+			}
+			InputEvent::Print => self.context.clear_undo_buffer(),
+			InputEvent::Clear => {
+				self.end_edit()?;
+				self.context.clear_stack();
+			}
+			InputEvent::Run => {
+				self.end_edit()?;
+				self.context.toggle_integer_radix();
+			}
+			InputEvent::Disp => {
+				self.function_keys.show_toplevel_menu(FunctionMenu::Disp);
+			}
+			InputEvent::Modes => {
+				self.function_keys.show_toplevel_menu(FunctionMenu::Mode);
+			}
+			InputEvent::Base => {
+				self.function_keys.show_toplevel_menu(FunctionMenu::Base);
+			}
+			InputEvent::Logic => {
+				self.function_keys.show_toplevel_menu(FunctionMenu::Logic);
+			}
+			InputEvent::Stat => {
+				self.function_keys.show_toplevel_menu(FunctionMenu::Stats);
+			}
+			InputEvent::Matrix => {
+				self.function_keys.show_toplevel_menu(FunctionMenu::Matrix);
+			}
+			InputEvent::Convert => {
+				self.show_menu(unit_menu())?;
+			}
+			InputEvent::Assign => {
+				self.show_menu(assign_menu())?;
+			}
+			InputEvent::Custom => {
+				self.function_keys.show_toplevel_menu(FunctionMenu::Custom);
+			}
+			InputEvent::Catalog => {
+				self.show_menu(catalog_menu(&|page| Function::CatalogPage(page)))?;
+			}
+			InputEvent::FunctionKey(func, _) => {
+				if let Some(func) = self.function_keys.function(func) {
+					func.execute(self, screen)?;
+				}
+			}
+			InputEvent::Up => {
+				self.function_keys.prev_page();
+			}
+			InputEvent::Down => {
+				self.function_keys.next_page();
+			}
+			InputEvent::Setup => {
+				self.end_edit()?;
+				self.input_state = InputState::Menu;
+				self.menus.push(setup_menu());
+			}
+			InputEvent::Undo => {
+				self.end_edit()?;
+				self.undo()?;
+			}
+			InputEvent::Off => {
+				self.input_mode.alpha = AlphaMode::Normal;
+				return Ok(InputResult::Suspend);
+			}
+			_ => (),
+		}
+		Ok(InputResult::Normal)
+	}
+
+	fn handle_normal_input(
+		&mut self,
+		input: InputEvent,
+		screen: &dyn Screen,
+	) -> Result<InputResult> {
+		match input {
+			InputEvent::Character(_) | InputEvent::E => {
+				self.editor = Some(NumberEditor::new(&self.context.format()));
+				self.input_state = InputState::NumberInput;
+				return self.handle_number_input(input, screen);
+			}
+			InputEvent::Enter => {
+				self.end_edit()?;
+				self.context.push(self.context.top()?)?;
+			}
+			InputEvent::Backspace => {
+				self.end_edit()?;
+				let _ = self.context.pop();
+			}
+			InputEvent::Neg => {
+				self.end_edit()?;
+				self.context.set_top((-self.context.top()?)?)?;
+			}
+			InputEvent::Exit => {
+				self.function_keys.exit_menu(self.context.format());
+			}
+			_ => return self.handle_common_input(input, screen),
+		}
+		Ok(InputResult::Normal)
+	}
+
+	fn handle_number_input(
+		&mut self,
+		input: InputEvent,
+		screen: &dyn Screen,
+	) -> Result<InputResult> {
+		let editor = match self.editor.as_mut() {
+			Some(editor) => editor,
+			None => {
+				self.input_state = InputState::Normal;
+				return Err(Error::InvalidEntry);
+			}
+		};
+
+		match input {
+			InputEvent::Character(ch) => match ch {
+				'0'..='9' | 'A'..='Z' | 'a'..='z' | '.' => {
+					if ch != '.' || self.context.format().integer_mode == IntegerMode::Float {
+						editor.push_char(ch)?;
+					}
+				}
+				_ => (),
+			},
+			InputEvent::E => {
+				if self.context.format().integer_mode == IntegerMode::Float {
+					editor.exponent();
+				}
+				self.input_mode.alpha = AlphaMode::Normal;
+			}
+			InputEvent::Enter => {
+				self.end_edit()?;
+			}
+			InputEvent::Backspace => {
+				if !editor.backspace() {
+					self.editor = None;
+					self.input_state = InputState::Normal;
+				}
+			}
+			InputEvent::Neg => {
+				editor.neg();
+			}
+			InputEvent::Exit => {
+				self.editor = None;
+				self.input_state = InputState::Normal;
+			}
+			_ => return self.handle_common_input(input, screen),
+		}
+		Ok(InputResult::Normal)
+	}
+
+	fn handle_recall_input(&mut self, input: InputEvent) -> Result<InputResult> {
+		match self.handle_location_input(input) {
+			LocationInputResult::Intermediate(result) => Ok(result),
+			LocationInputResult::Finished(location) => {
+				self.input_state = InputState::Normal;
+				self.input_mode.alpha = AlphaMode::Normal;
+				self.context.push(self.context.read(&location)?)?;
+				Ok(InputResult::Normal)
+			}
+			LocationInputResult::Exit => {
+				self.input_state = InputState::Normal;
+				Ok(InputResult::Normal)
+			}
+			LocationInputResult::Invalid => {
+				self.input_state = InputState::Normal;
+				Err(Error::InvalidEntry)
+			}
+		}
+	}
+
+	fn handle_store_input(&mut self, input: InputEvent) -> Result<InputResult> {
+		match self.handle_location_input(input) {
+			LocationInputResult::Intermediate(result) => Ok(result),
+			LocationInputResult::Finished(location) => {
+				self.input_state = InputState::Normal;
+				self.input_mode.alpha = AlphaMode::Normal;
+				self.context.write(location, self.context.top()?)?;
+				Ok(InputResult::Normal)
+			}
+			LocationInputResult::Exit => {
+				self.input_state = InputState::Normal;
+				self.input_mode.alpha = AlphaMode::Normal;
+				Ok(InputResult::Normal)
+			}
+			LocationInputResult::Invalid => {
+				self.input_state = InputState::Normal;
+				self.input_mode.alpha = AlphaMode::Normal;
+				Err(Error::InvalidEntry)
+			}
+		}
+	}
+
+	fn handle_menu_input(&mut self, input: InputEvent, screen: &dyn Screen) -> Result<InputResult> {
+		let menu = self.menus.last_mut().unwrap();
+		match input {
+			InputEvent::Up => menu.up(),
+			InputEvent::Down => menu.down(),
+			InputEvent::Enter | InputEvent::Add | InputEvent::Mul => {
+				menu.force_refresh();
+				let function = menu.selected_function();
+				self.force_refresh = true;
+				match function {
+					MenuItemFunction::Action(action) => {
+						self.input_state = InputState::Normal;
+						self.menus.clear();
+						action.execute(self, screen)?;
+					}
+					MenuItemFunction::InMenuAction(action) => {
+						action.execute(self, screen)?;
+					}
+					MenuItemFunction::InMenuActionWithDelete(action, _) => {
+						action.execute(self, screen)?;
+					}
+					MenuItemFunction::ConversionAction(action, _, _) => {
+						action.execute(self, screen)?;
+					}
+				}
+			}
+			InputEvent::Sub | InputEvent::Div => {
+				menu.force_refresh();
+				let function = menu.selected_function();
+				match function {
+					MenuItemFunction::Action(_)
+					| MenuItemFunction::InMenuAction(_)
+					| MenuItemFunction::InMenuActionWithDelete(_, _) => (),
+					MenuItemFunction::ConversionAction(_, action, _) => {
+						self.force_refresh = true;
+						action.execute(self, screen)?;
+					}
+				}
+			}
+			InputEvent::Swap => {
+				menu.force_refresh();
+				let function = menu.selected_function();
+				match function {
+					MenuItemFunction::Action(_)
+					| MenuItemFunction::InMenuAction(_)
+					| MenuItemFunction::InMenuActionWithDelete(_, _) => (),
+					MenuItemFunction::ConversionAction(_, _, action) => {
+						self.force_refresh = true;
+						action.execute(self, screen)?;
+					}
+				}
+			}
+			InputEvent::Backspace => {
+				menu.force_refresh();
+				let function = menu.selected_function();
+				match function {
+					MenuItemFunction::Action(_)
+					| MenuItemFunction::InMenuAction(_)
+					| MenuItemFunction::ConversionAction(_, _, _) => (),
+					MenuItemFunction::InMenuActionWithDelete(_, action) => {
+						action.execute(self, screen)?;
+					}
+				}
+			}
+			InputEvent::Character(ch) => match ch {
+				'1'..='9' => {
+					self.direct_select_menu_item((ch as u32 - '1' as u32) as usize, screen)?;
+				}
+				'0' => {
+					self.direct_select_menu_item(9, screen)?;
+				}
+				'A'..='L' => {
+					self.direct_select_menu_item(10 + (ch as u32 - 'A' as u32) as usize, screen)?;
+				}
+				'a'..='l' => {
+					self.direct_select_menu_item(10 + (ch as u32 - 'a' as u32) as usize, screen)?;
+				}
+				_ => (),
+			},
+			InputEvent::SigmaPlus => self.direct_select_menu_item(10, screen)?,
+			InputEvent::Recip => self.direct_select_menu_item(11, screen)?,
+			InputEvent::Sqrt => self.direct_select_menu_item(12, screen)?,
+			InputEvent::Log => self.direct_select_menu_item(13, screen)?,
+			InputEvent::Ln => self.direct_select_menu_item(14, screen)?,
+			InputEvent::Xeq => self.direct_select_menu_item(15, screen)?,
+			InputEvent::Sto => self.direct_select_menu_item(16, screen)?,
+			InputEvent::Rcl => self.direct_select_menu_item(17, screen)?,
+			InputEvent::RotateDown => self.direct_select_menu_item(18, screen)?,
+			InputEvent::Sin => self.direct_select_menu_item(19, screen)?,
+			InputEvent::Cos => self.direct_select_menu_item(20, screen)?,
+			InputEvent::Tan => self.direct_select_menu_item(21, screen)?,
+			InputEvent::Exit => {
+				self.menus.pop();
+				if let Some(menu) = self.menus.last_mut() {
+					menu.force_refresh();
+				} else {
+					self.input_state = InputState::Normal;
+					self.cached_status_bar_state.left_string = String::new();
+					self.force_refresh = true;
+				}
+			}
+			InputEvent::Off => return Ok(InputResult::Suspend),
+			_ => (),
+		}
+		Ok(InputResult::Normal)
 	}
 
 	pub fn handle_input(&mut self, input: InputEvent, screen: &dyn Screen) -> Result<InputResult> {
@@ -285,446 +680,11 @@ impl State {
 		}
 
 		match self.input_state {
-			InputState::Normal => {
-				match input {
-					InputEvent::Character(ch) => match ch {
-						'0'..='9' | 'A'..='Z' | 'a'..='z' | '.' => {
-							if ch != '.' || self.format.integer_mode == IntegerMode::Float {
-								self.stack.push_char(ch, &self.format)?;
-							}
-						}
-						_ => (),
-					},
-					InputEvent::E => {
-						if self.format.integer_mode == IntegerMode::Float {
-							self.stack.exponent()?;
-						}
-						self.input_mode.alpha = AlphaMode::Normal;
-					}
-					InputEvent::Enter => {
-						self.stack.enter()?;
-						self.input_mode.alpha = AlphaMode::Normal;
-					}
-					InputEvent::Backspace => {
-						self.stack.backspace()?;
-					}
-					InputEvent::Neg => {
-						if self.stack.editing() {
-							self.stack.neg()?;
-						} else {
-							self.set_top((-self.top())?)?;
-						}
-						self.input_mode.alpha = AlphaMode::Normal;
-					}
-					InputEvent::Add => {
-						self.replace_entries(2, (self.entry(1)? + self.entry(0)?)?)?;
-						self.input_mode.alpha = AlphaMode::Normal;
-					}
-					InputEvent::Sub => {
-						self.replace_entries(2, (self.entry(1)? - self.entry(0)?)?)?;
-						self.input_mode.alpha = AlphaMode::Normal;
-					}
-					InputEvent::Mul => {
-						self.replace_entries(2, (self.entry(1)? * self.entry(0)?)?)?;
-						self.input_mode.alpha = AlphaMode::Normal;
-					}
-					InputEvent::Div => {
-						self.replace_entries(2, (self.entry(1)? / self.entry(0)?)?)?;
-						self.input_mode.alpha = AlphaMode::Normal;
-					}
-					InputEvent::Recip => {
-						self.set_top((Value::Number(1.into()) / self.top())?)?;
-						self.input_mode.alpha = AlphaMode::Normal;
-					}
-					InputEvent::Pow => {
-						self.replace_entries(2, (self.entry(1)?).pow(&self.entry(0)?)?)?;
-						self.input_mode.alpha = AlphaMode::Normal;
-					}
-					InputEvent::Sqrt => {
-						self.set_top(self.top().sqrt()?)?;
-						self.input_mode.alpha = AlphaMode::Normal;
-					}
-					InputEvent::Square => {
-						let top = self.top();
-						let square = (&top * &top)?;
-						self.set_top(square)?;
-						self.input_mode.alpha = AlphaMode::Normal;
-					}
-					InputEvent::Log => {
-						Function::Log.execute(self, screen)?;
-						self.input_mode.alpha = AlphaMode::Normal;
-					}
-					InputEvent::TenX => {
-						Function::Exp10.execute(self, screen)?;
-						self.input_mode.alpha = AlphaMode::Normal;
-					}
-					InputEvent::Ln => {
-						Function::Ln.execute(self, screen)?;
-						self.input_mode.alpha = AlphaMode::Normal;
-					}
-					InputEvent::EX => {
-						Function::Exp.execute(self, screen)?;
-						self.input_mode.alpha = AlphaMode::Normal;
-					}
-					InputEvent::Percent => {
-						let factor = (self.entry(0)? / Value::Number(100.into()))?;
-						self.set_top((self.entry(1)? * factor)?)?;
-						self.input_mode.alpha = AlphaMode::Normal;
-					}
-					InputEvent::Pi => {
-						self.stack
-							.input_value(Value::Number(Number::Decimal(Decimal::pi())))?;
-						self.input_mode.alpha = AlphaMode::Normal;
-					}
-					InputEvent::Sin => {
-						Function::Sin.execute(self, screen)?;
-						self.input_mode.alpha = AlphaMode::Normal;
-					}
-					InputEvent::Cos => {
-						Function::Cos.execute(self, screen)?;
-						self.input_mode.alpha = AlphaMode::Normal;
-					}
-					InputEvent::Tan => {
-						Function::Tan.execute(self, screen)?;
-						self.input_mode.alpha = AlphaMode::Normal;
-					}
-					InputEvent::Asin => {
-						Function::Asin.execute(self, screen)?;
-						self.input_mode.alpha = AlphaMode::Normal;
-					}
-					InputEvent::Acos => {
-						Function::Acos.execute(self, screen)?;
-						self.input_mode.alpha = AlphaMode::Normal;
-					}
-					InputEvent::Atan => {
-						Function::Atan.execute(self, screen)?;
-						self.input_mode.alpha = AlphaMode::Normal;
-					}
-					InputEvent::RotateDown => {
-						self.stack.rotate_down();
-						self.input_mode.alpha = AlphaMode::Normal;
-					}
-					InputEvent::Swap => {
-						self.stack.swap(0, 1)?;
-						self.input_mode.alpha = AlphaMode::Normal;
-					}
-					InputEvent::Rcl => {
-						self.input_state = InputState::Recall;
-						self.location_entry = LocationEntryState::new("Rcl");
-						self.stack.end_edit();
-					}
-					InputEvent::Sto => {
-						self.input_state = InputState::Store;
-						self.location_entry = LocationEntryState::new("Sto");
-						self.stack.end_edit();
-					}
-					InputEvent::Complex => {
-						let top = self.entry(0)?;
-						if let Value::Complex(value) = top {
-							// If a complex number is on the top of the stack, break it into
-							// real and imaginary parts.
-							let mut items = Vec::new();
-							items.push(store(Value::Number(value.real_part().clone()))?);
-							items.push(store(Value::Number(value.imaginary_part().clone()))?);
-							self.stack.replace_top_with_multiple(items)?;
-						} else {
-							// Take the real and imaginary components on the top two entries
-							// on the stack and create a complex number.
-							let real = self.entry(1)?;
-							let imaginary = top;
-							self.replace_entries(
-								2,
-								Value::check_complex(ComplexNumber::from_parts(
-									real.real_number()?.clone(),
-									imaginary.real_number()?.clone(),
-								))?
-								.into(),
-							)?;
-						}
-						self.input_mode.alpha = AlphaMode::Normal;
-					}
-					InputEvent::SigmaPlus => {
-						let top = self.entry(0)?;
-						if let Value::Vector(existing_vector) = top {
-							// Top entry is a vector. Check entry above it.
-							let prev_value = self.entry(1)?;
-							if let Value::Vector(prev_vector) = prev_value {
-								// Top two entries are vectors. Merge the vectors.
-								let mut new_vector = prev_vector.clone();
-								new_vector.extend_with(&existing_vector)?;
-								self.stack.replace_entries(2, Value::Vector(new_vector))?;
-							} else {
-								// Fold the second entry into the vector.
-								let mut new_vector = existing_vector.clone();
-								new_vector.insert(0, prev_value)?;
-								self.stack.replace_entries(2, Value::Vector(new_vector))?;
-							}
-						} else {
-							// Create a vector containing the value on the top of the stack.
-							let mut vector = Vector::new()?;
-							vector.push(top)?;
-							self.stack.set_top(Value::Vector(vector))?;
-						}
-						self.input_mode.alpha = AlphaMode::Normal;
-					}
-					InputEvent::SigmaMinus => {
-						let top = self.entry(0)?;
-						if let Value::Vector(vector) = top {
-							// Top entry is a vector. Break apart the vector.
-							let mut values: Vec<ValueRef> = Vec::new();
-							for i in 0..vector.len() {
-								values.push(vector.get_ref(i)?);
-							}
-							self.stack.replace_top_with_multiple(values)?;
-						} else if let Value::Matrix(matrix) = top {
-							// Top entry is a matrix. Break apart the matrix.
-							let mut values: Vec<ValueRef> = Vec::new();
-							for row in 0..matrix.rows() {
-								for col in 0..matrix.cols() {
-									values.push(matrix.get_ref(row, col)?);
-								}
-							}
-							self.stack.replace_top_with_multiple(values)?;
-						} else {
-							// Batch create a vector from the entries on the stack. If there
-							// is a vector or matrix on the stack, stop there.
-							let mut vector = Vector::new()?;
-							for i in 0..self.stack.len() {
-								let value = self.entry(i)?;
-								if value.is_vector_or_matrix() {
-									break;
-								}
-								vector.insert(0, value)?;
-							}
-							if vector.len() == 0 {
-								return Err(Error::DataTypeMismatch);
-							}
-							self.stack
-								.replace_entries(vector.len(), Value::Vector(vector))?;
-						}
-					}
-					InputEvent::Print => clear_undo_buffer(),
-					InputEvent::Clear => {
-						self.stack.clear();
-						self.input_mode.alpha = AlphaMode::Normal;
-					}
-					InputEvent::Disp => {
-						self.function_keys.show_toplevel_menu(FunctionMenu::Disp);
-					}
-					InputEvent::Modes => {
-						self.function_keys.show_toplevel_menu(FunctionMenu::Mode);
-					}
-					InputEvent::Base => {
-						self.function_keys.show_toplevel_menu(FunctionMenu::Base);
-					}
-					InputEvent::Logic => {
-						self.function_keys.show_toplevel_menu(FunctionMenu::Logic);
-					}
-					InputEvent::Stat => {
-						self.function_keys.show_toplevel_menu(FunctionMenu::Stats);
-					}
-					InputEvent::Matrix => {
-						self.function_keys.show_toplevel_menu(FunctionMenu::Matrix);
-					}
-					InputEvent::Convert => {
-						self.show_menu(unit_menu());
-					}
-					InputEvent::Assign => {
-						self.show_menu(assign_menu());
-					}
-					InputEvent::Custom => {
-						self.function_keys.show_toplevel_menu(FunctionMenu::Custom);
-					}
-					InputEvent::Catalog => {
-						self.show_menu(catalog_menu(&|page| Function::CatalogPage(page)));
-					}
-					InputEvent::FunctionKey(func, _) => {
-						if let Some(func) = self.function_keys.function(func) {
-							func.execute(self, screen)?;
-							self.input_mode.alpha = AlphaMode::Normal;
-						}
-					}
-					InputEvent::Up => {
-						self.function_keys.prev_page();
-					}
-					InputEvent::Down => {
-						self.function_keys.next_page();
-					}
-					InputEvent::Setup => {
-						self.input_mode.alpha = AlphaMode::Normal;
-						self.input_state = InputState::Menu;
-						self.menus.push(setup_menu());
-					}
-					InputEvent::Undo => {
-						self.undo()?;
-					}
-					InputEvent::Exit => {
-						if self.stack.editing() {
-							self.stack.end_edit();
-							self.input_mode.alpha = AlphaMode::Normal;
-						} else {
-							self.function_keys.exit_menu(&self.format);
-						}
-					}
-					InputEvent::Off => {
-						self.input_mode.alpha = AlphaMode::Normal;
-						return Ok(InputResult::Suspend);
-					}
-					_ => (),
-				}
-				Ok(InputResult::Normal)
-			}
-			InputState::Recall => match self.handle_location_input(input) {
-				LocationInputResult::Intermediate(result) => Ok(result),
-				LocationInputResult::Finished(location) => {
-					self.input_state = InputState::Normal;
-					self.input_mode.alpha = AlphaMode::Normal;
-					self.stack.input_value(self.read(&location)?)?;
-					Ok(InputResult::Normal)
-				}
-				LocationInputResult::Exit => {
-					self.input_state = InputState::Normal;
-					Ok(InputResult::Normal)
-				}
-				LocationInputResult::Invalid => {
-					self.input_state = InputState::Normal;
-					Err(Error::InvalidEntry)
-				}
-			},
-			InputState::Store => match self.handle_location_input(input) {
-				LocationInputResult::Intermediate(result) => Ok(result),
-				LocationInputResult::Finished(location) => {
-					self.input_state = InputState::Normal;
-					self.input_mode.alpha = AlphaMode::Normal;
-					self.write(location, self.top())?;
-					Ok(InputResult::Normal)
-				}
-				LocationInputResult::Exit => {
-					self.input_state = InputState::Normal;
-					self.input_mode.alpha = AlphaMode::Normal;
-					Ok(InputResult::Normal)
-				}
-				LocationInputResult::Invalid => {
-					self.input_state = InputState::Normal;
-					self.input_mode.alpha = AlphaMode::Normal;
-					Err(Error::InvalidEntry)
-				}
-			},
-			InputState::Menu => {
-				let menu = self.menus.last_mut().unwrap();
-				match input {
-					InputEvent::Up => menu.up(),
-					InputEvent::Down => menu.down(),
-					InputEvent::Enter | InputEvent::Add | InputEvent::Mul => {
-						menu.force_refresh();
-						let function = menu.selected_function();
-						self.force_refresh = true;
-						match function {
-							MenuItemFunction::Action(action) => {
-								self.input_state = InputState::Normal;
-								self.menus.clear();
-								action.execute(self, screen)?;
-							}
-							MenuItemFunction::InMenuAction(action) => {
-								action.execute(self, screen)?;
-							}
-							MenuItemFunction::InMenuActionWithDelete(action, _) => {
-								action.execute(self, screen)?;
-							}
-							MenuItemFunction::ConversionAction(action, _, _) => {
-								action.execute(self, screen)?;
-							}
-						}
-					}
-					InputEvent::Sub | InputEvent::Div => {
-						menu.force_refresh();
-						let function = menu.selected_function();
-						match function {
-							MenuItemFunction::Action(_)
-							| MenuItemFunction::InMenuAction(_)
-							| MenuItemFunction::InMenuActionWithDelete(_, _) => (),
-							MenuItemFunction::ConversionAction(_, action, _) => {
-								self.force_refresh = true;
-								action.execute(self, screen)?;
-							}
-						}
-					}
-					InputEvent::Swap => {
-						menu.force_refresh();
-						let function = menu.selected_function();
-						match function {
-							MenuItemFunction::Action(_)
-							| MenuItemFunction::InMenuAction(_)
-							| MenuItemFunction::InMenuActionWithDelete(_, _) => (),
-							MenuItemFunction::ConversionAction(_, _, action) => {
-								self.force_refresh = true;
-								action.execute(self, screen)?;
-							}
-						}
-					}
-					InputEvent::Backspace => {
-						menu.force_refresh();
-						let function = menu.selected_function();
-						match function {
-							MenuItemFunction::Action(_)
-							| MenuItemFunction::InMenuAction(_)
-							| MenuItemFunction::ConversionAction(_, _, _) => (),
-							MenuItemFunction::InMenuActionWithDelete(_, action) => {
-								action.execute(self, screen)?;
-							}
-						}
-					}
-					InputEvent::Character(ch) => match ch {
-						'1'..='9' => {
-							self.direct_select_menu_item(
-								(ch as u32 - '1' as u32) as usize,
-								screen,
-							)?;
-						}
-						'0' => {
-							self.direct_select_menu_item(9, screen)?;
-						}
-						'A'..='L' => {
-							self.direct_select_menu_item(
-								10 + (ch as u32 - 'A' as u32) as usize,
-								screen,
-							)?;
-						}
-						'a'..='l' => {
-							self.direct_select_menu_item(
-								10 + (ch as u32 - 'a' as u32) as usize,
-								screen,
-							)?;
-						}
-						_ => (),
-					},
-					InputEvent::SigmaPlus => self.direct_select_menu_item(10, screen)?,
-					InputEvent::Recip => self.direct_select_menu_item(11, screen)?,
-					InputEvent::Sqrt => self.direct_select_menu_item(12, screen)?,
-					InputEvent::Log => self.direct_select_menu_item(13, screen)?,
-					InputEvent::Ln => self.direct_select_menu_item(14, screen)?,
-					InputEvent::Xeq => self.direct_select_menu_item(15, screen)?,
-					InputEvent::Sto => self.direct_select_menu_item(16, screen)?,
-					InputEvent::Rcl => self.direct_select_menu_item(17, screen)?,
-					InputEvent::RotateDown => self.direct_select_menu_item(18, screen)?,
-					InputEvent::Sin => self.direct_select_menu_item(19, screen)?,
-					InputEvent::Cos => self.direct_select_menu_item(20, screen)?,
-					InputEvent::Tan => self.direct_select_menu_item(21, screen)?,
-					InputEvent::Exit => {
-						self.menus.pop();
-						if let Some(menu) = self.menus.last_mut() {
-							menu.force_refresh();
-						} else {
-							self.input_state = InputState::Normal;
-							self.cached_status_bar_state.left_string = String::new();
-							self.force_refresh = true;
-						}
-					}
-					InputEvent::Off => return Ok(InputResult::Suspend),
-					_ => (),
-				}
-				Ok(InputResult::Normal)
-			}
+			InputState::Normal => self.handle_normal_input(input, screen),
+			InputState::NumberInput => self.handle_number_input(input, screen),
+			InputState::Recall => self.handle_recall_input(input),
+			InputState::Store => self.handle_store_input(input),
+			InputState::Menu => self.handle_menu_input(input, screen),
 		}
 	}
 
@@ -735,13 +695,7 @@ impl State {
 					self.location_entry
 						.value
 						.push(ch as u32 as u8 - '0' as u32 as u8);
-					if self.location_entry.stack {
-						if self.location_entry.value.len() >= MAX_STACK_INDEX_DIGITS {
-							return LocationInputResult::Finished(Location::StackOffset(
-								self.location_entry.int_value(),
-							));
-						}
-					} else {
+					if !self.location_entry.stack {
 						if self.location_entry.value.len() >= MAX_MEMORY_INDEX_DIGITS {
 							return LocationInputResult::Finished(Location::Integer(
 								self.location_entry.int_value(),
@@ -773,9 +727,13 @@ impl State {
 			InputEvent::Enter => {
 				if self.location_entry.value.len() > 0 {
 					if self.location_entry.stack {
-						LocationInputResult::Finished(Location::StackOffset(
-							self.location_entry.int_value(),
-						))
+						if self.location_entry.int_value() == 0 {
+							LocationInputResult::Invalid
+						} else {
+							LocationInputResult::Finished(Location::StackOffset(
+								self.location_entry.int_value() - 1,
+							))
+						}
 					} else {
 						LocationInputResult::Finished(Location::Integer(
 							self.location_entry.int_value(),
@@ -807,13 +765,14 @@ impl State {
 
 	fn draw_status_bar_indicator(
 		&self,
-		screen: &mut dyn Screen,
+		renderer: &mut dyn LayoutRenderer,
 		x: &mut i32,
 		text: &str,
-		font: &Font,
+		font: Font,
+		clip_rect: &Rect,
 	) {
-		*x -= font.width(text);
-		font.draw(screen, *x, 0, text, Color::StatusBarText);
+		*x -= renderer.metrics().width(font, text);
+		renderer.draw_text(*x, 0, text, font, TokenType::Text, clip_rect);
 		*x -= 8;
 	}
 
@@ -822,9 +781,9 @@ impl State {
 
 		let alpha = self.input_mode.alpha;
 		let shift = self.input_mode.shift;
-		let integer_radix = self.format.integer_radix;
-		let integer_mode = self.format.integer_mode;
-		let angle_mode = self.angle_mode;
+		let integer_radix = self.context.format().integer_radix;
+		let integer_mode = self.context.format().integer_mode;
+		let angle_mode = *self.context.angle_mode();
 		let multiple_pages = self.function_keys.multiple_pages();
 
 		// Check for alpha mode updates
@@ -865,10 +824,8 @@ impl State {
 		match self.status_bar_left_display {
 			StatusBarLeftDisplayType::CurrentTime => {
 				// Check for time updates
-				if NaiveDateTime::clock_minute_updated()
-					|| self.cached_status_bar_state.left_string.len() == 0
-				{
-					let time_string = State::time_string();
+				if clock_minute_updated() || self.cached_status_bar_state.left_string.len() == 0 {
+					let time_string = State::time_string(self.context.format().time_24_hour);
 					self.cached_status_bar_state.left_string = time_string;
 					changed = true;
 				}
@@ -886,7 +843,7 @@ impl State {
 	}
 
 	#[cfg(feature = "dm42")]
-	fn draw_battery_indicator(&self, screen: &mut dyn Screen, x: &mut i32) {
+	fn draw_battery_indicator(&self, renderer: &mut dyn LayoutRenderer, x: &mut i32) {
 		// Determine how many bars are present inside the battery indicator
 		let usb = usb_powered();
 		let voltage = read_power_voltage();
@@ -899,57 +856,74 @@ impl State {
 
 		// Render battery shape
 		*x -= 22;
-		screen.fill(
-			Rect {
+		renderer.fill(
+			&Rect {
 				x: *x,
 				y: 3,
 				w: 20,
-				h: SANS_13.height - 6,
+				h: renderer.metrics().height(Font::Smallest) - 6,
 			},
-			Color::StatusBarText,
+			TokenType::Text,
 		);
-		screen.fill(
-			Rect {
-				x: *x + 2,
-				y: 5,
-				w: 16,
-				h: SANS_13.height - 10,
-			},
-			Color::StatusBarBackground,
-		);
-		screen.set_pixel(*x, 3, Color::StatusBarBackground);
-		screen.set_pixel(*x + 19, 3, Color::StatusBarBackground);
-		screen.set_pixel(*x, SANS_13.height - 4, Color::StatusBarBackground);
-		screen.set_pixel(*x + 19, SANS_13.height - 4, Color::StatusBarBackground);
-		screen.fill(
-			Rect {
+		renderer.erase(&Rect {
+			x: *x + 2,
+			y: 5,
+			w: 16,
+			h: renderer.metrics().height(Font::Smallest) - 10,
+		});
+		renderer.erase(&Rect {
+			x: *x,
+			y: 3,
+			w: 1,
+			h: 1,
+		});
+		renderer.erase(&Rect {
+			x: *x + 19,
+			y: 3,
+			w: 1,
+			h: 1,
+		});
+		renderer.erase(&Rect {
+			x: *x,
+			y: renderer.metrics().height(Font::Smallest) - 4,
+			w: 1,
+			h: 1,
+		});
+		renderer.erase(&Rect {
+			x: *x + 19,
+			y: renderer.metrics().height(Font::Smallest) - 4,
+			w: 1,
+			h: 1,
+		});
+		renderer.fill(
+			&Rect {
 				x: *x + 20,
 				y: 7,
 				w: 2,
-				h: SANS_13.height - 14,
+				h: renderer.metrics().height(Font::Smallest) - 14,
 			},
-			Color::StatusBarText,
+			TokenType::Text,
 		);
 
 		// Render inside of battery indicator
 		if usb {
-			for i in 6..SANS_13.height - 6 {
+			for i in 6..renderer.metrics().height(Font::Smallest) - 6 {
 				if i & 1 == 0 {
-					screen.draw_bits(*x + 3, i, 0x1555, 14, Color::StatusBarText);
+					renderer.horizontal_pattern(*x + 3, 14, i, 0x1555, 14, TokenType::Text);
 				} else {
-					screen.draw_bits(*x + 3, i, 0x2aaa, 14, Color::StatusBarText);
+					renderer.horizontal_pattern(*x + 3, 14, i, 0x2aaa, 14, TokenType::Text);
 				}
 			}
 		} else {
 			for i in 0..fill {
-				screen.fill(
-					Rect {
+				renderer.fill(
+					&Rect {
 						x: *x + i * 3 + 3,
 						y: 6,
 						w: 2,
-						h: SANS_13.height - 12,
+						h: renderer.metrics().height(Font::Smallest) - 12,
 					},
-					Color::StatusBarText,
+					TokenType::Text,
 				);
 			}
 		}
@@ -958,93 +932,302 @@ impl State {
 	}
 
 	fn draw_status_bar(&self, screen: &mut dyn Screen) {
-		// Render status bar background
-		screen.fill(
-			Rect {
-				x: 0,
-				y: 0,
-				w: screen.width(),
-				h: SANS_13.height,
-			},
-			Color::StatusBarBackground,
-		);
-		screen.fill(
-			Rect {
-				x: 0,
-				y: SANS_13.height,
-				w: screen.width(),
-				h: 1,
-			},
-			Color::ContentBackground,
-		);
+		if !self.status_bar_enabled && !self.input_mode.shift {
+			return;
+		}
 
-		let mut x = screen.width() - 4;
+		let screen_width = screen.width();
+
+		// Render status bar background
+		let mut renderer = screen.renderer(RenderMode::Normal);
+		renderer.erase(&Rect {
+			x: 0,
+			y: renderer.metrics().height(Font::Smallest),
+			w: screen_width,
+			h: 1,
+		});
+
+		let mut renderer = screen.renderer(RenderMode::StatusBar);
+		let status_bar_rect = Rect {
+			x: 0,
+			y: 0,
+			w: screen_width,
+			h: renderer.metrics().height(Font::Smallest),
+		};
+		renderer.erase(&status_bar_rect);
+
+		let mut x = screen_width - 4;
 
 		#[cfg(feature = "dm42")]
-		self.draw_battery_indicator(screen, &mut x);
+		self.draw_battery_indicator(&mut renderer, &mut x);
 
 		// Render alpha mode indicator
 		match self.cached_status_bar_state.alpha {
-			AlphaMode::UpperAlpha => {
-				self.draw_status_bar_indicator(screen, &mut x, "[A]", &SANS_13)
-			}
-			AlphaMode::LowerAlpha => {
-				self.draw_status_bar_indicator(screen, &mut x, "[a]", &SANS_13)
-			}
+			AlphaMode::UpperAlpha => self.draw_status_bar_indicator(
+				&mut renderer,
+				&mut x,
+				"[A]",
+				Font::Smallest,
+				&status_bar_rect,
+			),
+			AlphaMode::LowerAlpha => self.draw_status_bar_indicator(
+				&mut renderer,
+				&mut x,
+				"[a]",
+				Font::Smallest,
+				&status_bar_rect,
+			),
 			_ => (),
 		}
 
 		// Render shift indicator
 		if self.cached_status_bar_state.shift {
-			self.draw_status_bar_indicator(screen, &mut x, "⬏", &SANS_16);
+			self.draw_status_bar_indicator(
+				&mut renderer,
+				&mut x,
+				"⬏",
+				Font::Small,
+				&status_bar_rect,
+			);
 		}
 
 		// Render integer radix indicator
 		match self.cached_status_bar_state.integer_radix {
-			8 => self.draw_status_bar_indicator(screen, &mut x, "Oct", &SANS_13),
-			16 => self.draw_status_bar_indicator(screen, &mut x, "Hex", &SANS_13),
+			8 => self.draw_status_bar_indicator(
+				&mut renderer,
+				&mut x,
+				"Oct",
+				Font::Smallest,
+				&status_bar_rect,
+			),
+			16 => self.draw_status_bar_indicator(
+				&mut renderer,
+				&mut x,
+				"Hex",
+				Font::Smallest,
+				&status_bar_rect,
+			),
 			_ => (),
 		}
 
 		// Render integer format indicator
 		match self.cached_status_bar_state.integer_mode {
 			IntegerMode::Float => (),
-			IntegerMode::BigInteger => {
-				self.draw_status_bar_indicator(screen, &mut x, "int", &SANS_13)
-			}
+			IntegerMode::BigInteger => self.draw_status_bar_indicator(
+				&mut renderer,
+				&mut x,
+				"int",
+				Font::Smallest,
+				&status_bar_rect,
+			),
 			IntegerMode::SizedInteger(size, signed) => {
 				let string = if signed {
 					"i".to_string()
 				} else {
 					"u".to_string()
 				};
-				let string = string + NumberFormat::new().format_bigint(&size.into()).as_str();
-				self.draw_status_bar_indicator(screen, &mut x, &string, &SANS_13);
+				let string = string + Format::new().format_bigint(&size.into()).as_str();
+				self.draw_status_bar_indicator(
+					&mut renderer,
+					&mut x,
+					&string,
+					Font::Smallest,
+					&status_bar_rect,
+				);
 			}
 		}
 
 		// Render angle mode indicator
-		match self.angle_mode {
+		match self.context.angle_mode() {
 			AngleUnit::Degrees => (),
-			AngleUnit::Radians => self.draw_status_bar_indicator(screen, &mut x, "Rad", &SANS_13),
-			AngleUnit::Gradians => self.draw_status_bar_indicator(screen, &mut x, "Grad", &SANS_13),
+			AngleUnit::Radians => self.draw_status_bar_indicator(
+				&mut renderer,
+				&mut x,
+				"Rad",
+				Font::Smallest,
+				&status_bar_rect,
+			),
+			AngleUnit::Gradians => self.draw_status_bar_indicator(
+				&mut renderer,
+				&mut x,
+				"Grad",
+				Font::Smallest,
+				&status_bar_rect,
+			),
 		}
 
 		// Render menu page indicator
 		if self.cached_status_bar_state.multiple_pages {
-			self.draw_status_bar_indicator(screen, &mut x, "▴▾", &SANS_13);
+			self.draw_status_bar_indicator(
+				&mut renderer,
+				&mut x,
+				"▴▾",
+				Font::Smallest,
+				&status_bar_rect,
+			);
 		}
 
 		// Render current time or alternate status text
 		let left_string = &self.cached_status_bar_state.left_string;
-		let left_width = SANS_13.width(left_string) + 8;
+		let left_width = renderer.metrics().width(Font::Smallest, left_string) + 8;
 		if 4 + left_width < x {
-			SANS_13.draw(screen, 4, 0, left_string, Color::StatusBarText);
+			renderer.draw_text(
+				4,
+				0,
+				left_string,
+				Font::Smallest,
+				TokenType::Text,
+				&status_bar_rect,
+			);
 		}
 	}
 
-	fn status_bar_size(&self) -> i32 {
-		SANS_13.height + 1
+	fn status_bar_size(&self, screen: &mut dyn Screen) -> i32 {
+		if self.status_bar_enabled || self.input_mode.shift {
+			screen.metrics().height(Font::Smallest) + 1
+		} else {
+			0
+		}
+	}
+
+	fn render_stack_bottom_layout(
+		&self,
+		layout: Layout,
+		screen: &mut dyn Screen,
+		stack_area: &mut Rect,
+	) {
+		let height = layout.height(screen.metrics());
+		stack_area.h -= height;
+		let rect = Rect {
+			x: 4,
+			y: stack_area.y + stack_area.h,
+			w: screen.width() - 8,
+			h: height,
+		};
+		let clip_rect = Rect {
+			x: 0,
+			y: rect.y,
+			w: screen.width(),
+			h: rect.h,
+		};
+
+		let screen_width = screen.width();
+		let mut renderer = screen.renderer(RenderMode::Normal);
+		renderer.erase(&clip_rect);
+		layout.render(&mut renderer, rect, &clip_rect);
+
+		// Render a line to separate the error from the stack area
+		renderer.fill(
+			&Rect {
+				x: 0,
+				y: stack_area.y + stack_area.h,
+				w: screen_width,
+				h: 1,
+			},
+			TokenType::Error,
+		);
+	}
+
+	fn render_error(&self, error: &Error, screen: &mut dyn Screen, stack_area: &mut Rect) {
+		let mut items = Vec::new();
+		items.push(Layout::StaticText(
+			error.to_str(),
+			Font::Large,
+			TokenType::Error,
+		));
+		items.push(Layout::HorizontalSpace(4));
+		let layout = Layout::Horizontal(items);
+		self.render_stack_bottom_layout(layout, screen, stack_area);
+	}
+
+	fn render_number_editor(
+		&self,
+		editor: &NumberEditor,
+		screen: &mut dyn Screen,
+		stack_area: &mut Rect,
+	) {
+		// Show an editor prompt to the left
+		let prompt_layout = Layout::StaticText("⋙ ", Font::Small, TokenType::Label);
+		let prompt_width = prompt_layout.width(screen.metrics());
+
+		// Currently editing number, format editor text
+		let edit_str = editor.to_string(self.context.format());
+		let layout = if let Some(layout) = edit_str.double_line_layout(
+			self.base_font,
+			self.base_font.smaller(),
+			editor.token_type(),
+			screen.metrics(),
+			screen.width() - prompt_width - 8,
+			Some(edit_str.len()),
+		) {
+			// Full editor representation is OK, display it
+			layout
+		} else {
+			// Editor text cannot fit in the layout constaints, display floating
+			// point representation instead.
+			let mut items = Vec::new();
+			items.push(editor.number().to_decimal().single_line_layout(
+				self.context.format(),
+				"",
+				"",
+				self.base_font,
+				screen.metrics(),
+				screen.width() - prompt_width - 8,
+			));
+			items.push(Layout::EditCursor(Font::Large));
+			Layout::Horizontal(items)
+		};
+
+		// If the hex representation is enabled and valid, show it below
+		let (layout, alt_layout) = Value::Number(editor.number()).add_alternate_layout(
+			layout,
+			self.context.format(),
+			self.base_font.smaller().smaller(),
+			screen.metrics(),
+			screen.width() - prompt_width - 8,
+			true,
+			false,
+		);
+
+		let mut items = Vec::new();
+		items.push(match alt_layout {
+			AlternateLayoutType::Left => prompt_layout,
+			_ => Layout::LeftAlign(Box::new(prompt_layout)),
+		});
+		items.push(layout);
+		self.render_stack_bottom_layout(Layout::Horizontal(items), screen, stack_area);
+	}
+
+	fn render_location_edit(&self, screen: &mut dyn Screen, stack_area: &mut Rect) {
+		let mut items = Vec::new();
+		// Show use of location
+		items.push(Layout::Text(
+			self.location_entry.name.to_string() + " ",
+			Font::Large,
+			TokenType::Keyword,
+		));
+
+		// If this is a stack access, display "Stack"
+		if self.location_entry.stack {
+			items.push(Layout::StaticText(
+				"Stack ",
+				Font::Large,
+				TokenType::Keyword,
+			));
+		}
+
+		// Show currently edited number
+		let mut value_str = String::new();
+		for digit in &self.location_entry.value {
+			value_str.push(char::from_u32('0' as u32 + *digit as u32).unwrap());
+		}
+		items.push(Layout::Text(value_str, Font::Large, TokenType::Text));
+		items.push(Layout::EditCursor(Font::Large));
+
+		items.push(Layout::HorizontalSpace(4));
+
+		let layout = Layout::Horizontal(items);
+		self.render_stack_bottom_layout(layout, screen, stack_area);
 	}
 
 	pub fn render(&mut self, screen: &mut dyn Screen) {
@@ -1056,12 +1239,15 @@ impl State {
 		}
 
 		// Check for updates to status bar and render if changed
-		if self.update_status_bar_state() || self.force_refresh {
+		if self.update_status_bar_state()
+			|| self.force_refresh
+			|| self.force_render_on_status_update
+		{
 			self.draw_status_bar(screen);
 		}
 
 		// Check for updates to function key indicators and render if changed
-		self.function_keys.update(&self.format);
+		self.function_keys.update(self.context.format());
 		if self.function_keys.update_menu_strings(&self) || self.force_refresh {
 			self.function_keys.render(screen);
 		}
@@ -1070,109 +1256,54 @@ impl State {
 		// state display.
 		let mut stack_area = Rect {
 			x: 0,
-			y: self.status_bar_size(),
+			y: self.status_bar_size(screen),
 			w: screen.width(),
-			h: screen.height() - self.status_bar_size() - self.function_keys.height(),
+			h: screen.height() - self.status_bar_size(screen) - self.function_keys.height(screen),
 		};
 
 		// If there is an error, display the message
-		if let Some(error) = self.error {
-			let mut items = Vec::new();
-			items.push(Layout::StaticText(
-				error.to_str(),
-				&SANS_24,
-				Color::ContentText,
-			));
-			items.push(Layout::HorizontalSpace(4));
-			let layout = Layout::Horizontal(items);
-
-			let height = layout.height();
-			stack_area.h -= height;
-			let rect = Rect {
-				x: 0,
-				y: stack_area.y + stack_area.h,
-				w: screen.width(),
-				h: height,
-			};
-			let clip_rect = rect.clone();
-			screen.fill(rect.clone(), Color::ContentBackground);
-			layout.render(screen, rect, &clip_rect, None);
-
-			// Render a line to separate the error from the stack area
-			screen.fill(
-				Rect {
-					x: 0,
-					y: stack_area.y + stack_area.h,
-					w: screen.width(),
-					h: 1,
-				},
-				Color::ContentText,
-			);
+		if let Some(error) = &self.error {
+			self.render_error(error, screen, &mut stack_area);
 		}
 
-		// If there is an active location editor present, render it
-		if self.input_state == InputState::Recall || self.input_state == InputState::Store {
-			let mut items = Vec::new();
-			// Show use of location
-			items.push(Layout::Text(
-				self.location_entry.name.to_string() + " ",
-				&SANS_24,
-				Color::ContentText,
-			));
-
-			// If this is a stack access, display "Stack"
-			if self.location_entry.stack {
-				items.push(Layout::StaticText("Stack ", &SANS_24, Color::ContentText));
+		// If there is an active editor present, render it
+		let mut stack_label_offset = 0;
+		match self.input_state {
+			InputState::NumberInput => {
+				if let Some(editor) = &self.editor {
+					self.render_number_editor(editor, screen, &mut stack_area);
+					stack_label_offset = 1;
+				}
 			}
-
-			// Show currently edited number
-			let mut value_str = String::new();
-			for digit in &self.location_entry.value {
-				value_str.push(char::from_u32('0' as u32 + *digit as u32).unwrap());
+			InputState::Recall | InputState::Store => {
+				self.render_location_edit(screen, &mut stack_area)
 			}
-			items.push(Layout::EditText(value_str, &SANS_24, Color::ContentText));
-
-			items.push(Layout::HorizontalSpace(4));
-
-			// Render the layout and adjust the stack area to not include it
-			let layout = Layout::Horizontal(items);
-			let height = layout.height();
-			stack_area.h -= height;
-			let rect = Rect {
-				x: 0,
-				y: stack_area.y + stack_area.h,
-				w: screen.width(),
-				h: height,
-			};
-			let clip_rect = rect.clone();
-			screen.fill(rect.clone(), Color::ContentBackground);
-			layout.render(screen, rect, &clip_rect, None);
-
-			// Render a line to separate the stack area from the location editor
-			screen.fill(
-				Rect {
-					x: 0,
-					y: stack_area.y + stack_area.h,
-					w: screen.width(),
-					h: 1,
-				},
-				Color::ContentText,
-			);
+			_ => (),
 		}
 
 		// Render the stack
 		if self.force_refresh {
-			self.stack.force_refresh();
+			self.stack_renderer.borrow_mut().force_refresh();
 		}
-		self.stack.render(screen, &self.format, stack_area);
+		self.stack_renderer.borrow_mut().render(
+			self.context.stack(),
+			&mut screen.renderer(RenderMode::Normal),
+			self.context.format(),
+			self.base_font,
+			stack_area,
+			stack_label_offset,
+		);
 
 		// Refresh the LCD contents
 		screen.refresh();
 		self.force_refresh = false;
+		self.force_render_on_status_update = false;
 	}
 
 	pub fn update_header(&mut self, screen: &mut dyn Screen) {
-		if self.input_state != InputState::Menu {
+		if self.force_render_on_status_update {
+			self.render(screen);
+		} else if self.input_state != InputState::Menu {
 			// When specifically updating the header, always render the header
 			self.update_status_bar_state();
 			self.draw_status_bar(screen);
@@ -1202,9 +1333,11 @@ impl State {
 		Ok(())
 	}
 
-	pub fn show_menu(&mut self, menu: Menu) {
+	pub fn show_menu(&mut self, menu: Menu) -> Result<()> {
+		self.end_edit()?;
 		self.menus.push(menu);
 		self.input_state = InputState::Menu;
+		Ok(())
 	}
 
 	pub fn show_system_setup_menu(&mut self) {
@@ -1213,6 +1346,11 @@ impl State {
 	}
 
 	pub fn wait_for_input<InputT: InputQueue>(&mut self, input: &mut InputT) -> Option<InputEvent> {
-		input.wait(&mut self.input_mode)
+		let prev_shift = self.input_mode.shift;
+		let result = input.wait(&mut self.input_mode);
+		if !self.status_bar_enabled && prev_shift != self.input_mode.shift {
+			self.force_render_on_status_update = true;
+		}
+		result
 	}
 }

@@ -1,25 +1,29 @@
 use crate::complex::ComplexNumber;
-use crate::edit::NumberEditor;
 use crate::error::{Error, Result};
-use crate::font::{SANS_13, SANS_16, SANS_20, SANS_24};
-use crate::layout::Layout;
+use crate::format::{Format, FormatResult};
 use crate::matrix::Matrix;
-use crate::number::{Number, NumberFormat, NumberFormatMode, ToNumber, MAX_SHORT_DISPLAY_BITS};
-use crate::screen::Color;
+use crate::number::{Number, ToNumber};
 use crate::storage::{
 	store, DeserializeInput, SerializeOutput, StorageObject, StorageRef, StorageRefSerializer,
 };
 use crate::time::{SimpleDateTimeFormat, SimpleDateTimeToString};
 use crate::unit::{AngleUnit, CompositeUnit, TimeUnit, Unit};
 use crate::vector::Vector;
-use alloc::borrow::Cow;
-use alloc::boxed::Box;
-use alloc::string::{String, ToString};
-use alloc::vec::Vec;
 use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
-use core::convert::TryFrom;
 use core::ops::Add;
-use num_bigint::{BigInt, ToBigInt};
+use num_bigint::BigInt;
+
+#[cfg(feature = "std")]
+use std::borrow::Cow;
+#[cfg(feature = "std")]
+use std::convert::TryFrom;
+
+#[cfg(not(feature = "std"))]
+use alloc::borrow::Cow;
+#[cfg(not(feature = "std"))]
+use alloc::string::{String, ToString};
+#[cfg(not(feature = "std"))]
+use core::convert::TryFrom;
 
 #[derive(Clone)]
 pub enum Value {
@@ -93,9 +97,9 @@ impl Value {
 			Value::Number(num) => num.to_string(),
 			Value::NumberWithUnit(num, _) => num.to_string(),
 			Value::Complex(num) => num.to_string(),
-			Value::DateTime(dt) => dt.simple_format(&SimpleDateTimeFormat::full()),
-			Value::Date(date) => date.simple_format(&SimpleDateTimeFormat::date()),
-			Value::Time(time) => time.simple_format(&SimpleDateTimeFormat::time()),
+			Value::DateTime(dt) => dt.simple_format(&SimpleDateTimeFormat::full(false)),
+			Value::Date(date) => date.simple_format(&SimpleDateTimeFormat::date(false)),
+			Value::Time(time) => time.simple_format(&SimpleDateTimeFormat::time(false)),
 			Value::Vector(vector) => {
 				"⟪".to_string() + &vector.len().to_number().to_string() + " elem vector⟫"
 			}
@@ -108,12 +112,21 @@ impl Value {
 		}
 	}
 
-	pub fn format(&self, format: &NumberFormat) -> String {
+	pub fn format(&self, format: &Format) -> FormatResult {
 		match self {
 			Value::Number(num) => format.format_number(num),
 			Value::NumberWithUnit(num, _) => format.format_number(num),
-			Value::Complex(num) => num.format(format),
-			_ => self.to_string(),
+			Value::Complex(num) => FormatResult::Complex(num.format(format)),
+			Value::DateTime(dt) => FormatResult::Object(
+				dt.simple_format(&SimpleDateTimeFormat::full(format.time_24_hour)),
+			),
+			Value::Date(date) => FormatResult::Object(
+				date.simple_format(&SimpleDateTimeFormat::date(format.time_24_hour)),
+			),
+			Value::Time(time) => FormatResult::Object(
+				time.simple_format(&SimpleDateTimeFormat::time(format.time_24_hour)),
+			),
+			_ => FormatResult::Object(self.to_string()),
 		}
 	}
 
@@ -367,15 +380,15 @@ impl Value {
 		}
 	}
 
-	pub fn add_unit_inv(&self, unit: Unit) -> Result<Value> {
+	pub fn add_inv_unit(&self, unit: Unit) -> Result<Value> {
 		match self {
 			Value::Number(num) => Ok(Value::NumberWithUnit(
 				num.clone(),
-				CompositeUnit::single_unit_inv(unit),
+				CompositeUnit::single_inv_unit(unit),
 			)),
 			Value::NumberWithUnit(num, existing_unit) => {
 				let mut new_unit = existing_unit.clone();
-				let new_num = new_unit.add_unit_inv(num, unit);
+				let new_num = new_unit.add_inv_unit(num, unit);
 				if new_unit.unitless() {
 					Ok(Value::Number(new_num))
 				} else {
@@ -924,427 +937,6 @@ impl Value {
 				_ => Err(Error::DataTypeMismatch),
 			},
 			_ => Err(Error::DataTypeMismatch),
-		}
-	}
-
-	fn render_units(&self) -> Option<Layout> {
-		match self {
-			Value::NumberWithUnit(_, units) => {
-				// Font sizes are different depending on if the units have a fraction
-				// representation or not, so keep track of both
-				let mut numer_layout = Vec::new();
-				let mut numer_only_layout = Vec::new();
-				let mut denom_layout = Vec::new();
-				let mut denom_only_layout = Vec::new();
-
-				// Sort units into numerator and denominator layout lists
-				for (_, unit) in &units.units {
-					if unit.1 < 0 {
-						// Power is negative, unit is in denominator
-						if denom_layout.len() != 0 {
-							// Add multiplication symbol to separate unit names
-							denom_layout.push(Layout::StaticText(
-								"∙",
-								&SANS_20,
-								Color::ContentText,
-							));
-							denom_only_layout.push(Layout::StaticText(
-								"∙",
-								&SANS_24,
-								Color::ContentText,
-							));
-						}
-
-						// Create layout in denomator of a fraction
-						let unit_text =
-							Layout::StaticText(unit.0.to_str(), &SANS_20, Color::ContentText);
-						let layout = if unit.1 < -1 {
-							Layout::Power(
-								Box::new(unit_text),
-								Box::new(Layout::Text(
-									(-unit.1).to_number().to_string(),
-									&SANS_13,
-									Color::ContentText,
-								)),
-							)
-						} else {
-							unit_text
-						};
-						denom_layout.push(layout);
-
-						// Create layout if there is no numerator
-						denom_only_layout.push(Layout::Power(
-							Box::new(Layout::StaticText(
-								unit.0.to_str(),
-								&SANS_24,
-								Color::ContentText,
-							)),
-							Box::new(Layout::Text(
-								unit.1.to_number().to_string(),
-								&SANS_16,
-								Color::ContentText,
-							)),
-						));
-					} else if unit.1 > 0 {
-						// Power is positive, unit is in numerator
-						if numer_layout.len() != 0 {
-							// Add multiplication symbol to separate unit names
-							numer_layout.push(Layout::StaticText(
-								"∙",
-								&SANS_20,
-								Color::ContentText,
-							));
-							numer_only_layout.push(Layout::StaticText(
-								"∙",
-								&SANS_24,
-								Color::ContentText,
-							));
-						}
-
-						// Create layout in numerator of a fraction
-						let unit_text =
-							Layout::StaticText(unit.0.to_str(), &SANS_20, Color::ContentText);
-						let layout = if unit.1 > 1 {
-							Layout::Power(
-								Box::new(unit_text),
-								Box::new(Layout::Text(
-									unit.1.to_number().to_string(),
-									&SANS_13,
-									Color::ContentText,
-								)),
-							)
-						} else {
-							unit_text
-						};
-						numer_layout.push(layout);
-
-						// Create layout if there is no denominator
-						let unit_text =
-							Layout::StaticText(unit.0.to_str(), &SANS_24, Color::ContentText);
-						let layout = if unit.1 > 1 {
-							Layout::Power(
-								Box::new(unit_text),
-								Box::new(Layout::Text(
-									unit.1.to_number().to_string(),
-									&SANS_16,
-									Color::ContentText,
-								)),
-							)
-						} else {
-							unit_text
-						};
-						numer_only_layout.push(layout);
-					}
-				}
-
-				// Create final layout
-				if numer_layout.len() == 0 && denom_layout.len() == 0 {
-					// No unit
-					None
-				} else if denom_layout.len() == 0 {
-					// Numerator only
-					numer_only_layout
-						.insert(0, Layout::StaticText(" ", &SANS_24, Color::ContentText));
-					Some(Layout::Horizontal(numer_only_layout))
-				} else if numer_layout.len() == 0 {
-					// Denominator only
-					denom_only_layout
-						.insert(0, Layout::StaticText(" ", &SANS_24, Color::ContentText));
-					Some(Layout::Horizontal(denom_only_layout))
-				} else {
-					// Fraction
-					let mut final_layout = Vec::new();
-					final_layout.push(Layout::StaticText(" ", &SANS_24, Color::ContentText));
-					final_layout.push(Layout::Fraction(
-						Box::new(Layout::Horizontal(numer_layout)),
-						Box::new(Layout::Horizontal(denom_layout)),
-						Color::ContentText,
-					));
-					Some(Layout::Horizontal(final_layout))
-				}
-			}
-			_ => None,
-		}
-	}
-
-	fn alternate_hex_layout(&self, format: &NumberFormat, max_width: i32) -> Option<Layout> {
-		match self.real_number() {
-			Ok(Number::Integer(int)) => {
-				// Integer, if number is ten or greater check for the
-				// hexadecimal alternate form
-				if format.show_alt_hex
-					&& (format.integer_radix != 10
-						|| format.mode == NumberFormatMode::Normal
-						|| format.mode == NumberFormatMode::Rational)
-					&& (int <= &-10.to_bigint().unwrap()
-						|| int >= &10.to_bigint().unwrap()
-						|| int <= &(-(format.integer_radix as i8)).to_bigint().unwrap()
-						|| int >= &(format.integer_radix as i8).to_bigint().unwrap())
-					&& int.bits() <= MAX_SHORT_DISPLAY_BITS
-				{
-					// There is an alternate form to display, try to generate a single
-					// line layout for it.
-					let string = if format.integer_radix == 10 {
-						self.format(&format.hex_format())
-					} else {
-						self.format(&format.decimal_format())
-					};
-					Layout::single_line_string_layout(
-						&string,
-						&SANS_16,
-						Color::ContentText,
-						max_width,
-						false,
-					)
-				} else {
-					None
-				}
-			}
-			_ => None,
-		}
-	}
-
-	fn alternate_float_layout(&self, format: &NumberFormat, max_width: i32) -> Option<Layout> {
-		match self {
-			Value::Number(Number::Rational(_, _))
-			| Value::NumberWithUnit(Number::Rational(_, _), _) => {
-				// Real number in rational form
-				if format.show_alt_float && format.mode == NumberFormatMode::Rational {
-					if let Ok(number) = self.real_number() {
-						let string = format.decimal_format().format_decimal(&number.to_decimal());
-						Layout::single_line_string_layout(
-							&string,
-							&SANS_16,
-							Color::ContentText,
-							max_width,
-							false,
-						)
-					} else {
-						None
-					}
-				} else {
-					None
-				}
-			}
-			Value::Complex(value) => {
-				if format.show_alt_float
-					&& format.mode == NumberFormatMode::Rational
-					&& (value.real_part().is_rational() || value.imaginary_part().is_rational())
-				{
-					// Complex number with at least one part in rational form
-					let real_part = value.real_part().to_decimal();
-					let imaginary_part = value.imaginary_part().to_decimal();
-					let string = if imaginary_part.is_sign_negative() {
-						format.with_max_precision(8).format_decimal(&real_part)
-							+ " - " + &format
-							.with_max_precision(8)
-							.format_decimal(&-&*imaginary_part)
-							+ "ℹ"
-					} else {
-						format.with_max_precision(8).format_decimal(&real_part)
-							+ " + " + &format.with_max_precision(8).format_decimal(&imaginary_part)
-							+ "ℹ"
-					};
-					Layout::single_line_string_layout(
-						&string,
-						&SANS_16,
-						Color::ContentText,
-						max_width,
-						false,
-					)
-				} else {
-					None
-				}
-			}
-			_ => None,
-		}
-	}
-
-	pub fn render(
-		&self,
-		format: &NumberFormat,
-		editor: &Option<NumberEditor>,
-		max_width: i32,
-	) -> Layout {
-		let mut max_width = max_width;
-
-		// First check for an active editor. There can't be units at this stage so ignore
-		// them at this point.
-		if let Some(editor) = editor {
-			// Currently editing number, format editor text
-			let mut layout = if let Some(layout) = Layout::double_line_string_layout(
-				&editor.to_string(format),
-				&SANS_24,
-				&SANS_20,
-				Color::ContentText,
-				max_width,
-				true,
-			) {
-				// Full editor representation is OK, display it
-				layout
-			} else {
-				// Editor text cannot fit in the layout constaints, display floating
-				// point representation instead. Editor only operates on real numbers
-				// so we assume that it is a real number.
-				Layout::single_line_decimal_layout(
-					&self.real_number().unwrap().to_decimal(),
-					format,
-					"",
-					"",
-					&SANS_24,
-					Color::ContentText,
-					max_width,
-				)
-			};
-
-			// If the hex representation is enabled and valid, show it below
-			if let Some(alt_layout) = self.alternate_hex_layout(format, max_width) {
-				let mut alt_layout_items = Vec::new();
-				alt_layout_items.push(layout);
-				alt_layout_items.push(alt_layout);
-				layout = Layout::Vertical(alt_layout_items);
-			}
-			return layout;
-		}
-
-		// Generate unit layout if there are units
-		let mut unit_layout = self.render_units();
-		if let Some(layout) = &unit_layout {
-			let width = layout.width();
-			if width > max_width / 2 {
-				// Units take up too much room, don't display them
-				unit_layout = None;
-			} else {
-				// Reduce remaining maximum width by width of units
-				max_width -= width;
-			}
-		}
-
-		// Check full detailed layout of value to see if it is valid and fits within the max size
-		match self {
-			Value::Number(value) | Value::NumberWithUnit(value, _) => {
-				// Real number, try to render full representation
-				if let Some((layout, is_rational)) = Layout::double_line_number_layout(
-					value,
-					format,
-					&SANS_24,
-					&SANS_20,
-					Color::ContentText,
-					max_width,
-				) {
-					// If units are present, add them to the layout
-					let mut layout = if let Some(unit_layout) = unit_layout {
-						let mut horizontal_items = Vec::new();
-						horizontal_items.push(layout);
-						horizontal_items.push(unit_layout);
-						Layout::Horizontal(horizontal_items)
-					} else {
-						layout
-					};
-
-					// Check to see if alternate representations are available
-					if let Some(alt_layout) = self.alternate_hex_layout(format, max_width) {
-						let mut alt_layout_items = Vec::new();
-						alt_layout_items.push(layout);
-						alt_layout_items.push(alt_layout);
-						layout = Layout::Vertical(alt_layout_items);
-					} else if is_rational {
-						if let Some(alt_layout) = self.alternate_float_layout(format, max_width) {
-							let mut alt_layout_items = Vec::new();
-							alt_layout_items.push(layout);
-							alt_layout_items.push(alt_layout);
-							layout = Layout::Vertical(alt_layout_items);
-						}
-					}
-					return layout;
-				}
-			}
-			Value::Complex(_) => {
-				if let Some(mut layout) = Layout::single_line_numerical_value_layout(
-					self, format, &SANS_24, &SANS_20, max_width, true,
-				) {
-					// Layout fits. Check to see if floating point alternate
-					// representation is enabled
-					if let Some(alt_layout) = self.alternate_float_layout(&format, max_width) {
-						let mut alt_layout_items = Vec::new();
-						alt_layout_items.push(layout);
-						alt_layout_items.push(alt_layout);
-						layout = Layout::Vertical(alt_layout_items);
-					}
-					return layout;
-				}
-			}
-			Value::Vector(vector) => {
-				// Vector, try to represent full form of vector entries in a single line. This is the
-				// preferred form because it can show rationals.
-				if let Some(layout) =
-					vector.single_line_full_layout(format, &SANS_24, &SANS_20, max_width)
-				{
-					return layout;
-				}
-
-				// Try a three line layout with full precision decimal form
-				if let Some(layout) = vector.multi_line_layout(format, &SANS_20, max_width, 3) {
-					return layout;
-				}
-
-				// Try a three line layout with partial precision decimal form
-				if let Some(layout) =
-					vector.multi_line_layout(&format.with_max_precision(6), &SANS_20, max_width, 3)
-				{
-					return layout;
-				}
-
-				// Try a four line layout with smaller font
-				if let Some(layout) =
-					vector.multi_line_layout(&format.with_max_precision(6), &SANS_16, max_width, 4)
-				{
-					return layout;
-				}
-			}
-			Value::Matrix(matrix) => {
-				// Matrix, try to display all elements of a matrix of 4x4 or smaller.
-				let largest_axis = core::cmp::max(matrix.rows(), matrix.cols());
-				if largest_axis <= 4 {
-					let mut max_font_size: i32 = if largest_axis == 1 {
-						3
-					} else if largest_axis <= 3 {
-						2
-					} else {
-						1
-					};
-
-					while max_font_size >= 0 {
-						let font = match max_font_size {
-							3 => &SANS_24,
-							2 => &SANS_20,
-							1 => &SANS_16,
-							0 => &SANS_13,
-							_ => unreachable!(),
-						};
-
-						if let Some(layout) = matrix.layout(format, font, max_width) {
-							return layout;
-						}
-						max_font_size -= 1;
-					}
-				}
-			}
-			_ => (),
-		}
-
-		// Generate simple layout that will always fit
-		let layout =
-			Layout::double_line_simple_value_layout(self, format, &SANS_24, &SANS_20, max_width);
-
-		// If units are present, add them to the layout
-		if let Some(unit_layout) = unit_layout {
-			let mut horizontal_items = Vec::new();
-			horizontal_items.push(layout);
-			horizontal_items.push(unit_layout);
-			Layout::Horizontal(horizontal_items)
-		} else {
-			layout
 		}
 	}
 }

@@ -1,3 +1,4 @@
+#[cfg(feature = "dm42")]
 use alloc::string::{String, ToString};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

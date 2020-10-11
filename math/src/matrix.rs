@@ -1,13 +1,9 @@
 use crate::error::{Error, Result};
-use crate::layout::Layout;
-use crate::number::NumberFormat;
-use crate::screen::Font;
 use crate::storage::{
 	store, DeserializeInput, SerializeOutput, StorageObject, StorageRef, StorageRefArray,
 	StorageRefSerializer,
 };
 use crate::value::{Value, ValueRef};
-use alloc::vec::Vec;
 
 const MAX_CAPACITY: usize = 1024;
 
@@ -90,52 +86,6 @@ impl Matrix {
 			self.array.set(i, value)?;
 		}
 		Ok(())
-	}
-
-	pub fn layout(
-		&self,
-		format: &NumberFormat,
-		font: &'static Font,
-		max_width: i32,
-	) -> Option<Layout> {
-		let mut col_items = Vec::new();
-		let left_bracket = Layout::LeftMatrixBracket;
-		let right_bracket = Layout::RightMatrixBracket;
-		let col_width = max_width.checked_sub(
-			left_bracket.width() + right_bracket.width() + (self.cols as i32 - 1) * 20,
-		)? / (self.cols as i32);
-		col_items.push(left_bracket);
-
-		for col in 0..self.cols {
-			if col != 0 {
-				col_items.push(Layout::HorizontalSpace(20));
-			}
-			let mut row_items = Vec::new();
-			for row in 0..self.rows {
-				let value = if let Ok(value) = self.get(row, col) {
-					value
-				} else {
-					return None;
-				};
-
-				row_items.push(Layout::single_line_simple_value_layout(
-					&value, format, font, col_width,
-				));
-			}
-			col_items.push(Layout::Vertical(row_items));
-		}
-
-		col_items.push(right_bracket);
-		let layout = Layout::Horizontal(col_items);
-		if layout.width() <= max_width {
-			let mut result_items = Vec::new();
-			result_items.push(Layout::VerticalSpace(2));
-			result_items.push(layout);
-			result_items.push(Layout::VerticalSpace(2));
-			Some(Layout::Vertical(result_items))
-		} else {
-			None
-		}
 	}
 }
 

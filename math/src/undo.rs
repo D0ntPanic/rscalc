@@ -4,8 +4,10 @@ use crate::storage::{
 	StorageRefSerializer,
 };
 use crate::value::{Value, ValueRef};
-use alloc::vec::Vec;
 use spin::Mutex;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 
 const MAX_UNDO_ENTRIES: usize = 100;
 

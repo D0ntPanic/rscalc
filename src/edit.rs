@@ -1,9 +1,14 @@
-use crate::error::{Error, Result};
-use crate::number::{Number, NumberDecimalPointMode, NumberFormat};
-use alloc::string::String;
-use alloc::vec::Vec;
 use intel_dfp::Decimal;
 use num_bigint::{BigInt, ToBigInt};
+use rscalc_layout::layout::TokenType;
+use rscalc_math::error::{Error, Result};
+use rscalc_math::format::{DecimalPointMode, Format};
+use rscalc_math::number::Number;
+
+#[cfg(feature = "dm42")]
+use alloc::string::String;
+#[cfg(feature = "dm42")]
+use alloc::vec::Vec;
 
 const MAX_FRACTION_DIGITS: usize = 34;
 const MAX_EXPONENT: i32 = 9999;
@@ -26,7 +31,7 @@ pub struct NumberEditor {
 }
 
 impl NumberEditor {
-	pub fn new(format: &NumberFormat) -> Self {
+	pub fn new(format: &Format) -> Self {
 		NumberEditor {
 			sign: false,
 			integer: 0.into(),
@@ -132,7 +137,7 @@ impl NumberEditor {
 		true
 	}
 
-	pub fn to_string(&self, format: &NumberFormat) -> String {
+	pub fn to_string(&self, format: &Format) -> String {
 		let mut result = String::new();
 		if self.sign {
 			result += "-";
@@ -140,8 +145,8 @@ impl NumberEditor {
 		result += format.format_bigint(&self.integer).as_str();
 		if self.state != NumberEditorState::Integer {
 			result += match format.decimal_point {
-				NumberDecimalPointMode::Period => ".",
-				NumberDecimalPointMode::Comma => ",",
+				DecimalPointMode::Period => ".",
+				DecimalPointMode::Comma => ",",
 			};
 			let mut decimal_chars = Vec::new();
 			for digit in &self.fraction_digits {
@@ -202,6 +207,13 @@ impl NumberEditor {
 			Number::Decimal(-result)
 		} else {
 			Number::Decimal(result)
+		}
+	}
+
+	pub fn token_type(&self) -> TokenType {
+		match self.state {
+			NumberEditorState::Integer => TokenType::Integer,
+			_ => TokenType::Float,
 		}
 	}
 }

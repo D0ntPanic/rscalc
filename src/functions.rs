@@ -1,75 +1,38 @@
 use crate::catalog::{assign_menu, catalog_menu, CatalogPage};
-use crate::error::{Error, Result};
-use crate::font::SANS_13;
 use crate::input::InputEvent;
-use crate::matrix::Matrix;
 use crate::menu::settings_menu;
-use crate::number::{
-	IntegerMode, Number, NumberDecimalPointMode, NumberFormat, NumberFormatMode, ToNumber,
-	MAX_INTEGER_BITS,
-};
-use crate::screen::{Color, Rect, Screen};
+use crate::screen::{RenderMode, Screen};
 use crate::state::{State, StatusBarLeftDisplayType};
-use crate::time::Now;
-use crate::unit::{
-	unit_catalog_menu, unit_catalog_menu_of_type, unit_menu_of_type, AngleUnit, CompositeUnit,
-	DistanceUnit, TimeUnit, Unit, UnitType,
-};
-use crate::value::Value;
-use crate::vector::Vector;
-use alloc::borrow::Cow;
+use crate::unit::{unit_catalog_menu, unit_catalog_menu_of_type, unit_menu_of_type};
+use rscalc_layout::font::Font;
+use rscalc_layout::layout::{LayoutRenderer, Rect, TokenType};
+use rscalc_math::error::Result;
+use rscalc_math::format::{AlternateFormatMode, Format, IntegerMode};
+use rscalc_math::functions::StackFunction;
+use rscalc_math::unit::UnitType;
+
+#[cfg(not(feature = "dm42"))]
+use std::cell::RefCell;
+
+#[cfg(feature = "dm42")]
 use alloc::boxed::Box;
+#[cfg(feature = "dm42")]
 use alloc::string::{String, ToString};
+#[cfg(feature = "dm42")]
 use alloc::vec::Vec;
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+#[cfg(feature = "dm42")]
 use core::cell::RefCell;
-use core::convert::TryFrom;
-use num_bigint::ToBigInt;
 
 #[cfg(feature = "dm42")]
 use crate::dm42::{set_time_24_hour, time_24_hour};
-#[cfg(not(feature = "dm42"))]
-use crate::time::{set_time_24_hour, time_24_hour};
 
 #[derive(PartialEq, Eq, Clone)]
 #[allow(dead_code)]
 pub enum Function {
+	Stack(StackFunction),
 	Input(InputEvent),
-	NormalFormat,
-	RationalFormat,
-	ScientificFormat,
-	EngineeringFormat,
-	AlternateHex,
-	AlternateFloat,
-	ThousandsSeparatorOff,
-	ThousandsSeparatorOn,
-	DecimalPointPeriod,
-	DecimalPointComma,
-	Float,
 	SignedInteger,
 	UnsignedInteger,
-	BigInteger,
-	Signed8Bit,
-	Signed16Bit,
-	Signed32Bit,
-	Signed64Bit,
-	Signed128Bit,
-	Unsigned8Bit,
-	Unsigned16Bit,
-	Unsigned32Bit,
-	Unsigned64Bit,
-	Unsigned128Bit,
-	And,
-	Or,
-	Xor,
-	Not,
-	ShiftLeft,
-	ShiftRight,
-	RotateLeft,
-	RotateRight,
-	Hex,
-	Octal,
-	Decimal,
 	CatalogPage(CatalogPage),
 	AddUnitCatalogMenu,
 	AddUnitCatalogPage(UnitType),
@@ -87,251 +50,32 @@ pub enum Function {
 	AssignConvertUnitCatalogPage(usize, UnitType),
 	AssignCatalogFunction(usize, Box<Function>),
 	RemoveCustomAssign(usize),
-	SpeedOfLight,
-	Now,
-	Date,
-	Time,
-	Degrees,
-	Radians,
-	Gradians,
-	ClearUnits,
 	UnitMenu(UnitType),
-	AddUnit(Unit),
-	AddUnitSquared(Unit),
-	AddUnitCubed(Unit),
-	AddInvUnit(Unit),
-	AddInvUnitSquared(Unit),
-	AddInvUnitCubed(Unit),
-	ConvertToUnit(Unit),
 	SettingsMenu,
 	SystemMenu,
 	Time24HourToggle,
 	StatusBarLeftDisplayToggle,
-	Log,
-	Exp10,
-	Ln,
-	Exp,
-	Sin,
-	Cos,
-	Tan,
-	Asin,
-	Acos,
-	Atan,
-	Sinh,
-	Cosh,
-	Tanh,
-	Asinh,
-	Acosh,
-	Atanh,
-	Sum,
-	Mean,
-	DotProduct,
-	CrossProduct,
-	Magnitude,
-	Normalize,
+	StackLabelXYZToggle,
+	ShowEmptySoftKeyToggle,
+	StatusBarToggle,
+	FontSizeToggle,
+	AlternateFormatModeToggle,
 	NewMatrix,
-	ToMatrix,
-	RowsToMatrix,
-	ColsToMatrix,
-	IdentityMatrix,
-	Transpose,
 }
 
 impl Function {
 	pub fn to_string(&self, state: &State) -> String {
 		match self {
+			Function::Stack(func) => func.to_string(state.context()),
 			Function::Input(input) => input.to_string(),
-			Function::NormalFormat => {
-				if state.format().mode == NumberFormatMode::Normal {
-					"▪Norm".to_string()
-				} else {
-					"Norm".to_string()
-				}
-			}
-			Function::RationalFormat => {
-				if state.format().mode == NumberFormatMode::Rational {
-					"▪Frac".to_string()
-				} else {
-					"Frac".to_string()
-				}
-			}
-			Function::ScientificFormat => {
-				if state.format().mode == NumberFormatMode::Scientific {
-					"▪Sci".to_string()
-				} else {
-					"Sci".to_string()
-				}
-			}
-			Function::EngineeringFormat => {
-				if state.format().mode == NumberFormatMode::Engineering {
-					"▪Eng".to_string()
-				} else {
-					"Eng".to_string()
-				}
-			}
-			Function::AlternateHex => {
-				if state.format().show_alt_hex {
-					"▪↓Hex".to_string()
-				} else {
-					"↓Hex".to_string()
-				}
-			}
-			Function::AlternateFloat => {
-				if state.format().show_alt_float {
-					"▪↓Flt".to_string()
-				} else {
-					"↓Flt".to_string()
-				}
-			}
-			Function::ThousandsSeparatorOff => {
-				if state.format().thousands {
-					"1000".to_string()
-				} else {
-					"▪1000".to_string()
-				}
-			}
-			Function::ThousandsSeparatorOn => {
-				if state.format().thousands {
-					"▪1,000".to_string()
-				} else {
-					"1,000".to_string()
-				}
-			}
-			Function::DecimalPointPeriod => {
-				if state.format().decimal_point == NumberDecimalPointMode::Period {
-					"▪0.5".to_string()
-				} else {
-					"0.5".to_string()
-				}
-			}
-			Function::DecimalPointComma => {
-				if state.format().decimal_point == NumberDecimalPointMode::Comma {
-					"▪0,5".to_string()
-				} else {
-					"0,5".to_string()
-				}
-			}
-			Function::Float => {
-				if state.format().integer_mode == IntegerMode::Float {
-					"▪float".to_string()
-				} else {
-					"float".to_string()
-				}
-			}
-			Function::SignedInteger => match state.format().integer_mode {
+			Function::SignedInteger => match state.context().format().integer_mode {
 				IntegerMode::BigInteger | IntegerMode::SizedInteger(_, true) => "▪int".to_string(),
 				_ => "int".to_string(),
 			},
-			Function::UnsignedInteger => match state.format().integer_mode {
+			Function::UnsignedInteger => match state.context().format().integer_mode {
 				IntegerMode::SizedInteger(_, false) => "▪uint".to_string(),
 				_ => "uint".to_string(),
 			},
-			Function::BigInteger => {
-				if state.format().integer_mode == IntegerMode::BigInteger {
-					"▪int∞".to_string()
-				} else {
-					"int∞".to_string()
-				}
-			}
-			Function::Signed8Bit => {
-				if state.format().integer_mode == IntegerMode::SizedInteger(8, true) {
-					"▪i8".to_string()
-				} else {
-					"i8".to_string()
-				}
-			}
-			Function::Signed16Bit => {
-				if state.format().integer_mode == IntegerMode::SizedInteger(16, true) {
-					"▪i16".to_string()
-				} else {
-					"i16".to_string()
-				}
-			}
-			Function::Signed32Bit => {
-				if state.format().integer_mode == IntegerMode::SizedInteger(32, true) {
-					"▪i32".to_string()
-				} else {
-					"i32".to_string()
-				}
-			}
-			Function::Signed64Bit => {
-				if state.format().integer_mode == IntegerMode::SizedInteger(64, true) {
-					"▪i64".to_string()
-				} else {
-					"i64".to_string()
-				}
-			}
-			Function::Signed128Bit => {
-				if state.format().integer_mode == IntegerMode::SizedInteger(128, true) {
-					"▪i128".to_string()
-				} else {
-					"i128".to_string()
-				}
-			}
-			Function::Unsigned8Bit => {
-				if state.format().integer_mode == IntegerMode::SizedInteger(8, false) {
-					"▪u8".to_string()
-				} else {
-					"u8".to_string()
-				}
-			}
-			Function::Unsigned16Bit => {
-				if state.format().integer_mode == IntegerMode::SizedInteger(16, false) {
-					"▪u16".to_string()
-				} else {
-					"u16".to_string()
-				}
-			}
-			Function::Unsigned32Bit => {
-				if state.format().integer_mode == IntegerMode::SizedInteger(32, false) {
-					"▪u32".to_string()
-				} else {
-					"u32".to_string()
-				}
-			}
-			Function::Unsigned64Bit => {
-				if state.format().integer_mode == IntegerMode::SizedInteger(64, false) {
-					"▪u64".to_string()
-				} else {
-					"u64".to_string()
-				}
-			}
-			Function::Unsigned128Bit => {
-				if state.format().integer_mode == IntegerMode::SizedInteger(128, false) {
-					"▪u128".to_string()
-				} else {
-					"u128".to_string()
-				}
-			}
-			Function::And => "and".to_string(),
-			Function::Or => "or".to_string(),
-			Function::Xor => "xor".to_string(),
-			Function::Not => "not".to_string(),
-			Function::ShiftLeft => "<<".to_string(),
-			Function::ShiftRight => ">>".to_string(),
-			Function::RotateLeft => "rol".to_string(),
-			Function::RotateRight => "ror".to_string(),
-			Function::Hex => {
-				if state.format().integer_radix == 16 {
-					"▪Hex".to_string()
-				} else {
-					"Hex".to_string()
-				}
-			}
-			Function::Octal => {
-				if state.format().integer_radix == 8 {
-					"▪Oct".to_string()
-				} else {
-					"Oct".to_string()
-				}
-			}
-			Function::Decimal => {
-				if state.format().integer_radix == 10 {
-					"▪Dec".to_string()
-				} else {
-					"Dec".to_string()
-				}
-			}
 			Function::CatalogPage(page) => page.to_str().to_string(),
 			Function::AddUnitCatalogMenu => "Unit".to_string(),
 			Function::AddUnitCatalogPage(unit_type) => unit_type.to_str().to_string(),
@@ -353,344 +97,88 @@ impl Function {
 			}
 			Function::AssignCatalogFunction(_, func) => func.to_string(state),
 			Function::RemoveCustomAssign(_) => "(None)".to_string(),
-			Function::SpeedOfLight => "c".to_string(),
-			Function::Now => "Now".to_string(),
-			Function::Date => "Date".to_string(),
-			Function::Time => "Time".to_string(),
-			Function::Degrees => {
-				if state.angle_mode() == &AngleUnit::Degrees {
-					"▪Deg".to_string()
-				} else {
-					"Deg".to_string()
-				}
-			}
-			Function::Radians => {
-				if state.angle_mode() == &AngleUnit::Radians {
-					"▪Rad".to_string()
-				} else {
-					"Rad".to_string()
-				}
-			}
-			Function::Gradians => {
-				if state.angle_mode() == &AngleUnit::Gradians {
-					"▪Grad".to_string()
-				} else {
-					"Grad".to_string()
-				}
-			}
-			Function::ClearUnits => "←Unit".to_string(),
 			Function::UnitMenu(unit_type) => unit_type.to_str().to_string(),
-			Function::AddUnit(unit) => unit.to_str().to_string(),
-			Function::AddUnitSquared(unit) => unit.to_str().to_string() + "²",
-			Function::AddUnitCubed(unit) => unit.to_str().to_string() + "³",
-			Function::AddInvUnit(unit) => "/".to_string() + &unit.to_str(),
-			Function::AddInvUnitSquared(unit) => "/".to_string() + &unit.to_str() + "²",
-			Function::AddInvUnitCubed(unit) => "/".to_string() + &unit.to_str() + "³",
-			Function::ConvertToUnit(unit) => "▸".to_string() + &unit.to_str(),
 			Function::SettingsMenu => "Settings".to_string(),
 			Function::SystemMenu => "Sys".to_string(),
 			Function::Time24HourToggle => "24Hr".to_string(),
-			Function::StatusBarLeftDisplayToggle => "StatusBar".to_string(),
-			Function::Log => "log".to_string(),
-			Function::Exp10 => "10ˣ".to_string(),
-			Function::Ln => "ln".to_string(),
-			Function::Exp => "eˣ".to_string(),
-			Function::Sin => "sin".to_string(),
-			Function::Cos => "cos".to_string(),
-			Function::Tan => "tan".to_string(),
-			Function::Asin => "asin".to_string(),
-			Function::Acos => "acos".to_string(),
-			Function::Atan => "atan".to_string(),
-			Function::Sinh => "sinh".to_string(),
-			Function::Cosh => "cosh".to_string(),
-			Function::Tanh => "tanh".to_string(),
-			Function::Asinh => "asinh".to_string(),
-			Function::Acosh => "acosh".to_string(),
-			Function::Atanh => "atanh".to_string(),
-			Function::Sum => "sum".to_string(),
-			Function::Mean => "mean".to_string(),
-			Function::DotProduct => "dot".to_string(),
-			Function::CrossProduct => "cross".to_string(),
-			Function::Magnitude => "mag".to_string(),
-			Function::Normalize => "norm".to_string(),
+			Function::StatusBarLeftDisplayToggle => "StatusDisp".to_string(),
+			Function::StackLabelXYZToggle => "xyz".to_string(),
+			Function::ShowEmptySoftKeyToggle => "Empty".to_string(),
+			Function::StatusBarToggle => "StatusBar".to_string(),
+			Function::FontSizeToggle => "Font".to_string(),
+			Function::AlternateFormatModeToggle => "Alt".to_string(),
 			Function::NewMatrix => "New".to_string(),
-			Function::ToMatrix => "▸Mat".to_string(),
-			Function::RowsToMatrix => "R▸Mat".to_string(),
-			Function::ColsToMatrix => "C▸Mat".to_string(),
-			Function::IdentityMatrix => "ident".to_string(),
-			Function::Transpose => "transp".to_string(),
 		}
 	}
 
 	pub fn execute(&self, state: &mut State, screen: &dyn Screen) -> Result<()> {
 		match self {
+			Function::Stack(func) => {
+				state.end_edit()?;
+				func.execute(state.context_mut())?;
+			}
 			Function::Input(input) => {
 				state.handle_input(*input, screen)?;
 			}
-			Function::NormalFormat => {
-				state.format_mut().mode = NumberFormatMode::Normal;
-				state.stack.end_edit();
-			}
-			Function::RationalFormat => {
-				state.format_mut().mode = NumberFormatMode::Rational;
-				state.stack.end_edit();
-			}
-			Function::ScientificFormat => {
-				state.format_mut().mode = NumberFormatMode::Scientific;
-				state.stack.end_edit();
-			}
-			Function::EngineeringFormat => {
-				state.format_mut().mode = NumberFormatMode::Engineering;
-				state.stack.end_edit();
-			}
-			Function::AlternateHex => {
-				state.format_mut().show_alt_hex = !state.format().show_alt_hex;
-			}
-			Function::AlternateFloat => {
-				state.format_mut().show_alt_float = !state.format().show_alt_float;
-			}
-			Function::ThousandsSeparatorOff => {
-				state.format_mut().thousands = false;
-			}
-			Function::ThousandsSeparatorOn => {
-				state.format_mut().thousands = true;
-			}
-			Function::DecimalPointPeriod => {
-				state.format_mut().decimal_point = NumberDecimalPointMode::Period;
-			}
-			Function::DecimalPointComma => {
-				state.format_mut().decimal_point = NumberDecimalPointMode::Comma;
-			}
-			Function::Float => {
-				if state.format().integer_radix == 10 {
-					state.format_mut().integer_mode = IntegerMode::Float;
-					state.stack.end_edit();
-				} else {
-					return Err(Error::FloatRequiresDecimalMode);
-				}
-			}
 			Function::SignedInteger => {
-				state.function_keys().show_menu(FunctionMenu::SignedInteger);
+				state
+					.function_keys_mut()
+					.show_menu(FunctionMenu::SignedInteger);
 			}
 			Function::UnsignedInteger => {
 				state
-					.function_keys()
+					.function_keys_mut()
 					.show_menu(FunctionMenu::UnsignedInteger);
 			}
-			Function::BigInteger => {
-				state.format_mut().integer_mode = IntegerMode::BigInteger;
-				state.set_default_integer_format(state.format().integer_mode);
-				state.stack.end_edit();
-			}
-			Function::Signed8Bit => {
-				state.format_mut().integer_mode = IntegerMode::SizedInteger(8, true);
-				state.set_default_integer_format(state.format().integer_mode);
-				state.stack.end_edit();
-			}
-			Function::Signed16Bit => {
-				state.format_mut().integer_mode = IntegerMode::SizedInteger(16, true);
-				state.set_default_integer_format(state.format().integer_mode);
-				state.stack.end_edit();
-			}
-			Function::Signed32Bit => {
-				state.format_mut().integer_mode = IntegerMode::SizedInteger(32, true);
-				state.set_default_integer_format(state.format().integer_mode);
-				state.stack.end_edit();
-			}
-			Function::Signed64Bit => {
-				state.format_mut().integer_mode = IntegerMode::SizedInteger(64, true);
-				state.set_default_integer_format(state.format().integer_mode);
-				state.stack.end_edit();
-			}
-			Function::Signed128Bit => {
-				state.format_mut().integer_mode = IntegerMode::SizedInteger(128, true);
-				state.set_default_integer_format(state.format().integer_mode);
-				state.stack.end_edit();
-			}
-			Function::Unsigned8Bit => {
-				state.format_mut().integer_mode = IntegerMode::SizedInteger(8, false);
-				state.set_default_integer_format(state.format().integer_mode);
-				state.stack.end_edit();
-			}
-			Function::Unsigned16Bit => {
-				state.format_mut().integer_mode = IntegerMode::SizedInteger(16, false);
-				state.set_default_integer_format(state.format().integer_mode);
-				state.stack.end_edit();
-			}
-			Function::Unsigned32Bit => {
-				state.format_mut().integer_mode = IntegerMode::SizedInteger(32, false);
-				state.set_default_integer_format(state.format().integer_mode);
-				state.stack.end_edit();
-			}
-			Function::Unsigned64Bit => {
-				state.format_mut().integer_mode = IntegerMode::SizedInteger(64, false);
-				state.set_default_integer_format(state.format().integer_mode);
-				state.stack.end_edit();
-			}
-			Function::Unsigned128Bit => {
-				state.format_mut().integer_mode = IntegerMode::SizedInteger(128, false);
-				state.set_default_integer_format(state.format().integer_mode);
-				state.stack.end_edit();
-			}
-			Function::And => {
-				let value = Value::Number(Number::Integer(
-					&*state.stack.entry(1)?.to_int()? & &*state.stack.entry(0)?.to_int()?,
-				));
-				state.replace_entries(2, value)?;
-			}
-			Function::Or => {
-				let value = Value::Number(Number::Integer(
-					&*state.stack.entry(1)?.to_int()? | &*state.stack.entry(0)?.to_int()?,
-				));
-				state.replace_entries(2, value)?;
-			}
-			Function::Xor => {
-				let value = Value::Number(Number::Integer(
-					&*state.stack.entry(1)?.to_int()? ^ &*state.stack.entry(0)?.to_int()?,
-				));
-				state.replace_entries(2, value)?;
-			}
-			Function::Not => {
-				let value = Number::Integer(!&*state.stack.top().to_int()?);
-				state.set_top(Value::Number(value))?;
-			}
-			Function::ShiftLeft => {
-				let x = state.stack.entry(0)?;
-				let mut x = x.to_int()?;
-				if let IntegerMode::SizedInteger(size, _) = state.format().integer_mode {
-					if size.is_power_of_two() {
-						x = Cow::Owned(&*x & &(size - 1).to_bigint().unwrap());
-					}
-				}
-				let x = u32::try_from(&*x)?;
-				let y = state.stack.entry(1)?;
-				let y = y.to_int()?;
-				if (y.bits() + x as u64) > MAX_INTEGER_BITS {
-					return Err(Error::ValueOutOfRange);
-				}
-				let value = Value::Number(Number::Integer(&*y << x));
-				state.replace_entries(2, value)?;
-			}
-			Function::ShiftRight => {
-				let x = state.stack.entry(0)?;
-				let mut x = x.to_int()?;
-				if let IntegerMode::SizedInteger(size, _) = state.format().integer_mode {
-					if size.is_power_of_two() {
-						x = Cow::Owned(&*x & (size - 1).to_bigint().unwrap());
-					}
-				}
-				let x = u32::try_from(&*x)?;
-				let y = state.stack.entry(1)?;
-				let y = y.to_int()?;
-				let value = Value::Number(Number::Integer(&*y >> x));
-				state.replace_entries(2, value)?;
-			}
-			Function::RotateLeft => {
-				if let IntegerMode::SizedInteger(size, _) = state.format().integer_mode {
-					let x = state.stack.entry(0)?;
-					let mut x = x.to_int()?;
-					if size.is_power_of_two() {
-						x = Cow::Owned(&*x & (size - 1).to_bigint().unwrap());
-					}
-					if let Ok(x) = u32::try_from(&*x) {
-						let y = state.stack.entry(1)?;
-						let y = y.to_int()?;
-						let value = (&*y << x) | (&*y >> ((size as u32) - x));
-						state.replace_entries(2, Value::Number(Number::Integer(value)))?;
-					}
-				} else {
-					return Err(Error::RequiresSizedIntegerMode);
-				}
-			}
-			Function::RotateRight => {
-				if let IntegerMode::SizedInteger(size, _) = state.format().integer_mode {
-					let x = state.stack.entry(0)?;
-					let mut x = x.to_int()?;
-					if size.is_power_of_two() {
-						x = Cow::Owned(&*x & (size - 1).to_bigint().unwrap());
-					}
-					if let Ok(x) = u32::try_from(&*x) {
-						let y = state.stack.entry(1)?;
-						let y = y.to_int()?;
-						let value = (&*y >> x) | (&*y << ((size as u32) - x));
-						state.replace_entries(2, Value::Number(Number::Integer(value)))?;
-					}
-				} else {
-					return Err(Error::RequiresSizedIntegerMode);
-				}
-			}
-			Function::Hex => {
-				if state.format().integer_radix == 10 {
-					state.set_prev_decimal_integer_mode(state.format().integer_mode);
-					state.format_mut().integer_mode = state.default_integer_format().clone();
-				}
-				state.format_mut().integer_radix = 16;
-				state.stack.end_edit();
-			}
-			Function::Octal => {
-				if state.format().integer_radix == 10 {
-					state.set_prev_decimal_integer_mode(state.format().integer_mode);
-					state.format_mut().integer_mode = state.default_integer_format().clone();
-				}
-				state.format_mut().integer_radix = 8;
-				state.stack.end_edit();
-			}
-			Function::Decimal => {
-				if state.format().integer_radix != 10 {
-					state.format_mut().integer_mode = state.prev_decimal_integer_mode().clone();
-				}
-				state.format_mut().integer_radix = 10;
-				state.stack.end_edit();
-			}
 			Function::CatalogPage(page) => {
-				state.show_menu(page.menu(&|page| Function::CatalogPage(page), &|func| func));
+				state.show_menu(page.menu(&|page| Function::CatalogPage(page), &|func| func))?;
 			}
 			Function::AddUnitCatalogMenu => {
 				state.show_menu(unit_catalog_menu("Assign Unit", &|unit_type| {
 					Function::AddUnitCatalogPage(unit_type)
-				}));
+				}))?;
 			}
 			Function::AddUnitCatalogPage(unit_type) => {
 				state.show_menu(unit_catalog_menu_of_type(
 					*unit_type,
 					"",
-					&|unit| Function::AddUnit(unit),
-					&|unit| Function::AddUnitSquared(unit),
-					&|unit| Function::AddUnitCubed(unit),
-				));
+					&|unit| Function::Stack(StackFunction::AddUnit(unit)),
+					&|unit| Function::Stack(StackFunction::AddUnitSquared(unit)),
+					&|unit| Function::Stack(StackFunction::AddUnitCubed(unit)),
+				))?;
 			}
 			Function::AddInvUnitCatalogMenu => {
 				state.show_menu(unit_catalog_menu("Assign Inverse Unit", &|unit_type| {
 					Function::AddInvUnitCatalogPage(unit_type)
-				}));
+				}))?;
 			}
 			Function::AddInvUnitCatalogPage(unit_type) => {
 				state.show_menu(unit_catalog_menu_of_type(
 					*unit_type,
 					"/",
-					&|unit| Function::AddInvUnit(unit),
-					&|unit| Function::AddInvUnitSquared(unit),
-					&|unit| Function::AddInvUnitCubed(unit),
-				));
+					&|unit| Function::Stack(StackFunction::AddInvUnit(unit)),
+					&|unit| Function::Stack(StackFunction::AddInvUnitSquared(unit)),
+					&|unit| Function::Stack(StackFunction::AddInvUnitCubed(unit)),
+				))?;
 			}
 			Function::ConvertUnitCatalogMenu => {
 				state.show_menu(unit_catalog_menu("Convert Unit", &|unit_type| {
 					Function::ConvertUnitCatalogPage(unit_type)
-				}));
+				}))?;
 			}
 			Function::ConvertUnitCatalogPage(unit_type) => {
 				state.show_menu(unit_catalog_menu_of_type(
 					*unit_type,
 					"▸",
-					&|unit| Function::ConvertToUnit(unit),
-					&|unit| Function::ConvertToUnit(unit),
-					&|unit| Function::ConvertToUnit(unit),
-				));
+					&|unit| Function::Stack(StackFunction::ConvertToUnit(unit)),
+					&|unit| Function::Stack(StackFunction::ConvertToUnit(unit)),
+					&|unit| Function::Stack(StackFunction::ConvertToUnit(unit)),
+				))?;
 			}
 			Function::AssignCatalogMenu(idx) => {
 				state.show_menu(catalog_menu(&|page| {
 					Function::AssignCatalogPage(*idx, page)
-				}));
+				}))?;
 			}
 			Function::AssignCatalogPage(idx, page) => {
 				state.show_menu(page.menu(
@@ -705,64 +193,70 @@ impl Function {
 						}
 						_ => Function::AssignCatalogFunction(*idx, Box::new(func)),
 					},
-				));
+				))?;
 			}
 			Function::AssignAddUnitCatalogMenu(idx) => {
 				state.show_menu(unit_catalog_menu("Assign Unit", &|unit_type| {
 					Function::AssignAddUnitCatalogPage(*idx, unit_type)
-				}));
+				}))?;
 			}
 			Function::AssignAddUnitCatalogPage(idx, unit_type) => {
 				state.show_menu(unit_catalog_menu_of_type(
 					*unit_type,
 					"",
 					&|unit| {
-						Function::AssignCatalogFunction(*idx, Box::new(Function::AddUnit(unit)))
-					},
-					&|unit| {
 						Function::AssignCatalogFunction(
 							*idx,
-							Box::new(Function::AddUnitSquared(unit)),
+							Box::new(Function::Stack(StackFunction::AddUnit(unit))),
 						)
 					},
 					&|unit| {
 						Function::AssignCatalogFunction(
 							*idx,
-							Box::new(Function::AddUnitCubed(unit)),
+							Box::new(Function::Stack(StackFunction::AddUnitSquared(unit))),
 						)
 					},
-				));
+					&|unit| {
+						Function::AssignCatalogFunction(
+							*idx,
+							Box::new(Function::Stack(StackFunction::AddUnitCubed(unit))),
+						)
+					},
+				))?;
 			}
 			Function::AssignAddInvUnitCatalogMenu(idx) => {
 				state.show_menu(unit_catalog_menu("Assign Inverse Unit", &|unit_type| {
 					Function::AssignAddInvUnitCatalogPage(*idx, unit_type)
-				}));
+				}))?;
 			}
 			Function::AssignAddInvUnitCatalogPage(idx, unit_type) => {
 				state.show_menu(unit_catalog_menu_of_type(
 					*unit_type,
 					"/",
 					&|unit| {
-						Function::AssignCatalogFunction(*idx, Box::new(Function::AddInvUnit(unit)))
-					},
-					&|unit| {
 						Function::AssignCatalogFunction(
 							*idx,
-							Box::new(Function::AddInvUnitSquared(unit)),
+							Box::new(Function::Stack(StackFunction::AddInvUnit(unit))),
 						)
 					},
 					&|unit| {
 						Function::AssignCatalogFunction(
 							*idx,
-							Box::new(Function::AddInvUnitCubed(unit)),
+							Box::new(Function::Stack(StackFunction::AddInvUnitSquared(unit))),
 						)
 					},
-				));
+					&|unit| {
+						Function::AssignCatalogFunction(
+							*idx,
+							Box::new(Function::Stack(StackFunction::AddInvUnitCubed(unit))),
+						)
+					},
+				))?;
 			}
 			Function::AssignConvertUnitCatalogMenu(idx) => {
 				state.show_menu(unit_catalog_menu("Convert Unit", &|unit_type| {
 					Function::AssignConvertUnitCatalogPage(*idx, unit_type)
-				}));
+				}))?;
 			}
 			Function::AssignConvertUnitCatalogPage(idx, unit_type) => {
 				state.show_menu(unit_catalog_menu_of_type(
@@ -771,142 +265,55 @@ impl Function {
 					&|unit| {
 						Function::AssignCatalogFunction(
 							*idx,
-							Box::new(Function::ConvertToUnit(unit)),
+							Box::new(Function::Stack(StackFunction::ConvertToUnit(unit))),
 						)
 					},
 					&|unit| {
 						Function::AssignCatalogFunction(
 							*idx,
-							Box::new(Function::ConvertToUnit(unit)),
+							Box::new(Function::Stack(StackFunction::ConvertToUnit(unit))),
 						)
 					},
 					&|unit| {
 						Function::AssignCatalogFunction(
 							*idx,
-							Box::new(Function::ConvertToUnit(unit)),
+							Box::new(Function::Stack(StackFunction::ConvertToUnit(unit))),
 						)
 					},
-				));
+				))?;
 			}
 			Function::AssignCatalogFunction(idx, func) => {
 				state.set_custom_function(*idx, Some(func.as_ref().clone()));
 				let mut menu = assign_menu();
 				menu.set_selection(*idx);
-				state.show_menu(menu);
+				state.show_menu(menu)?;
 			}
 			Function::RemoveCustomAssign(idx) => {
 				state.set_custom_function(*idx, None);
 			}
-			Function::SpeedOfLight => {
-				state.stack.input_value(Value::NumberWithUnit(
-					299_792_458.to_number(),
-					CompositeUnit::ratio_unit(
-						DistanceUnit::Meters.into(),
-						TimeUnit::Seconds.into(),
-					),
-				))?;
-			}
-			Function::Now => {
-				state
-					.stack
-					.input_value(Value::DateTime(NaiveDateTime::now()))?;
-			}
-			Function::Date => {
-				if let Value::DateTime(dt) = state.stack.top() {
-					let date = dt.date();
-					state.stack.set_top(Value::Date(date))?;
-				} else {
-					let year = i32::try_from(&*state.stack.entry(2)?.to_int()?)?;
-					let month = u8::try_from(&*state.stack.entry(1)?.to_int()?)?;
-					let day = u8::try_from(&*state.stack.entry(0)?.to_int()?)?;
-					let date = NaiveDate::from_ymd_opt(year, month as u32, day as u32)
-						.ok_or(Error::InvalidDate)?;
-					{
-						state.stack.replace_entries(3, Value::Date(date))?;
-					}
-				}
-			}
-			Function::Time => {
-				if let Value::DateTime(dt) = state.stack.top() {
-					let time = dt.time();
-					state.stack.set_top(Value::Time(time))?;
-				} else {
-					let nano = (state.stack.entry(0)?
-						* Value::Number(Number::Integer(1_000_000_000.to_bigint().unwrap())))?;
-					let hr = u8::try_from(&*state.stack.entry(2)?.to_int()?)?;
-					let min = u8::try_from(&*state.stack.entry(1)?.to_int()?)?;
-					let sec = u64::try_from(&*nano.to_int()?)?;
-					let nsec = (sec % 1_000_000_000) as u32;
-					let sec = (sec / 1_000_000_000) as u32;
-					let time = NaiveTime::from_hms_nano_opt(hr as u32, min as u32, sec, nsec)
-						.ok_or(Error::InvalidTime)?;
-					state.stack.replace_entries(3, Value::Time(time))?;
-				}
-			}
-			Function::Degrees => {
-				state.set_angle_mode(AngleUnit::Degrees);
-			}
-			Function::Radians => {
-				state.set_angle_mode(AngleUnit::Radians);
-			}
-			Function::Gradians => {
-				state.set_angle_mode(AngleUnit::Gradians);
-			}
-			Function::ClearUnits => {
-				let value = if let Value::NumberWithUnit(num, _) = state.stack.top() {
-					Value::Number(num)
-				} else {
-					state.stack.top()
-				};
-				state.set_top(value)?;
-			}
 			Function::UnitMenu(unit_type) => {
 				let menu = unit_menu_of_type(*unit_type);
-				state.show_menu(menu);
-			}
-			Function::AddUnit(unit) => {
-				let value = state.stack.top().add_unit(*unit)?;
-				state.set_top(value)?;
-			}
-			Function::AddUnitSquared(unit) => {
-				let value = state.stack.top().add_unit(*unit)?;
-				let value = value.add_unit(*unit)?;
-				state.set_top(value)?;
-			}
-			Function::AddUnitCubed(unit) => {
-				let value = state.stack.top().add_unit(*unit)?;
-				let value = value.add_unit(*unit)?;
-				let value = value.add_unit(*unit)?;
-				state.set_top(value)?;
-			}
-			Function::AddInvUnit(unit) => {
-				let value = state.stack.top().add_unit_inv(*unit)?;
-				state.set_top(value)?;
-			}
-			Function::AddInvUnitSquared(unit) => {
-				let value = state.stack.top().add_unit_inv(*unit)?;
-				let value = value.add_unit_inv(*unit)?;
-				state.set_top(value)?;
-			}
-			Function::AddInvUnitCubed(unit) => {
-				let value = state.stack.top().add_unit_inv(*unit)?;
-				let value = value.add_unit_inv(*unit)?;
-				let value = value.add_unit_inv(*unit)?;
-				state.set_top(value)?;
-			}
-			Function::ConvertToUnit(unit) => {
-				let value = state.stack.top().convert_single_unit(*unit)?;
-				state.set_top(value)?;
+				state.show_menu(menu)?;
 			}
 			Function::SettingsMenu => {
 				let menu = settings_menu();
-				state.show_menu(menu);
+				state.show_menu(menu)?;
 			}
 			Function::SystemMenu => {
 				state.show_system_setup_menu();
 			}
 			Function::Time24HourToggle => {
-				set_time_24_hour(!time_24_hour());
+				#[cfg(feature = "dm42")]
+				{
+					set_time_24_hour(!time_24_hour());
+					state.context_mut().format_mut().time_24_hour = time_24_hour();
+				}
+
+				#[cfg(not(feature = "dm42"))]
+				{
+					let value = !state.context().format().time_24_hour;
+					state.context_mut().format_mut().time_24_hour = value;
+				}
 			}
 			Function::StatusBarLeftDisplayToggle => {
 				state.set_status_bar_left_display(match state.status_bar_left_display() {
@@ -914,286 +321,36 @@ impl Function {
 					StatusBarLeftDisplayType::FreeMemory => StatusBarLeftDisplayType::CurrentTime,
 				});
 			}
-			Function::Log => state.set_top(state.top().log()?)?,
-			Function::Exp10 => state.set_top(state.top().exp10()?)?,
-			Function::Ln => state.set_top(state.top().ln()?)?,
-			Function::Exp => state.set_top(state.top().exp()?)?,
-			Function::Sin => state.set_top(state.top().sin(*state.angle_mode())?)?,
-			Function::Cos => state.set_top(state.top().cos(*state.angle_mode())?)?,
-			Function::Tan => state.set_top(state.top().tan(*state.angle_mode())?)?,
-			Function::Asin => state.set_top(state.top().asin(*state.angle_mode())?)?,
-			Function::Acos => state.set_top(state.top().acos(*state.angle_mode())?)?,
-			Function::Atan => state.set_top(state.top().atan(*state.angle_mode())?)?,
-			Function::Sinh => state.set_top(state.top().sinh()?)?,
-			Function::Cosh => state.set_top(state.top().cosh()?)?,
-			Function::Tanh => state.set_top(state.top().tanh()?)?,
-			Function::Asinh => state.set_top(state.top().asinh()?)?,
-			Function::Acosh => state.set_top(state.top().acosh()?)?,
-			Function::Atanh => state.set_top(state.top().atanh()?)?,
-			Function::Sum => {
-				if let Value::Vector(vector) = state.top() {
-					state.set_top(vector.sum()?)?;
-				} else {
-					return Err(Error::DataTypeMismatch);
-				}
+			Function::StackLabelXYZToggle => {
+				let value = !state.context().format().stack_xyz;
+				state.context_mut().format_mut().stack_xyz = value;
 			}
-			Function::Mean => {
-				if let Value::Vector(vector) = state.top() {
-					state.set_top(vector.mean()?)?;
-				} else {
-					return Err(Error::DataTypeMismatch);
-				}
+			Function::ShowEmptySoftKeyToggle => {
+				let value = !state.function_keys().show_empty();
+				state.function_keys_mut().set_show_empty(value);
 			}
-			Function::DotProduct => {
-				let a = state.entry(1)?;
-				let b = state.entry(0)?;
-				if let Value::Vector(a_vector) = a {
-					if let Value::Vector(b_vector) = b {
-						state.replace_entries(2, a_vector.dot(&b_vector)?)?;
-					} else {
-						return Err(Error::DataTypeMismatch);
-					}
-				} else {
-					return Err(Error::DataTypeMismatch);
-				}
+			Function::StatusBarToggle => {
+				let value = !state.status_bar_enabled();
+				state.set_status_bar_enabled(value);
 			}
-			Function::CrossProduct => {
-				let a = state.entry(1)?;
-				let b = state.entry(0)?;
-				if let Value::Vector(a_vector) = a {
-					if let Value::Vector(b_vector) = b {
-						state.replace_entries(2, Value::Vector(a_vector.cross(&b_vector)?))?;
-					} else {
-						return Err(Error::DataTypeMismatch);
-					}
-				} else {
-					return Err(Error::DataTypeMismatch);
-				}
+			Function::FontSizeToggle => {
+				let value = match state.base_font() {
+					Font::Smallest => Font::Small,
+					Font::Small => Font::Medium,
+					Font::Medium => Font::Large,
+					Font::Large => Font::Small,
+				};
+				state.set_base_font(value);
 			}
-			Function::Magnitude => {
-				if let Value::Vector(vector) = state.top() {
-					state.set_top(vector.magnitude()?)?;
-				} else {
-					return Err(Error::DataTypeMismatch);
-				}
+			Function::AlternateFormatModeToggle => {
+				let value = match state.context().format().alt_mode {
+					AlternateFormatMode::Smart => AlternateFormatMode::Bottom,
+					AlternateFormatMode::Bottom => AlternateFormatMode::Left,
+					AlternateFormatMode::Left => AlternateFormatMode::Smart,
+				};
+				state.context_mut().format_mut().alt_mode = value;
 			}
-			Function::Normalize => {
-				if let Value::Vector(vector) = state.top() {
-					state.set_top(Value::Vector(vector.normalize()?))?;
-				} else {
-					return Err(Error::DataTypeMismatch);
-				}
-			}
-			Function::NewMatrix => state.function_keys().show_menu(FunctionMenu::NewMatrix),
-			Function::ToMatrix => {
-				// Get the desired size of the matrix and create it
-				let rows = usize::try_from(&*state.entry(1)?.to_int()?)?;
-				let cols = usize::try_from(&*state.entry(0)?.to_int()?)?;
-				if rows == 0 || cols == 0 {
-					return Err(Error::ValueOutOfRange);
-				}
-				let mut result = Matrix::new(rows, cols)?;
-
-				// Find the stack entry containing the start of the elements. Elements can
-				// be placed as values on the stack or in vectors, or a mix of both.
-				let mut remaining_size = rows * cols;
-				let mut start_entry = 2;
-				while remaining_size > 0 {
-					match state.entry(start_entry)? {
-						Value::Vector(vector) => {
-							if vector.len() > remaining_size {
-								return Err(Error::DimensionMismatch);
-							}
-							remaining_size -= vector.len();
-						}
-						Value::Matrix(_) => {
-							return Err(Error::DataTypeMismatch);
-						}
-						_ => remaining_size -= 1,
-					}
-					if remaining_size == 0 {
-						break;
-					}
-					start_entry += 1;
-				}
-
-				// Place the elements into the matrix
-				let mut row = 0;
-				let mut col = 0;
-				for entry in (2..=start_entry).rev() {
-					match state.entry(entry)? {
-						Value::Vector(vector) => {
-							for i in 0..vector.len() {
-								result.set(row, col, vector.get(i)?)?;
-								col += 1;
-								if col >= cols {
-									row += 1;
-									col = 0;
-								}
-							}
-						}
-						entry => {
-							result.set(row, col, entry)?;
-							col += 1;
-							if col >= cols {
-								row += 1;
-								col = 0;
-							}
-						}
-					}
-				}
-
-				if rows == 1 {
-					// Matrix of one row is always stored as a vector
-					let mut vector = Vector::new()?;
-					for col in 0..cols {
-						vector.push(result.get(0, col)?)?;
-					}
-					state.replace_entries(start_entry + 1, Value::Vector(vector))?;
-				} else {
-					state.replace_entries(start_entry + 1, Value::Matrix(result))?;
-				}
-			}
-			Function::RowsToMatrix => {
-				// Get the number of rows off the stack
-				let rows = usize::try_from(&*state.entry(0)?.to_int()?)?;
-				if rows == 0 {
-					return Err(Error::ValueOutOfRange);
-				}
-
-				// Determine the number of columns based on the vectors on the stack
-				let mut cols = None;
-				for row in 0..rows {
-					match state.entry(rows - row)? {
-						Value::Vector(vector) => {
-							if let Some(existing_cols) = cols {
-								if vector.len() != existing_cols {
-									return Err(Error::DimensionMismatch);
-								}
-							}
-							cols = Some(vector.len());
-						}
-						_ => return Err(Error::DataTypeMismatch),
-					}
-				}
-				let cols = cols.unwrap();
-
-				if rows == 1 {
-					// Matrix of one row is always stored as a vector, just put the vector
-					// on the top of the stack by popping the row count after validating
-					// that it is a valid vector.
-					let value = state.entry(1)?;
-					state.replace_entries(2, value)?;
-				} else {
-					// Create the matrix from the stack data
-					let mut result = Matrix::new(rows, cols)?;
-					for row in 0..rows {
-						match state.entry(rows - row)? {
-							Value::Vector(vector) => {
-								for col in 0..cols {
-									result.set(row, col, vector.get(col)?)?;
-								}
-							}
-							_ => return Err(Error::DataTypeMismatch),
-						}
-					}
-
-					state.replace_entries(rows + 1, Value::Matrix(result))?;
-				}
-			}
-			Function::ColsToMatrix => {
-				// Get the number of columns off the stack
-				let cols = usize::try_from(&*state.entry(0)?.to_int()?)?;
-				if cols == 0 {
-					return Err(Error::ValueOutOfRange);
-				}
-
-				// Determine the number of columns based on the vectors on the stack
-				let mut rows = None;
-				for col in 0..cols {
-					match state.entry(cols - col)? {
-						Value::Vector(vector) => {
-							if let Some(existing_rows) = rows {
-								if vector.len() != existing_rows {
-									return Err(Error::DimensionMismatch);
-								}
-							}
-							rows = Some(vector.len());
-						}
-						_ => return Err(Error::DataTypeMismatch),
-					}
-				}
-				let rows = rows.unwrap();
-
-				// Create the matrix from the stack data
-				let mut result = Matrix::new(rows, cols)?;
-				for col in 0..cols {
-					match state.entry(cols - col)? {
-						Value::Vector(vector) => {
-							for row in 0..rows {
-								result.set(row, col, vector.get(row)?)?;
-							}
-						}
-						_ => return Err(Error::DataTypeMismatch),
-					}
-				}
-
-				if rows == 1 {
-					// Matrix of one row is always stored as a vector
-					let mut vector = Vector::new()?;
-					for col in 0..cols {
-						vector.push(result.get(0, col)?)?;
-					}
-					state.replace_entries(cols + 1, Value::Vector(vector))?;
-				} else {
-					state.replace_entries(cols + 1, Value::Matrix(result))?;
-				}
-			}
-			Function::IdentityMatrix => {
-				let size = usize::try_from(&*state.top().to_int()?)?;
-				if size == 0 {
-					return Err(Error::ValueOutOfRange);
-				} else if size == 1 {
-					let mut result = Vector::new()?;
-					result.push(1.into())?;
-					state.set_top(Value::Vector(result))?;
-				} else {
-					let mut result = Matrix::new(size, size)?;
-					for i in 0..size {
-						result.set(i, i, 1.into())?;
-					}
-					state.set_top(Value::Matrix(result))?;
-				}
-			}
-			Function::Transpose => match state.top() {
-				Value::Vector(vector) => {
-					if vector.len() != 1 {
-						let mut result = Matrix::new(vector.len(), 1)?;
-						for i in 0..vector.len() {
-							result.set(i, 0, vector.get(i)?)?;
-						}
-						state.set_top(Value::Matrix(result))?;
-					}
-				}
-				Value::Matrix(matrix) => {
-					if matrix.cols() == 1 {
-						let mut result = Vector::new()?;
-						for i in 0..matrix.rows() {
-							result.push(matrix.get(i, 0)?)?;
-						}
-						state.set_top(Value::Vector(result))?;
-					} else {
-						let mut result = Matrix::new(matrix.cols(), matrix.rows())?;
-						for row in 0..matrix.cols() {
-							for col in 0..matrix.rows() {
-								result.set(row, col, matrix.get(col, row)?)?;
-							}
-						}
-						state.set_top(Value::Matrix(result))?;
-					}
-				}
-				_ => return Err(Error::DataTypeMismatch),
-			},
+			Function::NewMatrix => state.function_keys_mut().show_menu(FunctionMenu::NewMatrix),
 		}
 		Ok(())
 	}
@@ -1218,77 +375,81 @@ impl FunctionMenu {
 		match self {
 			FunctionMenu::Custom => state.custom_functions.clone(),
 			FunctionMenu::Disp => [
-				Some(Function::NormalFormat),
-				Some(Function::RationalFormat),
-				Some(Function::ScientificFormat),
-				Some(Function::EngineeringFormat),
-				Some(Function::AlternateHex),
-				Some(Function::AlternateFloat),
-				Some(Function::ThousandsSeparatorOff),
-				Some(Function::ThousandsSeparatorOn),
-				Some(Function::DecimalPointPeriod),
-				Some(Function::DecimalPointComma),
+				Some(Function::Stack(StackFunction::NormalFormat)),
+				Some(Function::Stack(StackFunction::RationalFormat)),
+				Some(Function::Stack(StackFunction::ScientificFormat)),
+				Some(Function::Stack(StackFunction::EngineeringFormat)),
+				Some(Function::Stack(StackFunction::AlternateHex)),
+				Some(Function::Stack(StackFunction::AlternateFloat)),
+				Some(Function::Stack(StackFunction::ThousandsSeparatorOff)),
+				Some(Function::Stack(StackFunction::ThousandsSeparatorOn)),
+				Some(Function::Stack(StackFunction::DecimalPointPeriod)),
+				Some(Function::Stack(StackFunction::DecimalPointComma)),
 			]
 			.to_vec(),
 			FunctionMenu::Mode => [
-				Some(Function::Degrees),
-				Some(Function::Radians),
-				Some(Function::Gradians),
+				Some(Function::Stack(StackFunction::Degrees)),
+				Some(Function::Stack(StackFunction::Radians)),
+				Some(Function::Stack(StackFunction::Gradians)),
 			]
 			.to_vec(),
 			FunctionMenu::Base => [
-				Some(Function::Decimal),
-				Some(Function::Octal),
-				Some(Function::Hex),
-				Some(Function::Float),
+				Some(Function::Stack(StackFunction::Decimal)),
+				Some(Function::Stack(StackFunction::Octal)),
+				Some(Function::Stack(StackFunction::Hex)),
+				Some(Function::Stack(StackFunction::Float)),
 				Some(Function::SignedInteger),
 				Some(Function::UnsignedInteger),
 			]
 			.to_vec(),
 			FunctionMenu::SignedInteger => [
-				Some(Function::BigInteger),
-				Some(Function::Signed8Bit),
-				Some(Function::Signed16Bit),
-				Some(Function::Signed32Bit),
-				Some(Function::Signed64Bit),
-				Some(Function::Signed128Bit),
+				Some(Function::Stack(StackFunction::BigInteger)),
+				Some(Function::Stack(StackFunction::Signed8Bit)),
+				Some(Function::Stack(StackFunction::Signed16Bit)),
+				Some(Function::Stack(StackFunction::Signed32Bit)),
+				Some(Function::Stack(StackFunction::Signed64Bit)),
+				Some(Function::Stack(StackFunction::Signed128Bit)),
 			]
 			.to_vec(),
 			FunctionMenu::UnsignedInteger => [
-				Some(Function::BigInteger),
-				Some(Function::Unsigned8Bit),
-				Some(Function::Unsigned16Bit),
-				Some(Function::Unsigned32Bit),
-				Some(Function::Unsigned64Bit),
-				Some(Function::Unsigned128Bit),
+				Some(Function::Stack(StackFunction::BigInteger)),
+				Some(Function::Stack(StackFunction::Unsigned8Bit)),
+				Some(Function::Stack(StackFunction::Unsigned16Bit)),
+				Some(Function::Stack(StackFunction::Unsigned32Bit)),
+				Some(Function::Stack(StackFunction::Unsigned64Bit)),
+				Some(Function::Stack(StackFunction::Unsigned128Bit)),
 			]
 			.to_vec(),
 			FunctionMenu::Logic => [
-				Some(Function::And),
-				Some(Function::Or),
-				Some(Function::Xor),
-				Some(Function::Not),
-				Some(Function::ShiftLeft),
-				Some(Function::ShiftRight),
-				Some(Function::RotateLeft),
-				Some(Function::RotateRight),
+				Some(Function::Stack(StackFunction::And)),
+				Some(Function::Stack(StackFunction::Or)),
+				Some(Function::Stack(StackFunction::Xor)),
+				Some(Function::Stack(StackFunction::Not)),
+				Some(Function::Stack(StackFunction::ShiftLeft)),
+				Some(Function::Stack(StackFunction::ShiftRight)),
+				Some(Function::Stack(StackFunction::RotateLeft)),
+				Some(Function::Stack(StackFunction::RotateRight)),
 			]
 			.to_vec(),
-			FunctionMenu::Stats => [Some(Function::Sum), Some(Function::Mean)].to_vec(),
+			FunctionMenu::Stats => [
+				Some(Function::Stack(StackFunction::Sum)),
+				Some(Function::Stack(StackFunction::Mean)),
+			]
+			.to_vec(),
 			FunctionMenu::Matrix => [
 				Some(Function::NewMatrix),
-				Some(Function::Transpose),
-				Some(Function::DotProduct),
-				Some(Function::CrossProduct),
-				Some(Function::Magnitude),
-				Some(Function::Normalize),
+				Some(Function::Stack(StackFunction::Transpose)),
+				Some(Function::Stack(StackFunction::DotProduct)),
+				Some(Function::Stack(StackFunction::CrossProduct)),
+				Some(Function::Stack(StackFunction::Magnitude)),
+				Some(Function::Stack(StackFunction::Normalize)),
 			]
 			.to_vec(),
 			FunctionMenu::NewMatrix => [
-				Some(Function::ToMatrix),
-				Some(Function::RowsToMatrix),
-				Some(Function::ColsToMatrix),
-				Some(Function::IdentityMatrix),
+				Some(Function::Stack(StackFunction::ToMatrix)),
+				Some(Function::Stack(StackFunction::RowsToMatrix)),
+				Some(Function::Stack(StackFunction::ColsToMatrix)),
+				Some(Function::Stack(StackFunction::IdentityMatrix)),
 			]
 			.to_vec(),
 		}
@@ -1303,6 +464,7 @@ pub struct FunctionKeyState {
 	quick_functions: Vec<Option<Function>>,
 	custom_functions: Vec<Option<Function>>,
 	menu_strings: RefCell<Vec<String>>,
+	show_empty: bool,
 }
 
 impl FunctionKeyState {
@@ -1315,6 +477,7 @@ impl FunctionKeyState {
 			quick_functions: Vec::new(),
 			custom_functions: Vec::new(),
 			menu_strings: RefCell::new(Vec::new()),
+			show_empty: false,
 		}
 	}
 
@@ -1326,7 +489,7 @@ impl FunctionKeyState {
 		}
 	}
 
-	fn quick_functions(&self, format: &NumberFormat) -> Vec<Option<Function>> {
+	fn quick_functions(&self, format: &Format) -> Vec<Option<Function>> {
 		let mut result = Vec::new();
 		if format.integer_radix == 16 {
 			result.push(Some(Function::Input(InputEvent::Character('A'))));
@@ -1340,7 +503,7 @@ impl FunctionKeyState {
 		result
 	}
 
-	pub fn update(&mut self, format: &NumberFormat) {
+	pub fn update(&mut self, format: &Format) {
 		// Update function list from current menu
 		if let Some(menu) = self.menu {
 			self.functions = menu.functions(self);
@@ -1376,7 +539,7 @@ impl FunctionKeyState {
 		}
 	}
 
-	pub fn exit_menu(&mut self, format: &NumberFormat) {
+	pub fn exit_menu(&mut self, format: &Format) {
 		// Set menu state from previous stack entry and update the function list
 		if let Some((menu, page)) = self.menu_stack.pop() {
 			self.menu = menu;
@@ -1447,65 +610,100 @@ impl FunctionKeyState {
 	}
 
 	pub fn render(&self, screen: &mut dyn Screen) {
-		let top = screen.height() - SANS_13.height;
+		let top = screen.height() - screen.metrics().height(Font::Smallest);
 
 		// Clear menu area
-		screen.fill(
-			Rect {
-				x: 0,
-				y: top - 1,
-				w: screen.width(),
-				h: SANS_13.height + 1,
-			},
-			Color::ContentBackground,
-		);
+		let screen_width = screen.width();
+		let mut renderer = screen.renderer(RenderMode::Normal);
+		renderer.erase(&Rect {
+			x: 0,
+			y: top - 1,
+			w: screen_width,
+			h: renderer.metrics().height(Font::Smallest) + 1,
+		});
 
 		// Render each function key display
+		let mut renderer = screen.renderer(RenderMode::FunctionKeys);
 		for i in 0..6 {
-			let min_x = (screen.width() - 1) * i / 6;
-			let max_x = (screen.width() - 1) * (i + 1) / 6;
+			let min_x = (screen_width - 1) * i / 6;
+			let max_x = (screen_width - 1) * (i + 1) / 6;
 
 			// Render key background
-			screen.fill(
-				Rect {
-					x: min_x + 1,
-					y: top,
-					w: max_x - min_x - 1,
-					h: SANS_13.height,
-				},
-				Color::MenuBackground,
-			);
-			screen.set_pixel(min_x + 1, top, Color::ContentBackground);
-			screen.set_pixel(max_x - 1, top, Color::ContentBackground);
+			renderer.erase(&Rect {
+				x: min_x + 2,
+				y: top,
+				w: max_x - min_x - 3,
+				h: 1,
+			});
+			renderer.erase(&Rect {
+				x: min_x + 1,
+				y: top + 1,
+				w: max_x - min_x - 1,
+				h: renderer.metrics().height(Font::Smallest) - 1,
+			});
 
 			// Render key text if there is one
 			if let Some(string) = self.menu_strings.borrow().get(i as usize) {
 				let mut string = string.clone();
 
 				// Trim string until it fits
-				let mut width = SANS_13.width(&string);
+				let mut width = renderer.metrics().width(Font::Smallest, &string);
 				while string.len() > 1 {
 					if width > max_x - min_x {
 						string.pop();
-						width = SANS_13.width(&string);
+						width = renderer.metrics().width(Font::Smallest, &string);
 					} else {
 						break;
 					}
 				}
 
 				// Draw key text centered in button
-				SANS_13.draw(
-					screen,
+				renderer.draw_text(
 					(min_x + max_x) / 2 - (width / 2),
 					top,
 					&string,
-					Color::MenuText,
+					Font::Smallest,
+					TokenType::Text,
+					&Rect {
+						x: min_x + 1,
+						y: top,
+						w: max_x - min_x - 1,
+						h: renderer.metrics().height(Font::Smallest),
+					},
 				);
 			}
 		}
 	}
 
-	pub fn height(&self) -> i32 {
-		SANS_13.height + 1
+	pub fn height(&self, screen: &dyn Screen) -> i32 {
+		let empty = if self.menu.is_none() {
+			let mut empty = true;
+			for func in &self.functions {
+				if func.is_some() {
+					empty = false;
+					break;
+				}
+			}
+			empty
+		} else {
+			false
+		};
+
+		if self.show_empty || !empty {
+			screen.metrics().height(Font::Smallest) + 1
+		} else {
+			0
+		}
+	}
+
+	pub fn show_empty(&self) -> bool {
+		self.show_empty
+	}
+
+	pub fn set_show_empty(&mut self, value: bool) {
+		self.show_empty = value;
+
+		// Force refresh rendering
+		*self.menu_strings.borrow_mut() = Vec::new();
 	}
 }

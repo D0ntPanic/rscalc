@@ -1,80 +1,23 @@
-use crate::font::char_to_idx;
-
-#[derive(Debug, Clone)]
-pub struct Rect {
-	pub x: i32,
-	pub y: i32,
-	pub w: i32,
-	pub h: i32,
-}
-
-impl Rect {
-	pub fn new(x: i32, y: i32, w: i32, h: i32) -> Self {
-		Rect { x, y, w, h }
-	}
-
-	pub fn clipped_to(&self, area: &Rect) -> Self {
-		let Rect {
-			mut x,
-			mut y,
-			mut w,
-			mut h,
-		} = self.clone();
-		if x < area.x {
-			w += x - area.x;
-			x = area.x;
-		}
-		if y < area.y {
-			h += y - area.y;
-			y = area.y;
-		}
-		if w <= 0 || h <= 0 {
-			return Rect {
-				x: area.x,
-				y: area.y,
-				w: 0,
-				h: 0,
-			};
-		}
-		if (x + w) > (area.x + area.w) {
-			w = (area.x + area.w) - x;
-		}
-		if (y + h) > (area.y + area.h) {
-			h = (area.y + area.h) - y;
-		}
-		if w <= 0 || h <= 0 {
-			return Rect {
-				x: area.x,
-				y: area.y,
-				w: 0,
-				h: 0,
-			};
-		}
-		Rect { x, y, w, h }
-	}
-
-	pub fn clipped_to_screen(&self, screen: &dyn Screen) -> Self {
-		self.clipped_to(&Rect {
-			x: 0,
-			y: 0,
-			w: screen.width(),
-			h: screen.height(),
-		})
-	}
-}
+use crate::font::{char_to_idx, SANS_13, SANS_16, SANS_20, SANS_24};
+use rscalc_layout::font::{Font, FontMetrics};
+use rscalc_layout::layout::{LayoutRenderer, Rect, TokenType};
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub enum Color {
 	StatusBarBackground,
 	StatusBarText,
 	ContentBackground,
-	StackLabelText,
-	StackSeparator,
+	LabelText,
+	Separator,
 	ContentText,
 	IntegerText,
 	FloatText,
 	ObjectText,
 	KeywordText,
+	SymbolText,
+	ComplexText,
+	UnitText,
+	ErrorText,
 	SelectionBackground,
 	SelectionText,
 	MenuBackground,
@@ -86,12 +29,16 @@ impl Color {
 		match self {
 			Color::StatusBarBackground
 			| Color::ContentText
-			| Color::StackLabelText
-			| Color::StackSeparator
+			| Color::LabelText
+			| Color::Separator
 			| Color::IntegerText
 			| Color::FloatText
 			| Color::ObjectText
 			| Color::KeywordText
+			| Color::SymbolText
+			| Color::ComplexText
+			| Color::UnitText
+			| Color::ErrorText
 			| Color::SelectionBackground
 			| Color::MenuBackground => true,
 			Color::StatusBarText
@@ -102,34 +49,15 @@ impl Color {
 	}
 }
 
-pub struct Font {
+pub struct BitmapFont {
 	pub height: i32,
 	pub chars: &'static [&'static [u8]],
 	pub width: &'static [u8],
 	pub advance: &'static [u8],
 }
 
-impl Font {
-	pub fn draw(&self, screen: &mut dyn Screen, x: i32, y: i32, text: &str, color: Color) {
-		// If no clip region provided, clip to entire screen
-		let width = screen.width();
-		let height = screen.height();
-		self.draw_clipped(
-			screen,
-			&Rect {
-				x: 0,
-				y: 0,
-				w: width,
-				h: height,
-			},
-			x,
-			y,
-			text,
-			color,
-		);
-	}
-
-	pub fn draw_clipped(
+impl BitmapFont {
+	pub fn draw(
 		&self,
 		screen: &mut dyn Screen,
 		area: &Rect,
@@ -246,13 +174,23 @@ impl Font {
 pub trait Screen {
 	fn width(&self) -> i32;
 	fn height(&self) -> i32;
+
+	fn screen_rect(&self) -> Rect {
+		Rect {
+			x: 0,
+			y: 0,
+			w: self.width(),
+			h: self.height(),
+		}
+	}
+
 	fn clear(&mut self);
 	fn refresh(&mut self);
 
-	fn fill(&mut self, rect: Rect, color: Color);
+	fn fill(&mut self, rect: &Rect, color: Color);
 
 	fn set_pixel(&mut self, x: i32, y: i32, color: Color) {
-		self.fill(Rect { x, y, w: 1, h: 1 }, color);
+		self.fill(&Rect { x, y, w: 1, h: 1 }, color);
 	}
 
 	fn horizontal_pattern(
@@ -282,4 +220,154 @@ pub trait Screen {
 	}
 
 	fn draw_bits(&mut self, x: i32, y: i32, bits: u32, width: u8, color: Color);
+
+	fn metrics(&self) -> &dyn FontMetrics {
+		&ScreenFontMetrics
+	}
+
+	fn renderer(&mut self, render_mode: RenderMode) -> ScreenLayoutRenderer;
+}
+
+pub enum RenderMode {
+	Normal,
+	Selected,
+	StatusBar,
+	FunctionKeys,
+}
+
+impl RenderMode {
+	fn color_for_token(&self, token_type: TokenType) -> Color {
+		match self {
+			RenderMode::Normal => match token_type {
+				TokenType::Text => Color::ContentText,
+				TokenType::Integer => Color::IntegerText,
+				TokenType::Float => Color::FloatText,
+				TokenType::Object => Color::ObjectText,
+				TokenType::Keyword => Color::KeywordText,
+				TokenType::Symbol => Color::SymbolText,
+				TokenType::Complex => Color::ComplexText,
+				TokenType::Unit => Color::UnitText,
+				TokenType::Label => Color::LabelText,
+				TokenType::Separator => Color::Separator,
+				TokenType::Error => Color::ErrorText,
+			},
+			RenderMode::Selected => Color::SelectionText,
+			RenderMode::StatusBar => Color::StatusBarText,
+			RenderMode::FunctionKeys => Color::MenuText,
+		}
+	}
+
+	fn color_for_background(&self) -> Color {
+		match self {
+			RenderMode::Normal => Color::ContentBackground,
+			RenderMode::Selected => Color::SelectionBackground,
+			RenderMode::StatusBar => Color::StatusBarBackground,
+			RenderMode::FunctionKeys => Color::MenuBackground,
+		}
+	}
+}
+
+pub struct ScreenFontMetrics;
+
+impl FontMetrics for ScreenFontMetrics {
+	fn width(&self, font: Font, text: &str) -> i32 {
+		match font {
+			Font::Smallest => SANS_13.width(text),
+			Font::Small => SANS_16.width(text),
+			Font::Medium => SANS_20.width(text),
+			Font::Large => SANS_24.width(text),
+		}
+	}
+
+	fn advance(&self, font: Font, text: &str) -> i32 {
+		match font {
+			Font::Smallest => SANS_13.advance(text),
+			Font::Small => SANS_16.advance(text),
+			Font::Medium => SANS_20.advance(text),
+			Font::Large => SANS_24.advance(text),
+		}
+	}
+
+	fn height(&self, font: Font) -> i32 {
+		match font {
+			Font::Smallest => SANS_13.height,
+			Font::Small => SANS_16.height,
+			Font::Medium => SANS_20.height,
+			Font::Large => SANS_24.height,
+		}
+	}
+}
+
+pub struct ScreenLayoutRenderer<'a> {
+	screen: &'a mut dyn Screen,
+	render_mode: RenderMode,
+}
+
+impl<'a> ScreenLayoutRenderer<'a> {
+	pub fn new(screen: &'a mut dyn Screen, render_mode: RenderMode) -> Self {
+		ScreenLayoutRenderer {
+			screen,
+			render_mode,
+		}
+	}
+}
+
+impl<'a> LayoutRenderer for ScreenLayoutRenderer<'a> {
+	fn fill(&mut self, rect: &Rect, token_type: TokenType) {
+		self.screen
+			.fill(rect, self.render_mode.color_for_token(token_type));
+	}
+
+	fn erase(&mut self, rect: &Rect) {
+		self.screen
+			.fill(rect, self.render_mode.color_for_background());
+	}
+
+	fn horizontal_pattern(
+		&mut self,
+		x: i32,
+		width: i32,
+		y: i32,
+		pattern: u32,
+		pattern_width: u8,
+		token_type: TokenType,
+	) {
+		self.screen.horizontal_pattern(
+			x,
+			width,
+			y,
+			pattern,
+			pattern_width,
+			self.render_mode.color_for_token(token_type),
+		);
+	}
+
+	fn draw_text(
+		&mut self,
+		x: i32,
+		y: i32,
+		text: &str,
+		font: Font,
+		token_type: TokenType,
+		clip_rect: &Rect,
+	) {
+		let font = match font {
+			Font::Smallest => &SANS_13,
+			Font::Small => &SANS_16,
+			Font::Medium => &SANS_20,
+			Font::Large => &SANS_24,
+		};
+		font.draw(
+			self.screen,
+			clip_rect,
+			x,
+			y,
+			text,
+			self.render_mode.color_for_token(token_type),
+		);
+	}
+
+	fn metrics(&self) -> &dyn FontMetrics {
+		self.screen.metrics()
+	}
 }

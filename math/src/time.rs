@@ -1,22 +1,21 @@
-#[cfg(feature = "dm42")]
-use crate::dm42::{rtc_read, rtc_updated, time_24_hour};
-#[cfg(not(feature = "dm42"))]
-use chrono::{DateTime, Local};
-#[cfg(not(feature = "dm42"))]
-use spin::Mutex;
-
-use alloc::string::{String, ToString};
-use alloc::vec::Vec;
+use crate::error::Result;
 use chrono::{Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike, Weekday};
 
-pub trait Now {
-	/// Gets the current date and time in the local timezone.
-	fn now() -> Self;
+#[cfg(feature = "std")]
+use chrono::{DateTime, Local};
 
-	/// Returns true if the clock may have been updated at the minute resolution
-	/// since the last call to now(). The time may not actually be different, as
-	/// this is only for use in optimization.
-	fn clock_minute_updated() -> bool;
+#[cfg(not(feature = "std"))]
+use alloc::string::{String, ToString};
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
+#[cfg(not(feature = "std"))]
+#[cfg(not(feature = "dm42"))]
+use crate::error::Error;
+
+pub trait Now: Sized {
+	/// Gets the current date and time in the local timezone.
+	fn now() -> Result<Self>;
 }
 
 pub struct SimpleDateTimeFormat {
@@ -36,24 +35,58 @@ pub trait SimpleDateTimeToString {
 	fn simple_format(&self, format: &SimpleDateTimeFormat) -> String;
 }
 
+#[cfg(feature = "dm42")]
+#[repr(C)]
+struct dt_t {
+	year: u16,
+	month: u8,
+	day: u8,
+}
+
+#[cfg(feature = "dm42")]
+#[repr(C)]
+struct tm_t {
+	hour: u8,
+	min: u8,
+	sec: u8,
+	csec: u8,
+	dow: u8,
+}
+
 impl Now for NaiveDateTime {
 	#[cfg(feature = "dm42")]
-	fn now() -> Self {
-		rtc_read()
+	fn now() -> Result<Self> {
+		unsafe {
+			const LIBRARY_BASE: usize = 0x8000201;
+			let func_ptr: usize = LIBRARY_BASE + 204;
+			let func: extern "C" fn(time: *mut tm_t, date: *mut dt_t) =
+				core::mem::transmute(func_ptr);
+			let mut date = core::mem::MaybeUninit::<dt_t>::uninit();
+			let mut time = core::mem::MaybeUninit::<tm_t>::uninit();
+			func(time.as_mut_ptr(), date.as_mut_ptr());
+			let date = date.assume_init();
+			let time = time.assume_init();
+			let date = NaiveDate::from_ymd(date.year as i32, date.month as u32, date.day as u32);
+			let time = NaiveTime::from_hms_milli(
+				time.hour as u32,
+				time.min as u32,
+				time.sec as u32,
+				time.csec as u32 * 10,
+			);
+			Ok(NaiveDateTime::new(date, time))
+		}
 	}
 
+	#[cfg(not(feature = "std"))]
 	#[cfg(not(feature = "dm42"))]
-	fn now() -> Self {
-		let result: DateTime<Local> = Local::now();
-		result.naive_local()
+	fn now() -> Result<Self> {
+		Err(Error::ValueNotDefined)
 	}
 
-	fn clock_minute_updated() -> bool {
-		#[cfg(feature = "dm42")]
-		return rtc_updated();
-
-		#[cfg(not(feature = "dm42"))]
-		return false;
+	#[cfg(feature = "std")]
+	fn now() -> Result<Self> {
+		let result: DateTime<Local> = Local::now();
+		Ok(result.naive_local())
 	}
 }
 
@@ -87,10 +120,10 @@ impl SimpleDateTimeToString for NaiveDate {
 		};
 
 		if self.day() < 10 {
-			result.push(char::from_u32('0' as u32 + self.day() as u32).unwrap());
+			result.push(core::char::from_u32('0' as u32 + self.day() as u32).unwrap());
 		} else {
-			result.push(char::from_u32('0' as u32 + (self.day() / 10) as u32).unwrap());
-			result.push(char::from_u32('0' as u32 + (self.day() % 10) as u32).unwrap());
+			result.push(core::char::from_u32('0' as u32 + (self.day() / 10) as u32).unwrap());
+			result.push(core::char::from_u32('0' as u32 + (self.day() % 10) as u32).unwrap());
 		}
 
 		if format.year {
@@ -99,7 +132,7 @@ impl SimpleDateTimeToString for NaiveDate {
 			let mut year_chars = Vec::new();
 			let mut year = self.year();
 			while year != 0 {
-				year_chars.push(char::from_u32('0' as u32 + (year % 10) as u32).unwrap());
+				year_chars.push(core::char::from_u32('0' as u32 + (year % 10) as u32).unwrap());
 				year /= 10;
 			}
 			year_chars.reverse();
@@ -127,29 +160,31 @@ impl SimpleDateTimeToString for NaiveTime {
 		};
 
 		if hour < 10 {
-			result.push(char::from_u32('0' as u32 + hour as u32).unwrap());
+			result.push(core::char::from_u32('0' as u32 + hour as u32).unwrap());
 		} else {
-			result.push(char::from_u32('0' as u32 + (hour / 10) as u32).unwrap());
-			result.push(char::from_u32('0' as u32 + (hour % 10) as u32).unwrap());
+			result.push(core::char::from_u32('0' as u32 + (hour / 10) as u32).unwrap());
+			result.push(core::char::from_u32('0' as u32 + (hour % 10) as u32).unwrap());
 		}
 
 		result.push(':');
-		result.push(char::from_u32('0' as u32 + (self.minute() / 10) as u32).unwrap());
-		result.push(char::from_u32('0' as u32 + (self.minute() % 10) as u32).unwrap());
+		result.push(core::char::from_u32('0' as u32 + (self.minute() / 10) as u32).unwrap());
+		result.push(core::char::from_u32('0' as u32 + (self.minute() % 10) as u32).unwrap());
 
 		if format.seconds {
 			result.push(':');
-			result.push(char::from_u32('0' as u32 + (self.second() / 10) as u32).unwrap());
-			result.push(char::from_u32('0' as u32 + (self.second() % 10) as u32).unwrap());
+			result.push(core::char::from_u32('0' as u32 + (self.second() / 10) as u32).unwrap());
+			result.push(core::char::from_u32('0' as u32 + (self.second() % 10) as u32).unwrap());
 		}
 
 		if format.centiseconds {
 			result.push('.');
 			result.push(
-				char::from_u32('0' as u32 + (self.nanosecond() / 100000000 % 10) as u32).unwrap(),
+				core::char::from_u32('0' as u32 + (self.nanosecond() / 100000000 % 10) as u32)
+					.unwrap(),
 			);
 			result.push(
-				char::from_u32('0' as u32 + (self.nanosecond() / 10000000 % 10) as u32).unwrap(),
+				core::char::from_u32('0' as u32 + (self.nanosecond() / 10000000 % 10) as u32)
+					.unwrap(),
 			);
 		}
 
@@ -185,63 +220,48 @@ impl SimpleDateTimeToString for NaiveDateTime {
 	}
 }
 
-#[cfg(not(feature = "dm42"))]
-lazy_static! {
-	static ref TIME_24_HOUR: Mutex<bool> = Mutex::new(false);
-}
-
-#[cfg(not(feature = "dm42"))]
-pub fn time_24_hour() -> bool {
-	*TIME_24_HOUR.lock()
-}
-
-#[cfg(not(feature = "dm42"))]
-pub fn set_time_24_hour(value: bool) {
-	*TIME_24_HOUR.lock() = value;
-}
-
 impl SimpleDateTimeFormat {
-	pub fn full() -> Self {
+	pub fn full(time_24_hour: bool) -> Self {
 		SimpleDateTimeFormat {
 			date: true,
 			year: true,
 			time: true,
 			seconds: true,
 			centiseconds: true,
-			am_pm: !time_24_hour(),
+			am_pm: !time_24_hour,
 		}
 	}
 
-	pub fn date() -> Self {
+	pub fn date(time_24_hour: bool) -> Self {
 		SimpleDateTimeFormat {
 			date: true,
 			year: true,
 			time: false,
 			seconds: false,
 			centiseconds: false,
-			am_pm: !time_24_hour(),
+			am_pm: !time_24_hour,
 		}
 	}
 
-	pub fn time() -> Self {
+	pub fn time(time_24_hour: bool) -> Self {
 		SimpleDateTimeFormat {
 			date: false,
 			year: false,
 			time: true,
 			seconds: true,
 			centiseconds: true,
-			am_pm: !time_24_hour(),
+			am_pm: !time_24_hour,
 		}
 	}
 
-	pub fn status_bar() -> Self {
+	pub fn status_bar(time_24_hour: bool) -> Self {
 		SimpleDateTimeFormat {
 			date: true,
 			year: false,
 			time: true,
 			seconds: false,
 			centiseconds: false,
-			am_pm: !time_24_hour(),
+			am_pm: !time_24_hour,
 		}
 	}
 }

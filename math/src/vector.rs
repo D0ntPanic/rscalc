@@ -1,13 +1,10 @@
 use crate::error::{Error, Result};
-use crate::layout::Layout;
-use crate::number::{NumberFormat, ToNumber};
-use crate::screen::{Color, Font};
+use crate::number::ToNumber;
 use crate::storage::{
 	store, DeserializeInput, SerializeOutput, StorageObject, StorageRef, StorageRefArray,
 	StorageRefSerializer,
 };
 use crate::value::{Value, ValueRef};
-use alloc::vec::Vec;
 
 const MAX_CAPACITY: usize = 1000;
 const EXTRA_CAPACITY: usize = 4;
@@ -201,109 +198,6 @@ impl Vector {
 			(Self::mul_members(self, 0, other, 1)? - Self::mul_members(self, 1, other, 0)?)?,
 		)?;
 		Ok(result)
-	}
-
-	pub fn single_line_full_layout(
-		&self,
-		format: &NumberFormat,
-		default_font: &'static Font,
-		small_font: &'static Font,
-		max_width: i32,
-	) -> Option<Layout> {
-		let mut horizontal_items = Vec::new();
-		let left_paren = Layout::StaticText("⦗", default_font, Color::ContentText);
-		let right_paren = Layout::StaticText("⦘", default_font, Color::ContentText);
-		let mut width = left_paren.width() + right_paren.width();
-		horizontal_items.push(left_paren);
-
-		for i in 0..self.len() {
-			if i > 0 {
-				let spacing = Layout::HorizontalSpace(24);
-				width += spacing.width();
-				horizontal_items.push(spacing);
-			}
-
-			if width >= max_width {
-				return None;
-			}
-
-			let value = if let Ok(value) = self.get(i) {
-				value
-			} else {
-				return None;
-			};
-
-			if let Some(layout) = Layout::single_line_numerical_value_layout(
-				&value,
-				format,
-				default_font,
-				small_font,
-				max_width - width,
-				false,
-			) {
-				width += layout.width();
-				horizontal_items.push(layout);
-			} else {
-				return None;
-			};
-		}
-
-		horizontal_items.push(right_paren);
-		Some(Layout::Horizontal(horizontal_items))
-	}
-
-	pub fn multi_line_layout(
-		&self,
-		format: &NumberFormat,
-		font: &'static Font,
-		max_width: i32,
-		max_lines: usize,
-	) -> Option<Layout> {
-		let mut vertical_items = Vec::new();
-		let mut horizontal_items = Vec::new();
-		let left_paren = Layout::StaticText("⦗", font, Color::ContentText);
-		let right_paren = Layout::StaticText("⦘", font, Color::ContentText);
-		let mut width = left_paren.width() + right_paren.width();
-		horizontal_items.push(right_paren);
-
-		for i in (0..self.len()).rev() {
-			if (i + 1) < self.len() && horizontal_items.len() > 0 {
-				let spacing = Layout::HorizontalSpace(20);
-				width += spacing.width();
-				horizontal_items.push(spacing);
-			}
-
-			let value = if let Ok(value) = self.get(i) {
-				value
-			} else {
-				return None;
-			};
-
-			let layout = Layout::single_line_simple_value_layout(
-				&value,
-				format,
-				font,
-				max_width - left_paren.width(),
-			);
-			let layout_width = layout.width();
-			if width + layout_width > max_width {
-				vertical_items.push(Layout::Horizontal(
-					horizontal_items.drain(..).rev().collect(),
-				));
-				if vertical_items.len() >= max_lines {
-					return None;
-				}
-				width = left_paren.width();
-			}
-			width += layout.width();
-			horizontal_items.push(layout);
-		}
-
-		horizontal_items.push(left_paren);
-		vertical_items.push(Layout::Horizontal(
-			horizontal_items.drain(..).rev().collect(),
-		));
-		Some(Layout::Vertical(vertical_items.drain(..).rev().collect()))
 	}
 }
 

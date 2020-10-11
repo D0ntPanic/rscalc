@@ -1,6 +1,11 @@
 use crate::functions::Function;
 use crate::menu::{Menu, MenuItem, MenuItemFunction, MenuItemLayout};
+use rscalc_math::constant::Constant;
+use rscalc_math::functions::StackFunction;
+
+#[cfg(feature = "dm42")]
 use alloc::boxed::Box;
+#[cfg(feature = "dm42")]
 use alloc::vec::Vec;
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -80,14 +85,22 @@ pub fn catalog_menu(func: &dyn Fn(CatalogPage) -> Function) -> Menu {
 fn constant_catalog_menu(func: &dyn Fn(Function) -> Function) -> Menu {
 	Menu::new(
 		"Constants",
-		create_action_items(&[("c - Speed of Light", func(Function::SpeedOfLight))]),
+		create_action_items(&[(
+			"c - Speed of Light",
+			func(Function::Stack(StackFunction::Constant(
+				Constant::SpeedOfLight,
+			))),
+		)]),
 	)
 }
 
 fn stats_catalog_menu(func: &dyn Fn(Function) -> Function) -> Menu {
 	Menu::new(
 		"Statistics",
-		create_action_items(&[("sum", func(Function::Sum)), ("mean", func(Function::Mean))]),
+		create_action_items(&[
+			("sum", func(Function::Stack(StackFunction::Sum))),
+			("mean", func(Function::Stack(StackFunction::Mean))),
+		]),
 	)
 }
 
@@ -95,9 +108,9 @@ fn time_catalog_menu(func: &dyn Fn(Function) -> Function) -> Menu {
 	Menu::new(
 		"Time",
 		create_action_items(&[
-			("Now", func(Function::Now)),
-			("Date", func(Function::Date)),
-			("Time", func(Function::Time)),
+			("Now", func(Function::Stack(StackFunction::Now))),
+			("Date", func(Function::Stack(StackFunction::Date))),
+			("Time", func(Function::Stack(StackFunction::Time))),
 		]),
 	)
 }
@@ -106,22 +119,22 @@ fn transcendental_catalog_menu(func: &dyn Fn(Function) -> Function) -> Menu {
 	let mut menu = Menu::new(
 		"Transcendental",
 		create_action_items(&[
-			("log", func(Function::Log)),
-			("10ˣ", func(Function::Exp10)),
-			("ln", func(Function::Ln)),
-			("eˣ", func(Function::Exp)),
-			("sin", func(Function::Sin)),
-			("cos", func(Function::Cos)),
-			("tan", func(Function::Tan)),
-			("sinh", func(Function::Sinh)),
-			("cosh", func(Function::Cosh)),
-			("tanh", func(Function::Tanh)),
-			("asin", func(Function::Asin)),
-			("acos", func(Function::Acos)),
-			("atan", func(Function::Atan)),
-			("asinh", func(Function::Asinh)),
-			("acosh", func(Function::Acosh)),
-			("atanh", func(Function::Atanh)),
+			("log", func(Function::Stack(StackFunction::Log))),
+			("10ˣ", func(Function::Stack(StackFunction::Exp10))),
+			("ln", func(Function::Stack(StackFunction::Ln))),
+			("eˣ", func(Function::Stack(StackFunction::Exp))),
+			("sin", func(Function::Stack(StackFunction::Sin))),
+			("cos", func(Function::Stack(StackFunction::Cos))),
+			("tan", func(Function::Stack(StackFunction::Tan))),
+			("sinh", func(Function::Stack(StackFunction::Sinh))),
+			("cosh", func(Function::Stack(StackFunction::Cosh))),
+			("tanh", func(Function::Stack(StackFunction::Tanh))),
+			("asin", func(Function::Stack(StackFunction::Asin))),
+			("acos", func(Function::Stack(StackFunction::Acos))),
+			("atan", func(Function::Stack(StackFunction::Atan))),
+			("asinh", func(Function::Stack(StackFunction::Asinh))),
+			("acosh", func(Function::Stack(StackFunction::Acosh))),
+			("atanh", func(Function::Stack(StackFunction::Atanh))),
 		]),
 	);
 	menu.set_columns(2);
@@ -143,10 +156,10 @@ fn vector_catalog_menu(func: &dyn Fn(Function) -> Function) -> Menu {
 	Menu::new(
 		"Vector",
 		create_action_items(&[
-			("dot", func(Function::DotProduct)),
-			("cross", func(Function::CrossProduct)),
-			("magnitude", func(Function::Magnitude)),
-			("normalize", func(Function::Normalize)),
+			("dot", func(Function::Stack(StackFunction::DotProduct))),
+			("cross", func(Function::Stack(StackFunction::CrossProduct))),
+			("magnitude", func(Function::Stack(StackFunction::Magnitude))),
+			("normalize", func(Function::Stack(StackFunction::Normalize))),
 		]),
 	)
 }

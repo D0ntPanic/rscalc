@@ -1,13 +1,24 @@
 use crate::error::{Error, Result};
+use crate::format::Format;
 use crate::storage::{DeserializeInput, SerializeOutput, StorageObject, StorageRefSerializer};
 use crate::unit::{AngleUnit, UnitConversion};
-use alloc::borrow::Cow;
-use alloc::string::{String, ToString};
-use alloc::vec::Vec;
-use core::convert::TryInto;
 use intel_dfp::Decimal;
 use num_bigint::{BigInt, BigUint, Sign, ToBigInt, ToBigUint};
 use num_integer::Integer;
+
+#[cfg(feature = "std")]
+use std::borrow::Cow;
+#[cfg(feature = "std")]
+use std::convert::TryInto;
+
+#[cfg(not(feature = "std"))]
+use alloc::borrow::Cow;
+#[cfg(not(feature = "std"))]
+use alloc::string::String;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+#[cfg(not(feature = "std"))]
+use core::convert::TryInto;
 
 // Maximum integer size before it is converted into a floating point number.
 pub const MAX_INTEGER_BITS: u64 = 8192;
@@ -22,9 +33,6 @@ pub const MAX_DENOMINATOR_BITS: u64 = 128;
 // Maximum numerator size is the maximum integer portion plus the range of the denominator.
 pub const MAX_NUMERATOR_BITS: u64 = MAX_INTEGER_BITS + MAX_DENOMINATOR_BITS;
 
-// Number of integer bits to attempt to render in short form (i.e. stack display)
-pub const MAX_SHORT_DISPLAY_BITS: u64 = 128;
-
 #[derive(Clone)]
 pub enum Number {
 	Integer(BigInt),
@@ -34,41 +42,6 @@ pub enum Number {
 
 pub trait ToNumber {
 	fn to_number(self) -> Number;
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum NumberFormatMode {
-	Normal,
-	Rational,
-	Scientific,
-	Engineering,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum NumberDecimalPointMode {
-	Period,
-	Comma,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum IntegerMode {
-	Float,
-	BigInteger,
-	SizedInteger(usize, bool),
-}
-
-#[derive(Clone)]
-pub struct NumberFormat {
-	pub mode: NumberFormatMode,
-	pub integer_mode: IntegerMode,
-	pub decimal_point: NumberDecimalPointMode,
-	pub thousands: bool,
-	pub precision: usize,
-	pub trailing_zeros: bool,
-	pub integer_radix: u8,
-	pub show_alt_hex: bool,
-	pub show_alt_float: bool,
-	pub limit_size: bool,
 }
 
 impl Number {
@@ -163,7 +136,7 @@ impl Number {
 	}
 
 	pub fn to_string(&self) -> String {
-		NumberFormat::new().format_number(self)
+		Format::new().format_number(self).to_string()
 	}
 
 	pub fn is_zero(&self) -> bool {
@@ -546,397 +519,6 @@ impl Number {
 				Number::Decimal(right) => Number::Decimal(&*self.to_decimal() / right),
 			},
 			Number::Decimal(left) => Number::Decimal(left / &rhs.to_decimal()),
-		}
-	}
-}
-
-impl NumberFormat {
-	pub fn new() -> Self {
-		NumberFormat {
-			mode: NumberFormatMode::Rational,
-			integer_mode: IntegerMode::Float,
-			decimal_point: NumberDecimalPointMode::Period,
-			thousands: true,
-			precision: 12,
-			trailing_zeros: false,
-			integer_radix: 10,
-			show_alt_hex: true,
-			show_alt_float: true,
-			limit_size: true,
-		}
-	}
-
-	pub fn exponent_format(&self) -> Self {
-		NumberFormat {
-			mode: NumberFormatMode::Normal,
-			integer_mode: IntegerMode::BigInteger,
-			decimal_point: self.decimal_point,
-			thousands: false,
-			precision: 4,
-			trailing_zeros: true,
-			integer_radix: 10,
-			show_alt_hex: false,
-			show_alt_float: false,
-			limit_size: true,
-		}
-	}
-
-	pub fn hex_format(&self) -> Self {
-		NumberFormat {
-			mode: NumberFormatMode::Normal,
-			integer_mode: match &self.integer_mode {
-				IntegerMode::Float => IntegerMode::BigInteger,
-				integer_mode => *integer_mode,
-			},
-			decimal_point: self.decimal_point,
-			thousands: self.thousands,
-			precision: self.precision,
-			trailing_zeros: self.trailing_zeros,
-			integer_radix: 16,
-			show_alt_hex: self.show_alt_hex,
-			show_alt_float: self.show_alt_float,
-			limit_size: self.limit_size,
-		}
-	}
-
-	pub fn decimal_format(&self) -> Self {
-		NumberFormat {
-			mode: self.mode,
-			integer_mode: self.integer_mode,
-			decimal_point: self.decimal_point,
-			thousands: self.thousands,
-			precision: self.precision,
-			trailing_zeros: self.trailing_zeros,
-			integer_radix: 10,
-			show_alt_hex: self.show_alt_hex,
-			show_alt_float: self.show_alt_float,
-			limit_size: self.limit_size,
-		}
-	}
-
-	pub fn with_max_precision(&self, max_precision: usize) -> Self {
-		NumberFormat {
-			mode: self.mode,
-			integer_mode: self.integer_mode,
-			decimal_point: self.decimal_point,
-			thousands: self.thousands,
-			precision: core::cmp::min(self.precision, max_precision),
-			trailing_zeros: self.trailing_zeros,
-			integer_radix: self.integer_radix,
-			show_alt_hex: self.show_alt_hex,
-			show_alt_float: self.show_alt_float,
-			limit_size: self.limit_size,
-		}
-	}
-
-	pub fn format_number(&self, num: &Number) -> String {
-		match num {
-			Number::Integer(int) => match self.mode {
-				NumberFormatMode::Normal | NumberFormatMode::Rational => {
-					if self.limit_size && int.bits() > MAX_SHORT_DISPLAY_BITS {
-						self.format_decimal(&num.to_decimal())
-					} else {
-						self.format_bigint(int)
-					}
-				}
-				NumberFormatMode::Scientific | NumberFormatMode::Engineering => {
-					if self.integer_radix == 10
-						|| (self.limit_size && int.bits() > MAX_SHORT_DISPLAY_BITS)
-					{
-						self.format_decimal(&num.to_decimal())
-					} else {
-						self.format_bigint(int)
-					}
-				}
-			},
-			Number::Rational(_, _) => self.format_decimal(&num.to_decimal()),
-			Number::Decimal(value) => self.format_decimal(value),
-		}
-	}
-
-	pub fn format_bigint(&self, int: &BigInt) -> String {
-		assert!(self.integer_radix > 1 && self.integer_radix <= 36);
-
-		// String will be constructed in reverse to simplify implementation
-		let mut result = Vec::new();
-
-		// Format the magnitude of the number ignoring sign, the sign will be
-		// added later.
-		let mut val = int.magnitude().clone();
-
-		// Get big integers for the needed constants
-		let radix: BigUint = self.integer_radix.into();
-
-		let mut digits = 0;
-		let mut non_decimal = false;
-		while val != 0.to_biguint().unwrap() {
-			// Check for thousands separator
-			if digits % 3 == 0 && digits > 0 && self.integer_radix == 10 && self.thousands {
-				match self.decimal_point {
-					NumberDecimalPointMode::Period => result.push(','),
-					NumberDecimalPointMode::Comma => result.push('.'),
-				}
-			} else if digits % 4 == 0 && digits > 0 && self.integer_radix == 16 && self.thousands {
-				result.push('\'');
-			}
-
-			// Get the lowest digit for the current radix and push it
-			// onto the result.
-			let digit: u8 = (&val % &radix).try_into().unwrap();
-			if digit >= 10 {
-				result.push(char::from_u32('A' as u32 + digit as u32 - 10).unwrap());
-				non_decimal = true;
-			} else {
-				result.push(char::from_u32('0' as u32 + digit as u32).unwrap());
-			}
-
-			// Update value to exclude this digit
-			val /= &radix;
-			digits += 1;
-		}
-
-		// If value was zero, ensure the string isn't blank
-		if result.len() == 0 {
-			result.push('0');
-		}
-
-		// Add prefixes for hex and oct modes
-		if self.integer_radix == 16 && (result.len() > 1 || non_decimal) {
-			result.push('x');
-			result.push('0');
-		}
-		if self.integer_radix == 8 && result.len() > 1 {
-			result.push('0');
-		}
-
-		// Add in sign
-		if int.sign() == Sign::Minus {
-			result.push('-');
-		}
-
-		// Create string
-		result.reverse();
-		result.iter().collect()
-	}
-
-	fn format_decimal_post_round(&self, num: &Decimal, mode: NumberFormatMode) -> String {
-		let raw_str = num.to_string();
-
-		// Split string on the 'E' to decode parts of number. For non inf/NaN there
-		// will always be an exponent.
-		let parts: Vec<&str> = raw_str.split('E').collect();
-		if parts.len() == 1 {
-			// Not a normal number, detect infinity vs. NaN
-			if &parts[0][1..] == "Inf" {
-				return raw_str[0..1].to_string() + "∞";
-			} else {
-				return "NaN".to_string();
-			}
-		}
-
-		// There is always a sign at the start of the string
-		let sign = &raw_str[0..1] == "-";
-
-		// Get digits and parse exponent
-		let digit_str = &parts[0][1..];
-		let mut exponent: isize = parts[1].parse().unwrap();
-
-		let mut display_exponent = match mode {
-			NumberFormatMode::Scientific => {
-				let new_exponent = 1 - digit_str.len() as isize;
-				let display = exponent - new_exponent;
-				exponent = new_exponent;
-				display
-			}
-			NumberFormatMode::Engineering => {
-				let mut new_exponent = 1 - digit_str.len() as isize;
-				let mut display = exponent - new_exponent;
-				let offset = if (display < 0) && (display % 3 != 0) {
-					display % 3 + 3
-				} else {
-					display % 3
-				};
-				new_exponent += offset;
-				display -= offset;
-				exponent = new_exponent;
-				display
-			}
-			_ => 0,
-		};
-
-		// Compute the number of digits in the integer portion of the number. This may
-		// be negative if there are leading zeros in the fraction.
-		let integer_part_digits = digit_str.len() as isize + exponent;
-
-		// Get fraction digits
-		let fraction_digits = if integer_part_digits < 0 {
-			digit_str
-		} else if integer_part_digits > digit_str.len() as isize {
-			&""
-		} else {
-			&digit_str[integer_part_digits as usize..]
-		};
-
-		// Count the number of trailing zeros in the fraction part of the number. This
-		// will be used to avoid displaying unnecessary parts of the fraction component
-		// (unless trailing zeros are enabled).
-		let mut trailing_zeros = 0;
-		let digit_bytes = fraction_digits.as_bytes();
-		for i in 0..fraction_digits.len() {
-			if digit_bytes[(fraction_digits.len() - 1) - i] != '0' as u32 as u8 {
-				break;
-			}
-			trailing_zeros += 1;
-		}
-
-		// Get the nonzero fraction digits from the string
-		let nonzero_fraction_digits = fraction_digits.len() - trailing_zeros;
-		let fraction_digits = &fraction_digits[0..nonzero_fraction_digits];
-
-		let integer_str = if integer_part_digits > 0 {
-			// Construct the string containing the integer digits. This will be constructed in
-			// reverse to more easily handle the thousands separators.
-			let mut integer_digits = Vec::new();
-			let mut digits = 0;
-			let digit_bytes = digit_str.as_bytes();
-			for i in 0..integer_part_digits {
-				if digits > 0 && digits % 3 == 0 && self.thousands {
-					match self.decimal_point {
-						NumberDecimalPointMode::Period => integer_digits.push(',' as u32 as u8),
-						NumberDecimalPointMode::Comma => integer_digits.push('.' as u32 as u8),
-					}
-				}
-				if ((integer_part_digits as usize - 1) - i as usize) < digit_bytes.len() {
-					integer_digits
-						.push(digit_bytes[(integer_part_digits as usize - 1) - i as usize]);
-				} else {
-					integer_digits.push('0' as u32 as u8);
-				}
-				digits += 1;
-			}
-
-			// Construct the final string
-			integer_digits.reverse();
-			String::from_utf8(integer_digits).unwrap()
-		} else {
-			// There is no integer portion, so it is zero
-			"0".to_string()
-		};
-
-		// Construct fraction part of string
-		let fraction_str = if integer_part_digits < 0 && fraction_digits.len() > 0 {
-			// There are leading zeros in the fraction, prepend them
-			let mut digits = Vec::new();
-			digits.resize((-integer_part_digits) as usize, '0' as u32 as u8);
-			String::from_utf8(digits).unwrap() + fraction_digits
-		} else {
-			// No leading zeros, use fraction digits from earlier
-			fraction_digits.to_string()
-		};
-
-		if integer_str == "0" && fraction_str.len() == 0 {
-			// If the value to be displayed is zero, use a zero exponent as well
-			display_exponent = 0;
-		}
-
-		// Construct final string
-		let sign_str = if sign { "-" } else { "" };
-
-		let exponent_str = if display_exponent != 0 {
-			"ᴇ".to_string()
-				+ &self
-					.exponent_format()
-					.format_bigint(&display_exponent.into())
-		} else if self.mode == NumberFormatMode::Scientific
-			|| self.mode == NumberFormatMode::Engineering
-		{
-			"ᴇ0".to_string()
-		} else {
-			"".to_string()
-		};
-
-		if fraction_digits.len() > 0 {
-			let decimal = match self.decimal_point {
-				NumberDecimalPointMode::Period => ".",
-				NumberDecimalPointMode::Comma => ",",
-			};
-			sign_str.to_string() + &integer_str + decimal + &fraction_str + &exponent_str
-		} else {
-			sign_str.to_string() + &integer_str + &exponent_str
-		}
-	}
-
-	pub fn format_decimal(&self, num: &Decimal) -> String {
-		let raw_str = num.to_string();
-
-		// Split string on the 'E' to decode parts of number. For non inf/NaN there
-		// will always be an exponent.
-		let parts: Vec<&str> = raw_str.split('E').collect();
-		if parts.len() == 1 {
-			// Not a normal number, detect infinity vs. NaN
-			if &parts[0][1..] == "Inf" {
-				return raw_str[0..1].to_string() + "∞";
-			} else {
-				return "NaN".to_string();
-			}
-		}
-
-		// Get digits and parse exponent
-		let digit_str = &parts[0][1..];
-		let exponent: isize = parts[1].parse().unwrap();
-
-		// Compute the number of digits in the integer portion of the number. This may
-		// be negative if there are leading zeros in the fraction.
-		let integer_part_digits = digit_str.len() as isize + exponent;
-
-		// Check to see if the number is too large or too small to display as a normal
-		// decimal number (or if the mode is not decimal), and determine the display
-		// mode according to this and the formatter settings.
-		let mut mode = if self.mode == NumberFormatMode::Scientific
-			|| self.mode == NumberFormatMode::Engineering
-		{
-			self.mode
-		} else if integer_part_digits > self.precision as isize
-			|| integer_part_digits < -4
-			|| integer_part_digits < -(self.precision as isize / 2)
-		{
-			NumberFormatMode::Scientific
-		} else {
-			NumberFormatMode::Normal
-		};
-
-		// Check for rounding
-		if digit_str.len() > self.precision {
-			// More digits than desired precision, round at desired precision.
-			let mut round_exponent =
-				(exponent + digit_str.len() as isize) - self.precision as isize;
-			if round_exponent > 0 && mode == NumberFormatMode::Normal {
-				// If rounding was in the middle of the integer portion, always display using
-				// scientific notation, as we must not display digits after the rounding point.
-				mode = NumberFormatMode::Scientific;
-			}
-
-			// If there are leading zeros to display, account for this in the rounding
-			if mode == NumberFormatMode::Normal && integer_part_digits < 0 {
-				round_exponent -= integer_part_digits;
-			}
-
-			// Perform rounding at the desired digit
-			let round_exponent_dec: Decimal = (round_exponent as i32).into();
-			let factor = round_exponent_dec.exp10();
-			let one: Decimal = 1.into();
-			let two: Decimal = 2.into();
-			let adjust = one / two;
-			let mut rounded = ((&num.abs() / &factor) + adjust).trunc() * factor;
-
-			if num.is_sign_negative() {
-				rounded = -rounded;
-			}
-
-			self.format_decimal_post_round(&rounded, mode)
-		} else {
-			// Number of digits is under the desired precision, convert to string directly
-			self.format_decimal_post_round(num, mode)
 		}
 	}
 }
