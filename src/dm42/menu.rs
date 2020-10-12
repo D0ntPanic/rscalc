@@ -1,6 +1,6 @@
-use crate::functions::Function;
-use crate::screen::{RenderMode, Screen};
-use crate::state::{State, StatusBarLeftDisplayType};
+use crate::dm42::functions::Function;
+use crate::dm42::screen::{RenderMode, Screen};
+use crate::dm42::state::{State, StatusBarLeftDisplayType};
 use core::cell::RefCell;
 use rscalc_layout::font::Font;
 use rscalc_layout::layout::{Layout, LayoutRenderer, Rect, TokenType};
@@ -346,7 +346,7 @@ pub fn setup_menu() -> Menu {
 			// Add temporary memory available
 			#[cfg(feature = "dm42")]
 			bottom_items.push(Layout::LeftAlign(Box::new(Layout::Text(
-				Number::Integer(crate::dm42::sys_free_mem().into()).to_string()
+				Number::Integer(crate::dm42::device::sys_free_mem().into()).to_string()
 					+ " bytes temporary memory",
 				Font::Smallest,
 				TokenType::Text,

@@ -1,9 +1,9 @@
-use crate::catalog::{assign_menu, catalog_menu, CatalogPage};
-use crate::input::InputEvent;
-use crate::menu::settings_menu;
-use crate::screen::{RenderMode, Screen};
-use crate::state::{State, StatusBarLeftDisplayType};
-use crate::unit::{unit_catalog_menu, unit_catalog_menu_of_type, unit_menu_of_type};
+use crate::dm42::catalog::{assign_menu, catalog_menu, CatalogPage};
+use crate::dm42::input::InputEvent;
+use crate::dm42::menu::settings_menu;
+use crate::dm42::screen::{RenderMode, Screen};
+use crate::dm42::state::{State, StatusBarLeftDisplayType};
+use crate::dm42::unit::{unit_catalog_menu, unit_catalog_menu_of_type, unit_menu_of_type};
 use rscalc_layout::font::Font;
 use rscalc_layout::layout::{LayoutRenderer, Rect, TokenType};
 use rscalc_math::error::Result;
@@ -24,7 +24,7 @@ use alloc::vec::Vec;
 use core::cell::RefCell;
 
 #[cfg(feature = "dm42")]
-use crate::dm42::{set_time_24_hour, time_24_hour};
+use crate::dm42::device::{set_time_24_hour, time_24_hour};
 
 #[derive(PartialEq, Eq, Clone)]
 #[allow(dead_code)]

@@ -2,6 +2,7 @@
 use alloc::string::{String, ToString};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum Key {
 	Sigma,
 	Recip,
@@ -604,7 +605,7 @@ pub trait InputQueue {
 							AlphaMode::LowerAlpha => return Some(InputEvent::Character('s')),
 							AlphaMode::Normal => {
 								if shift {
-									return Some(InputEvent::Stat);
+									return Some(InputEvent::Prob);
 								} else {
 									return Some(InputEvent::Mul);
 								}

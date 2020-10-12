@@ -1,10 +1,10 @@
-use crate::catalog::{assign_menu, catalog_menu};
-use crate::edit::NumberEditor;
-use crate::functions::{Function, FunctionKeyState, FunctionMenu};
-use crate::input::{AlphaMode, InputEvent, InputMode, InputQueue};
-use crate::menu::{setup_menu, Menu, MenuItemFunction};
-use crate::screen::{RenderMode, Screen};
-use crate::unit::unit_menu;
+use crate::dm42::catalog::{assign_menu, catalog_menu};
+use crate::dm42::edit::NumberEditor;
+use crate::dm42::functions::{Function, FunctionKeyState, FunctionMenu};
+use crate::dm42::input::{AlphaMode, InputEvent, InputMode, InputQueue};
+use crate::dm42::menu::{setup_menu, Menu, MenuItemFunction};
+use crate::dm42::screen::{RenderMode, Screen};
+use crate::dm42::unit::unit_menu;
 use chrono::NaiveDateTime;
 use rscalc_layout::decimal::DecimalLayout;
 use rscalc_layout::font::Font;
@@ -28,7 +28,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 #[cfg(feature = "dm42")]
-use crate::dm42::{read_power_voltage, show_system_setup_menu, usb_powered};
+use crate::dm42::device::{read_power_voltage, show_system_setup_menu, usb_powered};
 #[cfg(feature = "dm42")]
 use alloc::boxed::Box;
 #[cfg(feature = "dm42")]
@@ -132,7 +132,7 @@ fn clock_minute_updated() -> bool {
 
 #[cfg(feature = "dm42")]
 fn clock_minute_updated() -> bool {
-	crate::dm42::rtc_updated()
+	crate::dm42::device::rtc_updated()
 }
 
 impl State {

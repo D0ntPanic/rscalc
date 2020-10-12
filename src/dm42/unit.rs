@@ -1,7 +1,7 @@
-use crate::functions::Function;
-use crate::menu::{Menu, MenuItem, MenuItemFunction, MenuItemLayout};
-use crate::screen::Screen;
-use crate::state::State;
+use crate::dm42::functions::Function;
+use crate::dm42::menu::{Menu, MenuItem, MenuItemFunction, MenuItemLayout};
+use crate::dm42::screen::Screen;
+use crate::dm42::state::State;
 use rscalc_layout::font::Font;
 use rscalc_layout::layout::Layout;
 use rscalc_layout::value::ValueLayout;

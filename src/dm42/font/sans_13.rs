@@ -1,5 +1,5 @@
 #[allow(dead_code)]
-pub const FONT: crate::screen::BitmapFont = crate::screen::BitmapFont {
+pub const FONT: crate::dm42::screen::BitmapFont = crate::dm42::screen::BitmapFont {
     height: 21,
     chars: &[
         &[],

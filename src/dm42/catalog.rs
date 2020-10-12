@@ -1,5 +1,5 @@
-use crate::functions::Function;
-use crate::menu::{Menu, MenuItem, MenuItemFunction, MenuItemLayout};
+use crate::dm42::functions::Function;
+use crate::dm42::menu::{Menu, MenuItem, MenuItemFunction, MenuItemLayout};
 use rscalc_math::constant::Constant;
 use rscalc_math::functions::StackFunction;
 

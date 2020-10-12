@@ -1,4 +1,4 @@
-use crate::font::{char_to_idx, SANS_13, SANS_16, SANS_20, SANS_24};
+use crate::dm42::font::{char_to_idx, SANS_13, SANS_16, SANS_20, SANS_24};
 use rscalc_layout::font::{Font, FontMetrics};
 use rscalc_layout::layout::{LayoutRenderer, Rect, TokenType};
 

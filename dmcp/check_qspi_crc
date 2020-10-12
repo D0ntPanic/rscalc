@@ -1,6 +1,6 @@
 #!/bin/bash
 
-h=src/dm42.rs
+h=src/dm42/device.rs
 q=rscalc_qspi.bin
 
 

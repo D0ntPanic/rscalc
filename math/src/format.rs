@@ -283,6 +283,11 @@ impl Format {
 		let digit_str = &parts[0][1..];
 		let mut exponent: isize = parts[1].parse().unwrap();
 
+		if digit_str == "0" {
+			// Force zero exponent if zero
+			exponent = 0;
+		}
+
 		let mut display_exponent = match mode {
 			FormatMode::Scientific => {
 				let new_exponent = 1 - digit_str.len() as isize;

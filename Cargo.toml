@@ -17,9 +17,10 @@ gdk-pixbuf = { version = "0.9", optional = true }
 glib = { version = "0.10", optional = true }
 
 [features]
-default = ["rscalc_math/std", "rscalc_layout/std", "intel_dfp/std", "chrono/std",
-	"chrono/clock", "gtk", "gdk-pixbuf", "glib"]
+default = ["simulated", "std", "gtk", "gdk-pixbuf", "glib"]
+std = ["rscalc_math/std", "rscalc_layout/std", "intel_dfp/std", "chrono/std", "chrono/clock"]
 dm42 = ["rscalc_math/dm42", "rscalc_layout/dm42", "lazy_static", "spin", "limited_heap"]
+simulated = ["limited_heap"]
 limited_heap = ["rscalc_math/limited_heap", "rscalc_layout/limited_heap"]
 
 [profile.release]

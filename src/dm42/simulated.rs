@@ -1,6 +1,6 @@
-use crate::calc_main;
-use crate::input::{InputQueue, Key, KeyEvent};
-use crate::screen::{RenderMode, Screen, ScreenLayoutRenderer};
+use crate::dm42::calc_main;
+use crate::dm42::input::{InputQueue, Key, KeyEvent};
+use crate::dm42::screen::{RenderMode, Screen, ScreenLayoutRenderer};
 use gdk_pixbuf::{Colorspace, Pixbuf};
 use glib::source::{timeout_add_local, Continue};
 use gtk::*;
@@ -41,7 +41,7 @@ impl App {
 
 		let window = Window::new(WindowType::Toplevel);
 
-		window.set_title("Calc");
+		window.set_title("rscalc");
 		window.add(&content.container);
 
 		window.connect_delete_event(move |_, _| {
