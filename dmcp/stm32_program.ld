@@ -49,19 +49,19 @@ SECTIONS
     *(.qspi)           /* .qspi sections */
     *(.qspi*)          /* .qspi* sections */
 /* ==== Symbols to QSPI - in direct order === */
-    *(.rodata.__bid_mod10_18_tbl)
-    *(.rodata.__bid_convert_table)
-    *(.rodata.bid_log_table_1)
-    *(.rodata.bid_log_table_2)
-    *(.rodata.bid_decimal128_moduli)
-    *(.rodata.bid_exponents_bid64)
-    *(.rodata.bid_exponents_binary128)
-    *(.rodata.bid_breakpoints_binary128)
-    *(.rodata.bid_breakpoints_bid64)
-    *(.rodata.bid_multipliers1_binary128)
-    *(.rodata.bid_multipliers2_bid64)
-    *(.rodata.bid_multipliers1_bid64)
-    *(.rodata.bid_multipliers2_binary128)
+    KEEP(*(.rodata.__bid_mod10_18_tbl))
+    KEEP(*(.rodata.__bid_convert_table))
+    KEEP(*(.rodata.bid_log_table_1))
+    KEEP(*(.rodata.bid_log_table_2))
+    KEEP(*(.rodata.bid_decimal128_moduli))
+    KEEP(*(.rodata.bid_exponents_bid64))
+    KEEP(*(.rodata.bid_exponents_binary128))
+    KEEP(*(.rodata.bid_breakpoints_binary128))
+    KEEP(*(.rodata.bid_breakpoints_bid64))
+    KEEP(*(.rodata.bid_multipliers1_binary128))
+    KEEP(*(.rodata.bid_multipliers2_bid64))
+    KEEP(*(.rodata.bid_multipliers1_bid64))
+    KEEP(*(.rodata.bid_multipliers2_binary128))
 /* ======================== */
     . = ALIGN(8);
     _qspi_end = .;         /* define a global symbols at end of qspi */

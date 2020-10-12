@@ -134,6 +134,7 @@ impl StackRenderer {
 			)));
 
 			let height = layout.height(renderer.metrics());
+			renderer.set_selection_state(false);
 			renderer.erase(
 				&Rect {
 					x: area.x,
@@ -162,6 +163,8 @@ impl StackRenderer {
 			if bottom < area.y {
 				break;
 			}
+
+			renderer.set_selection_state(false);
 
 			// Construct and measure stack entry label
 			let label = if format.stack_xyz {
@@ -285,6 +288,7 @@ impl StackRenderer {
 			if area.y < self.prev_render_area_top {
 				top = area.y;
 			}
+			renderer.set_selection_state(false);
 			renderer.erase(&Rect {
 				x: area.x,
 				y: top,

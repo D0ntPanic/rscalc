@@ -100,6 +100,7 @@ pub trait LayoutRenderer {
 	);
 
 	fn metrics(&self) -> &dyn FontMetrics;
+	fn set_selection_state(&mut self, selected: bool);
 }
 
 #[derive(Clone)]

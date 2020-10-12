@@ -1,2 +1,2 @@
 [target.thumbv7em-none-eabihf]
-rustflags = ["-C", "link-arg=-Tstm32_program.ld"]
+rustflags = ["-C", "link-arg=-Tdmcp/stm32_program.ld"]

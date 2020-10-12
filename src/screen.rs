@@ -2,53 +2,6 @@ use crate::font::{char_to_idx, SANS_13, SANS_16, SANS_20, SANS_24};
 use rscalc_layout::font::{Font, FontMetrics};
 use rscalc_layout::layout::{LayoutRenderer, Rect, TokenType};
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy)]
-pub enum Color {
-	StatusBarBackground,
-	StatusBarText,
-	ContentBackground,
-	LabelText,
-	Separator,
-	ContentText,
-	IntegerText,
-	FloatText,
-	ObjectText,
-	KeywordText,
-	SymbolText,
-	ComplexText,
-	UnitText,
-	ErrorText,
-	SelectionBackground,
-	SelectionText,
-	MenuBackground,
-	MenuText,
-}
-
-impl Color {
-	pub fn to_bw(&self) -> bool {
-		match self {
-			Color::StatusBarBackground
-			| Color::ContentText
-			| Color::LabelText
-			| Color::Separator
-			| Color::IntegerText
-			| Color::FloatText
-			| Color::ObjectText
-			| Color::KeywordText
-			| Color::SymbolText
-			| Color::ComplexText
-			| Color::UnitText
-			| Color::ErrorText
-			| Color::SelectionBackground
-			| Color::MenuBackground => true,
-			Color::StatusBarText
-			| Color::ContentBackground
-			| Color::SelectionText
-			| Color::MenuText => false,
-		}
-	}
-}
-
 pub struct BitmapFont {
 	pub height: i32,
 	pub chars: &'static [&'static [u8]],
@@ -64,7 +17,7 @@ impl BitmapFont {
 		x: i32,
 		y: i32,
 		text: &str,
-		color: Color,
+		color: bool,
 	) {
 		// Check for completely out of bounds target
 		if (y + self.height <= area.y) || (y >= area.y + area.h) {
@@ -187,9 +140,9 @@ pub trait Screen {
 	fn clear(&mut self);
 	fn refresh(&mut self);
 
-	fn fill(&mut self, rect: &Rect, color: Color);
+	fn fill(&mut self, rect: &Rect, color: bool);
 
-	fn set_pixel(&mut self, x: i32, y: i32, color: Color) {
+	fn set_pixel(&mut self, x: i32, y: i32, color: bool) {
 		self.fill(&Rect { x, y, w: 1, h: 1 }, color);
 	}
 
@@ -200,7 +153,7 @@ pub trait Screen {
 		y: i32,
 		pattern: u32,
 		pattern_width: u8,
-		color: Color,
+		color: bool,
 	) {
 		let mut cur_x = x;
 		let mut remaining = width;
@@ -219,7 +172,7 @@ pub trait Screen {
 		}
 	}
 
-	fn draw_bits(&mut self, x: i32, y: i32, bits: u32, width: u8, color: Color);
+	fn draw_bits(&mut self, x: i32, y: i32, bits: u32, width: u8, color: bool);
 
 	fn metrics(&self) -> &dyn FontMetrics {
 		&ScreenFontMetrics
@@ -228,6 +181,7 @@ pub trait Screen {
 	fn renderer(&mut self, render_mode: RenderMode) -> ScreenLayoutRenderer;
 }
 
+#[derive(PartialEq, Eq, Clone, Copy)]
 pub enum RenderMode {
 	Normal,
 	Selected,
@@ -236,33 +190,21 @@ pub enum RenderMode {
 }
 
 impl RenderMode {
-	fn color_for_token(&self, token_type: TokenType) -> Color {
+	fn color_for_token(&self, _token_type: TokenType) -> bool {
 		match self {
-			RenderMode::Normal => match token_type {
-				TokenType::Text => Color::ContentText,
-				TokenType::Integer => Color::IntegerText,
-				TokenType::Float => Color::FloatText,
-				TokenType::Object => Color::ObjectText,
-				TokenType::Keyword => Color::KeywordText,
-				TokenType::Symbol => Color::SymbolText,
-				TokenType::Complex => Color::ComplexText,
-				TokenType::Unit => Color::UnitText,
-				TokenType::Label => Color::LabelText,
-				TokenType::Separator => Color::Separator,
-				TokenType::Error => Color::ErrorText,
-			},
-			RenderMode::Selected => Color::SelectionText,
-			RenderMode::StatusBar => Color::StatusBarText,
-			RenderMode::FunctionKeys => Color::MenuText,
+			RenderMode::Normal => true,
+			RenderMode::Selected => false,
+			RenderMode::StatusBar => false,
+			RenderMode::FunctionKeys => false,
 		}
 	}
 
-	fn color_for_background(&self) -> Color {
+	fn color_for_background(&self) -> bool {
 		match self {
-			RenderMode::Normal => Color::ContentBackground,
-			RenderMode::Selected => Color::SelectionBackground,
-			RenderMode::StatusBar => Color::StatusBarBackground,
-			RenderMode::FunctionKeys => Color::MenuBackground,
+			RenderMode::Normal => false,
+			RenderMode::Selected => true,
+			RenderMode::StatusBar => true,
+			RenderMode::FunctionKeys => true,
 		}
 	}
 }
@@ -300,6 +242,7 @@ impl FontMetrics for ScreenFontMetrics {
 
 pub struct ScreenLayoutRenderer<'a> {
 	screen: &'a mut dyn Screen,
+	base_render_mode: RenderMode,
 	render_mode: RenderMode,
 }
 
@@ -307,6 +250,7 @@ impl<'a> ScreenLayoutRenderer<'a> {
 	pub fn new(screen: &'a mut dyn Screen, render_mode: RenderMode) -> Self {
 		ScreenLayoutRenderer {
 			screen,
+			base_render_mode: render_mode,
 			render_mode,
 		}
 	}
@@ -369,5 +313,13 @@ impl<'a> LayoutRenderer for ScreenLayoutRenderer<'a> {
 
 	fn metrics(&self) -> &dyn FontMetrics {
 		self.screen.metrics()
+	}
+
+	fn set_selection_state(&mut self, selected: bool) {
+		if selected {
+			self.render_mode = RenderMode::Selected;
+		} else {
+			self.render_mode = self.base_render_mode;
+		}
 	}
 }

@@ -1,14 +1,19 @@
 use crate::calc_main;
 use crate::font;
 use crate::input::{InputQueue, Key, KeyEvent};
-use crate::screen::{Color, RenderMode, Screen, ScreenLayoutRenderer};
+use crate::screen::{RenderMode, Screen, ScreenLayoutRenderer};
 use alloc::alloc::Layout;
 use core::alloc::GlobalAlloc;
 use rscalc_layout::layout::Rect;
+use rscalc_math::format::Format;
 use spin::Mutex;
 
 struct Heap;
 
+const INTERFACE_MAJOR_VERSION: u32 = 3;
+const INTERFACE_MINOR_VERSION: u32 = 13;
+const QSPI_DATA_SIZE: u32 = 1370864;
+const QSPI_DATA_CRC: u32 = 0x000cfed6;
 const LIBRARY_BASE: usize = 0x8000201;
 
 const WIDTH: i32 = 400;
@@ -28,11 +33,60 @@ const STAT_CLK_WKUP_FLAG: u32 = 1 << 12;
 const STAT_CLK24: u32 = 1 << 14;
 const STAT_POWER_CHANGE: u32 = 1 << 15;
 
+const MENU_RESET: i32 = 0;
+const MI_MSC: u8 = 196;
+const MI_SYSTEM_ENTER: u8 = 200;
+const MI_SET_TIME: u8 = 202;
+const MI_SET_DATE: u8 = 203;
+
+const PROG_INFO_MAGIC: u32 = 0xd377c0de;
+const RUN_DMCP_MAGIC: u32 = 0x3ce7ea37;
+
 extern "C" {
-	#[link_name = "post_main"]
-	fn post_main() -> !;
-	#[link_name = "system_setup_menu"]
-	fn system_setup_menu();
+	static _sidata: u8;
+	static mut _sdata: u8;
+	static _edata: u8;
+	static mut _sbss: u8;
+	static _ebss: u8;
+}
+
+#[repr(C)]
+struct ProgramInfo {
+	magic: u32,
+	size: u32,
+	entry: unsafe extern "C" fn() -> !,
+	interface_major_version: u32,
+	interface_minor_version: u32,
+	qspi_data_size: u32,
+	qspi_data_crc: u32,
+	program_name: [u8; 16],
+	program_version: [u8; 16],
+	keymap_id: u32,
+}
+
+// Program header used by DM42 firmware, linker script will map this to the start
+// of the program file.
+#[no_mangle]
+#[allow(non_snake_case)]
+static prog_info: ProgramInfo = ProgramInfo {
+	magic: PROG_INFO_MAGIC,
+	size: 0, // Filled in after linking
+	entry: program_main,
+	interface_major_version: INTERFACE_MAJOR_VERSION,
+	interface_minor_version: INTERFACE_MINOR_VERSION,
+	qspi_data_size: QSPI_DATA_SIZE,
+	qspi_data_crc: QSPI_DATA_CRC,
+	program_name: *b"rscalc\0\0\0\0\0\0\0\0\0\0",
+	program_version: *include!(concat!(env!("OUT_DIR"), "/version.txt")),
+	keymap_id: 0xffffffff,
+};
+
+#[repr(C)]
+struct Menu {
+	name: &'static u8,
+	items: &'static u8,
+	message: Option<&'static u8>,
+	post_display: Option<extern "C" fn()>,
 }
 
 #[panic_handler]
@@ -46,7 +100,7 @@ fn panic_handler(_info: &core::panic::PanicInfo) -> ! {
 		2,
 		2,
 		"Internal error - Panic",
-		Color::ContentText,
+		true,
 	);
 	font::SANS_16.draw(
 		&mut screen,
@@ -54,13 +108,11 @@ fn panic_handler(_info: &core::panic::PanicInfo) -> ! {
 		2,
 		2 + font::SANS_24.height,
 		"Press a key to restart...",
-		Color::ContentText,
+		true,
 	);
 	lcd_forced_refresh();
 	wait_for_key_press();
-	unsafe {
-		post_main();
-	}
+	reset();
 }
 
 #[alloc_error_handler]
@@ -68,21 +120,14 @@ fn alloc_error_handler(_layout: Layout) -> ! {
 	let mut screen = DM42Screen;
 	let screen_rect = screen.screen_rect();
 	screen.clear();
-	font::SANS_24.draw(
-		&mut screen,
-		&screen_rect,
-		2,
-		2,
-		"Out of memory",
-		Color::ContentText,
-	);
+	font::SANS_24.draw(&mut screen, &screen_rect, 2, 2, "Out of memory", true);
 	font::SANS_16.draw(
 		&mut screen,
 		&screen_rect,
 		2,
 		2 + font::SANS_24.height,
 		"Unhandled memory allocation error.",
-		Color::ContentText,
+		true,
 	);
 	font::SANS_16.draw(
 		&mut screen,
@@ -90,55 +135,91 @@ fn alloc_error_handler(_layout: Layout) -> ! {
 		2,
 		2 + font::SANS_24.height + font::SANS_16.height * 2,
 		"Press a key to restart...",
-		Color::ContentText,
+		true,
 	);
 	lcd_forced_refresh();
 	wait_for_key_press();
-	unsafe {
-		post_main();
-	}
+	reset();
 }
 
 #[no_mangle]
-pub fn __aeabi_unwind_cpp_pr0() -> ! {
-	let mut screen = DM42Screen;
-	let screen_rect = screen.screen_rect();
-	screen.clear();
-	font::SANS_24.draw(
-		&mut screen,
-		&screen_rect,
-		2,
-		2,
-		"Internal error",
-		Color::ContentText,
-	);
-	font::SANS_16.draw(
-		&mut screen,
-		&screen_rect,
-		2,
-		2 + font::SANS_24.height,
-		"Unhandled C++ exception.",
-		Color::ContentText,
-	);
-	font::SANS_16.draw(
-		&mut screen,
-		&screen_rect,
-		2,
-		2 + font::SANS_24.height + font::SANS_16.height * 2,
-		"Press a key to restart...",
-		Color::ContentText,
-	);
-	lcd_forced_refresh();
-	wait_for_key_press();
-	unsafe {
-		post_main();
-	}
+pub extern "C" fn __aeabi_unwind_cpp_pr0() -> ! {
+	panic!("unhandled C++ exception");
+}
+
+#[no_mangle]
+pub extern "C" fn raise(_sig: i32) -> ! {
+	panic!("exception raised in external library");
 }
 
 #[no_mangle]
 // This is missing from the linked C library but it can be provided by Rust
 pub extern "C" fn __aeabi_d2f(value: f64) -> f32 {
 	value as f32
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn __errno() -> *mut i32 {
+	// DM42 is single threaded, don't need a per-thread errno
+	static mut ERROR: i32 = 0;
+	&mut ERROR
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn sprintf(dest: *mut u8, fmt: *const u8, mut args: ...) -> usize {
+	// Simple sprintf implementation that only supports basic integers. This is only called
+	// from the floating point library with these format specifiers.
+	let mut input = fmt;
+	let mut output = dest;
+	while *input != 0 {
+		// Get next character in format string
+		let ch = *input;
+		input = input.offset(1);
+
+		match ch {
+			b'%' => {
+				// Format specifier, grab type
+				let ch = *input;
+				input = input.offset(1);
+
+				match ch {
+					b'd' => {
+						// Signed 32 bit integer as decimal
+						let num: i32 = args.arg();
+						let mut format = Format::new();
+						format.thousands = false;
+						let string = format.format_bigint(&num.into());
+						core::slice::from_raw_parts_mut(output, string.len())
+							.copy_from_slice(string.as_bytes());
+					}
+					b'u' => {
+						// Unsigned 32 bit integer as decimal
+						let num: u32 = args.arg();
+						let mut format = Format::new();
+						format.thousands = false;
+						let string = format.format_bigint(&num.into());
+						core::slice::from_raw_parts_mut(output, string.len())
+							.copy_from_slice(string.as_bytes());
+					}
+					_ => {
+						// Output unhandled character
+						*output = *output;
+						output = output.offset(1);
+					}
+				}
+			}
+			_ => {
+				// Output character unmodified
+				*output = *output;
+				output = output.offset(1);
+			}
+		}
+	}
+
+	// Compute length and null terminate
+	let len = output as usize - dest as usize;
+	*output = 0;
+	len
 }
 
 #[global_allocator]
@@ -266,12 +347,26 @@ pub fn read_power_voltage() -> u32 {
 	}
 }
 
+pub fn set_reset_magic(magic: u32) {
+	unsafe {
+		let func_ptr: usize = LIBRARY_BASE + 272;
+		let func: extern "C" fn(u32) = core::mem::transmute(func_ptr);
+		func(magic)
+	}
+}
+
 pub fn usb_powered() -> bool {
 	unsafe {
 		let func_ptr: usize = LIBRARY_BASE + 288;
 		let func: extern "C" fn() -> i32 = core::mem::transmute(func_ptr);
 		func() != 0
 	}
+}
+
+unsafe fn handle_menu(menu: &'static Menu, action: i32, line: i32) -> i32 {
+	let func_ptr: usize = LIBRARY_BASE + 344;
+	let func: extern "C" fn(&'static Menu, i32, i32) -> i32 = core::mem::transmute(func_ptr);
+	func(menu, action, line)
 }
 
 fn key_empty() -> bool {
@@ -330,6 +425,14 @@ pub fn sys_free_mem() -> usize {
 	}
 }
 
+pub fn sys_reset() -> ! {
+	unsafe {
+		let func_ptr: usize = LIBRARY_BASE + 544;
+		let func: extern "C" fn() -> ! = core::mem::transmute(func_ptr);
+		func()
+	}
+}
+
 fn draw_power_off_image(val: i32) {
 	unsafe {
 		let func_ptr: usize = LIBRARY_BASE + 556;
@@ -362,7 +465,17 @@ fn clear_state(bit: u32) {
 pub fn show_system_setup_menu() {
 	unsafe {
 		set_state(STAT_CLK_WKUP_SECONDS);
-		system_setup_menu();
+
+		static NAME: &[u8] = b"System Settings\0";
+		static ITEMS: &[u8] = &[MI_SET_DATE, MI_SET_TIME, MI_MSC, MI_SYSTEM_ENTER, 0];
+		static SYSTEM_MENU: Menu = Menu {
+			name: &NAME[0],
+			items: &ITEMS[0],
+			message: None,
+			post_display: None,
+		};
+		handle_menu(&SYSTEM_MENU, MENU_RESET, 0);
+
 		clear_state(STAT_CLK_WKUP_SECONDS);
 		lcd_clear_buf();
 	}
@@ -399,7 +512,7 @@ impl Screen for DM42Screen {
 		lcd_refresh_dma();
 	}
 
-	fn fill(&mut self, rect: &Rect, color: Color) {
+	fn fill(&mut self, rect: &Rect, color: bool) {
 		let rect = rect.clipped_to(&Rect {
 			x: 0,
 			y: 0,
@@ -409,8 +522,6 @@ impl Screen for DM42Screen {
 		if rect.w == 0 || rect.h == 0 {
 			return;
 		}
-
-		let color = color.to_bw();
 
 		if rect.x == 0 && rect.w == WIDTH {
 			lcd_fill_lines(rect.y as u32, if color { 0 } else { 0xff }, rect.h as u32);
@@ -425,8 +536,7 @@ impl Screen for DM42Screen {
 		}
 	}
 
-	fn draw_bits(&mut self, x: i32, y: i32, bits: u32, width: u8, color: Color) {
-		let color = color.to_bw();
+	fn draw_bits(&mut self, x: i32, y: i32, bits: u32, width: u8, color: bool) {
 		if color {
 			bitblt24(x as u32, width as u32, y as u32, bits, BLT_OR, BLT_NONE);
 		} else {
@@ -582,9 +692,28 @@ impl InputQueue for DM42InputQueue {
 	}
 }
 
-#[no_mangle]
-pub extern "C" fn program_main() {
+extern "C" fn program_main() -> ! {
+	unsafe {
+		// Copy data section initial contents from flash to RAM
+		let ram_data_len = &_edata as *const u8 as usize - &_sdata as *const u8 as usize;
+		let ram_data = core::slice::from_raw_parts_mut(&mut _sdata as *mut u8, ram_data_len);
+		let flash_data = core::slice::from_raw_parts(&_sidata, ram_data_len);
+		ram_data.copy_from_slice(flash_data);
+
+		// Zero fill BSS section
+		let bss_len = &_ebss as *const u8 as usize - &_sbss as *const u8 as usize;
+		let bss = core::slice::from_raw_parts_mut(&mut _sbss as *mut u8, bss_len);
+		bss.fill(0);
+	}
+
 	let screen = DM42Screen;
 	let input_queue = DM42InputQueue;
 	calc_main(screen, input_queue);
+	reset();
+}
+
+fn reset() -> ! {
+	// Reset if main exits
+	set_reset_magic(RUN_DMCP_MAGIC);
+	sys_reset();
 }

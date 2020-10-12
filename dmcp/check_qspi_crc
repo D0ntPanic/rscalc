@@ -1,6 +1,6 @@
 #!/bin/bash
 
-h=dmcp/qspi_crc.h
+h=src/dm42.rs
 q=rscalc_qspi.bin
 
 
@@ -18,12 +18,12 @@ if [ ! -f "$h" ]; then
 	sz=0
 	crc=0
 else
-	sz=`cat $h  | grep SIZE | awk '{print $3}'`
-	crc=`cat $h | grep CRC  | awk '{print $3}'`
+	sz=`cat $h  | grep QSPI_DATA_SIZE | awk '{print $5}'`
+	crc=`cat $h | grep QSPI_DATA_CRC  | awk '{print $5}'`
 fi
 
-nsz=`filesize $q`
-ncrc=0x`crc32 $q`
+nsz=`filesize $q`\;
+ncrc=0x`crc32 $q`\;
 
 if [ $sz != $nsz -o $crc != $ncrc ]; then
 	cat << OI

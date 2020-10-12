@@ -1,5 +1,7 @@
 #![feature(alloc_error_handler)]
 #![feature(assoc_char_funcs)]
+#![feature(c_variadic)]
+#![feature(slice_fill)]
 #![cfg_attr(feature = "dm42", no_std)]
 #![cfg_attr(feature = "dm42", no_main)]
 

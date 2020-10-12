@@ -1,6 +1,6 @@
 use crate::calc_main;
 use crate::input::{InputQueue, Key, KeyEvent};
-use crate::screen::{Color, RenderMode, Screen, ScreenLayoutRenderer};
+use crate::screen::{RenderMode, Screen, ScreenLayoutRenderer};
 use gdk_pixbuf::{Colorspace, Pixbuf};
 use glib::source::{timeout_add_local, Continue};
 use gtk::*;
@@ -266,9 +266,8 @@ impl Screen for VirtualDM42Screen {
 		self.refresh.lock().unwrap().screen = Some(self.clone());
 	}
 
-	fn fill(&mut self, rect: &Rect, color: Color) {
+	fn fill(&mut self, rect: &Rect, color: bool) {
 		let rect = rect.clipped_to(&self.screen_rect());
-		let color = color.to_bw();
 		for y in rect.y..rect.y + rect.h {
 			for x in rect.x..rect.x + rect.w {
 				self.set_pixel(x, y, color);
@@ -276,8 +275,7 @@ impl Screen for VirtualDM42Screen {
 		}
 	}
 
-	fn draw_bits(&mut self, x: i32, y: i32, bits: u32, width: u8, color: Color) {
-		let color = color.to_bw();
+	fn draw_bits(&mut self, x: i32, y: i32, bits: u32, width: u8, color: bool) {
 		for i in 0..width {
 			if bits & (1 << ((width - 1) - i)) != 0 {
 				self.set_pixel(x + i as i32, y, color);
