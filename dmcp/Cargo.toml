@@ -1,0 +1,11 @@
+[package]
+name = "elf2pgm"
+version = "0.1.0"
+authors = ["Rusty Wagner <rusty.wagner@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+goblin = "0.2"
+clap = "2.33"
+crc = "1.8"
+sha-1 = "0.9"
