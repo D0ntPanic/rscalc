@@ -58,10 +58,8 @@ to build or `cargo run` to build and run.
 To build the DM42 version, you must use the `Makefile`. Invoking `make` will
 build both the DM42 build and the desktop build. To build only the DM42
 build, use `make rscalc.pgm`. The DM42 build has only been tested on Linux
-and requires `arm-none-eabi-gcc` to be installed in addition to the
-`thumbv7em-none-eabihf` Rust target for cross compilation. The Rust target
-can be added with `rustup target add`, and the GCC compiler can usually be
-found in your Linux distribution's package manager.
+and requires the `thumbv7em-none-eabihf` Rust target for cross compilation.
+This target can be added with `rustup target add thumbv7em-none-eabihf`.
 
 ## DM42 Calculation Limits
 
