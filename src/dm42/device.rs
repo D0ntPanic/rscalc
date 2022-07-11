@@ -152,11 +152,12 @@ pub extern "C" fn raise(_sig: i32) -> ! {
 	panic!("exception raised in external library");
 }
 
-#[no_mangle]
+// TODO: not needed anymore?
+//#[no_mangle]
 // This is missing from the linked C library but it can be provided by Rust
-pub extern "C" fn __aeabi_d2f(value: f64) -> f32 {
-	value as f32
-}
+//pub extern "C" fn __aeabi_d2f(value: f64) -> f32 {
+//	value as f32
+//}
 
 #[no_mangle]
 pub unsafe extern "C" fn __errno() -> *mut i32 {
